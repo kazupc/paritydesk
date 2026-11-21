@@ -1,0 +1,10 @@
+/dist/
+/bin/
+*.test
+*.out
+coverage.*
+.DS_Store
+# Never commit real app data or captures
+/testdata/private/
+*.ldb
+*.log
