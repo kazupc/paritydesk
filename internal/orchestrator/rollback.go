@@ -230,7 +230,7 @@ func (o *Orchestrator) finishRollback(ctx context.Context, root *state.Root, m *
 	if hasLSEntries(man) {
 		w, err := d.KV.OpenWritable(ctx, sources.LevelDBPath(folder))
 		if err != nil {
-			return gen.RestoreReport{}, pderr.Wrap(pderr.Internal, "rollback", err)
+			return gen.RestoreReport{}, lsOpenErr("rollback", err)
 		}
 		defer closeReader(w)
 		in.LS = w

@@ -78,17 +78,22 @@ func makeDB(t testing.TB, dir string, c opt.Compression, extra map[string]string
 	}
 }
 
+// tables returns the paths of the live tables of the database in dir
+// (those its manifest lists), in number order. goleveldb may leave an
+// obsolete table file behind after a compaction; it is not listed.
 func tables(t testing.TB, dir string) []string {
 	t.Helper()
-	es, err := os.ReadDir(dir)
+	m, err := readManifest(dir, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var out []string
-	for _, e := range es {
-		if isTableFile(e.Name()) {
-			out = append(out, filepath.Join(dir, e.Name()))
+	for _, n := range m.tableNums() {
+		p := filepath.Join(dir, fmt.Sprintf("%06d.ldb", n))
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("live table: %v", err)
 		}
+		out = append(out, p)
 	}
 	return out
 }
@@ -622,51 +627,39 @@ func TestNewRefusesRealPaths(t *testing.T) {
 	}
 }
 
+// liveTable builds makeDB's database in a new directory and returns the
+// directory and the path of its first live table.
+func liveTable(t *testing.T, c opt.Compression) (dir, table string) {
+	t.Helper()
+	dir = filepath.Join(t.TempDir(), "db")
+	makeDB(t, dir, c, nil)
+	return dir, tables(t, dir)[0]
+}
+
 func TestCheckCompressions(t *testing.T) {
-	src := map[opt.Compression]string{}
-	for _, c := range []opt.Compression{opt.SnappyCompression, opt.NoCompression} {
-		d := filepath.Join(t.TempDir(), "db")
-		makeDB(t, d, c, nil)
-		src[c] = tables(t, d)[0]
-	}
-	read := func(c opt.Compression) []byte {
-		b, err := os.ReadFile(src[c])
-		if err != nil {
-			t.Fatal(err)
-		}
-		return b
-	}
 	tests := []struct {
-		name      string
-		files     map[string][]byte
-		wantErr   bool
-		wantComp  bool
-		namedFile string
+		name    string
+		comp    opt.Compression
+		mutate  func(b []byte) []byte // the live table's new content; nil keeps it
+		wantErr bool
 	}{
-		{name: "no tables", files: map[string][]byte{"000001.log": []byte("x"), "CURRENT": []byte("MANIFEST-000002\n")}},
-		{name: "snappy", files: map[string][]byte{"000005.ldb": read(opt.SnappyCompression)}},
-		{name: "none", files: map[string][]byte{"000005.sst": read(opt.NoCompression)}},
-		{name: "truncated footer", files: map[string][]byte{"000007.ldb": read(opt.SnappyCompression)[:20]}, wantErr: true, namedFile: "000007.ldb"},
-		{name: "truncated body", files: map[string][]byte{"000008.ldb": func() []byte {
-			b := read(opt.NoCompression)
-			return b[len(b)-footerLen-3:]
-		}()}, wantErr: true, namedFile: "000008.ldb"},
-		{name: "bad magic", files: map[string][]byte{"000009.ldb": func() []byte {
-			b := read(opt.SnappyCompression)
-			b[len(b)-1] ^= 0xff
-			return b
-		}()}, wantErr: true, namedFile: "000009.ldb"},
-		{name: "bad checksum", files: map[string][]byte{"000010.ldb": func() []byte {
-			b := read(opt.NoCompression)
-			b[0] ^= 0xff
-			return b
-		}()}, wantErr: true, namedFile: "000010.ldb"},
+		{name: "snappy", comp: opt.SnappyCompression},
+		{name: "none", comp: opt.NoCompression},
+		{name: "truncated footer", comp: opt.SnappyCompression, mutate: func(b []byte) []byte { return b[:20] }, wantErr: true},
+		{name: "truncated body", comp: opt.NoCompression, mutate: func(b []byte) []byte { return b[len(b)-footerLen-3:] }, wantErr: true},
+		{name: "bad magic", comp: opt.SnappyCompression, mutate: func(b []byte) []byte { b[len(b)-1] ^= 0xff; return b }, wantErr: true},
+		{name: "bad checksum", comp: opt.NoCompression, mutate: func(b []byte) []byte { b[0] ^= 0xff; return b }, wantErr: true},
+		{name: "empty", comp: opt.SnappyCompression, mutate: func([]byte) []byte { return nil }, wantErr: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			dir := t.TempDir()
-			for n, b := range tc.files {
-				if err := os.WriteFile(filepath.Join(dir, n), b, 0o600); err != nil {
+			dir, table := liveTable(t, tc.comp)
+			if tc.mutate != nil {
+				b, err := os.ReadFile(table)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(table, tc.mutate(b), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -682,24 +675,166 @@ func TestCheckCompressions(t *testing.T) {
 			if err == nil {
 				t.Fatal("want an error")
 			}
-			if errors.Is(err, kv.ErrUnknownCompression) != tc.wantComp {
-				t.Fatalf("ErrUnknownCompression mismatch: %v", err)
+			if errors.Is(err, kv.ErrUnknownCompression) {
+				t.Fatalf("a malformed table reported as unknown compression: %v", err)
 			}
-			if !strings.Contains(err.Error(), tc.namedFile) || strings.Contains(err.Error(), dir) {
+			if !strings.Contains(err.Error(), filepath.Base(table)) || strings.Contains(err.Error(), dir) {
 				t.Fatalf("error must name only the file: %v", err)
 			}
 		})
 	}
+	t.Run("no tables", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "db")
+		db, err := leveldb.OpenFile(dir, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := CheckCompressions(dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	t.Run("no manifest", func(t *testing.T) {
+		_, table := liveTable(t, opt.SnappyCompression)
+		dir := t.TempDir()
+		b, err := os.ReadFile(table)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, filepath.Base(table)), b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := CheckCompressions(dir); err == nil {
+			t.Fatal("tables without a manifest were accepted")
+		}
+	})
+}
+
+// TestUnlistedTablesIgnored: table files the manifest does not list, as
+// the C++ library leaves an unfinished compaction output when it closes
+// during a compaction (empty, or cut short before its footer), are
+// ignored by the format check and do not stop OpenWritable, as neither
+// library reads them. A table the manifest lists but the directory lacks
+// is refused before anything is written.
+func TestUnlistedTablesIgnored(t *testing.T) {
+	e := newEnv(t, opt.SnappyCompression)
+	live, err := os.ReadFile(tables(t, e.dir)[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	orphans := map[string][]byte{
+		"000097.ldb": nil,
+		"000098.ldb": make([]byte, 4448),
+		"000099.ldb": live[:len(live)/2],
+		"000096.sst": live[:len(live)-1],
+	}
+	for name, b := range orphans {
+		if err := os.WriteFile(filepath.Join(e.dir, name), b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := context.Background()
+	if err := CheckCompressions(e.dir); err != nil {
+		t.Fatalf("CheckCompressions: %v", err)
+	}
+	if err := e.o.CheckFormat(ctx, e.dir); err != nil {
+		t.Fatalf("CheckFormat: %v", err)
+	}
+	w, err := e.o.OpenWritable(ctx, e.dir)
+	if err != nil {
+		t.Fatalf("OpenWritable: %v", err)
+	}
+	b := &kv.Batch{}
+	b.Put([]byte("k"), []byte("v"))
+	if err := errors.Join(w.Write(b), w.Close()); err != nil {
+		t.Fatal(err)
+	}
+	r, err := e.o.OpenSnapshot(ctx, e.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, ok, err := r.Get([]byte("k")); err != nil || !ok || string(v) != "v" {
+		t.Fatalf("Get after the write: %q %v %v", v, ok, err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("table the manifest deleted", func(t *testing.T) {
+		// A compaction records its input tables as deleted; a copy of
+		// one left on disk, cut short, is ignored as well.
+		e := newEnv(t, opt.SnappyCompression)
+		old := tables(t, e.dir)[0]
+		data, err := os.ReadFile(old)
+		if err != nil {
+			t.Fatal(err)
+		}
+		db, err := leveldb.OpenFile(e.dir, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := errors.Join(db.Put(lsKey(t, items[0].name), []byte("x"), nil), db.CompactRange(util.Range{}), db.Close()); err != nil {
+			t.Fatal(err)
+		}
+		m, err := readManifest(e.dir, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		num, _, _ := parseFileName(filepath.Base(old))
+		if slices.Contains(m.tableNums(), num) {
+			t.Fatalf("table %s is still live after the compaction", filepath.Base(old))
+		}
+		if err := os.WriteFile(old, data[:len(data)-1], 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := CheckCompressions(e.dir); err != nil {
+			t.Fatalf("CheckCompressions: %v", err)
+		}
+		w, err := e.o.OpenWritable(ctx, e.dir)
+		if err != nil {
+			t.Fatalf("OpenWritable: %v", err)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("listed table missing", func(t *testing.T) {
+		e := newEnv(t, opt.SnappyCompression)
+		table := tables(t, e.dir)[0]
+		if err := os.Remove(table); err != nil {
+			t.Fatal(err)
+		}
+		before := hashTree(t, e.dir)
+		name := strings.TrimSuffix(filepath.Base(table), filepath.Ext(table))
+		for what, err := range map[string]error{
+			"CheckCompressions": CheckCompressions(e.dir),
+			"CheckFormat":       e.o.CheckFormat(ctx, e.dir),
+		} {
+			if err == nil || !strings.Contains(err.Error(), name) || strings.Contains(err.Error(), e.dir) {
+				t.Fatalf("%s: %v, want an error naming table %s only", what, err, name)
+			}
+		}
+		if w, err := e.o.OpenWritable(ctx, e.dir); err == nil {
+			w.Close()
+			t.Fatal("OpenWritable accepted a database missing a live table")
+		}
+		assertSameTree(t, e.dir, before)
+		assertTempRootEmpty(t, e.root)
+	})
 }
 
 func TestCheckCompressionsRefusesSymlinkedTable(t *testing.T) {
-	d := filepath.Join(t.TempDir(), "db")
-	makeDB(t, d, opt.SnappyCompression, nil)
-	dir := t.TempDir()
-	if err := os.Symlink(tables(t, d)[0], filepath.Join(dir, "000005.ldb")); err != nil {
+	_, src := liveTable(t, opt.SnappyCompression)
+	dir, table := liveTable(t, opt.SnappyCompression)
+	if err := os.Remove(table); err != nil {
 		t.Fatal(err)
 	}
-	if err := CheckCompressions(dir); err == nil || !strings.Contains(err.Error(), "000005.ldb") {
+	if err := os.Symlink(src, table); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckCompressions(dir); err == nil || !strings.Contains(err.Error(), filepath.Base(table)) {
 		t.Fatalf("got %v", err)
 	}
 }

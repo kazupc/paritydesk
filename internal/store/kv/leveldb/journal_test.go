@@ -1,6 +1,7 @@
 package leveldb
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/binary"
@@ -10,15 +11,20 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"sort"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/syndtr/goleveldb/leveldb"
 	lerrors "github.com/syndtr/goleveldb/leveldb/errors"
 	"github.com/syndtr/goleveldb/leveldb/journal"
 	"github.com/syndtr/goleveldb/leveldb/opt"
+	"github.com/syndtr/goleveldb/leveldb/storage"
 
 	"github.com/kazupc/paritydesk/internal/localstorage"
 	"github.com/kazupc/paritydesk/internal/store/kv"
@@ -450,6 +456,15 @@ func TestCheckJournalsRefusesUnknownManifest(t *testing.T) {
 			path := currentManifest(t, dir)
 			writeJournalFile(t, path, append(readJournalFile(t, path), binary.AppendUvarint(nil, 8)))
 		},
+		"another comparator": func(t *testing.T, dir string) {
+			// goleveldb refuses it when it opens the database; this
+			// package refuses it before OpenWritable writes anything.
+			path := currentManifest(t, dir)
+			rec := binary.AppendUvarint(nil, 1)
+			rec = binary.AppendUvarint(rec, uint64(len("other.Comparator")))
+			rec = append(rec, "other.Comparator"...)
+			writeJournalFile(t, path, append(readJournalFile(t, path), rec))
+		},
 		"no CURRENT nor CURRENT.bak": func(t *testing.T, dir string) {
 			for _, n := range []string{"CURRENT", "CURRENT.bak"} {
 				if err := os.Remove(filepath.Join(dir, n)); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -547,4 +562,245 @@ func assertOpensWith(t *testing.T, e env, want error) {
 	if err := CheckJournals(e.dir); err != nil {
 		t.Fatalf("CheckJournals after OpenWritable: %v", err)
 	}
+}
+
+// journalFiles returns the journal names in dir with their sizes.
+func journalFiles(t *testing.T, dir string) map[string]int64 {
+	t.Helper()
+	es, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]int64{}
+	for _, de := range es {
+		if strings.HasSuffix(de.Name(), ".log") {
+			fi, err := de.Info()
+			if err != nil {
+				t.Fatal(err)
+			}
+			out[de.Name()] = fi.Size()
+		}
+	}
+	return out
+}
+
+// TestOpenWritableLockHeldWritesNothing: while another open file holds
+// the database's LOCK, OpenWritable on a journal behind the manifest
+// fails with kv.ErrLocked and writes nothing, so no replay journal can
+// be applied after the holder's later writes.
+func TestOpenWritableLockHeldWritesNothing(t *testing.T) {
+	e := makeJournalDB(t, journalBatches(t), true)
+	f, err := os.OpenFile(filepath.Join(e.dir, "LOCK"), os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatal(err)
+	}
+	before := hashTree(t, e.dir)
+	for range 3 {
+		w, err := e.o.OpenWritable(context.Background(), e.dir)
+		if err == nil {
+			w.Close()
+			t.Fatal("OpenWritable opened a locked database")
+		}
+		if !errors.Is(err, kv.ErrLocked) {
+			t.Fatalf("OpenWritable: %v, want kv.ErrLocked", err)
+		}
+		assertSameTree(t, e.dir, before)
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_UN); err != nil {
+		t.Fatal(err)
+	}
+	w, err := e.o.OpenWritable(context.Background(), e.dir)
+	if err != nil {
+		t.Fatalf("OpenWritable after the lock was released: %v", err)
+	}
+	assertContent(t, "writable", w, journalWant(t))
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// lockHelperEnv makes the test binary hold a POSIX record lock on the
+// named file, as the C++ library (and so Chromium) does, until killed.
+const lockHelperEnv = "PARITYDESK_TEST_FCNTL_LOCK"
+
+func TestMain(m *testing.M) {
+	if path := os.Getenv(lockHelperEnv); path != "" {
+		f, err := os.OpenFile(path, os.O_RDWR, 0)
+		if err == nil {
+			err = syscall.FcntlFlock(f.Fd(), syscall.F_SETLK, &syscall.Flock_t{Type: syscall.F_WRLCK, Whence: 0})
+		}
+		if err != nil {
+			fmt.Println("error", err)
+			os.Exit(1)
+		}
+		fmt.Println("locked")
+		select {}
+	}
+	os.Exit(m.Run())
+}
+
+// TestOpenWritableRecordLockHeld: on macOS, a POSIX record lock on LOCK
+// held by another process (the C++ library's kind) also stops
+// OpenWritable with nothing written. (On Linux flock and record locks do
+// not see each other, so the test runs on macOS only.)
+func TestOpenWritableRecordLockHeld(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("flock and fcntl locks interact only on macOS")
+	}
+	e := makeJournalDB(t, journalBatches(t), true)
+	cmd := exec.Command(os.Args[0], "-test.run=^$")
+	cmd.Env = append(os.Environ(), lockHelperEnv+"="+filepath.Join(e.dir, "LOCK"))
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	}()
+	line, err := bufio.NewReader(out).ReadString('\n')
+	if err != nil || line != "locked\n" {
+		t.Fatalf("lock helper: %q %v", line, err)
+	}
+	before := hashTree(t, e.dir)
+	w, err := e.o.OpenWritable(context.Background(), e.dir)
+	if err == nil {
+		w.Close()
+		t.Fatal("OpenWritable opened a database another process holds")
+	}
+	if !errors.Is(err, kv.ErrLocked) {
+		t.Fatalf("OpenWritable: %v, want kv.ErrLocked", err)
+	}
+	assertSameTree(t, e.dir, before)
+}
+
+// TestOpenWritableRetryAddsNoSecondReplayJournal: when goleveldb's open
+// fails after the replay journal was added, later attempts find it and
+// add no other (each would hold every batch of all journals before it,
+// doubling the journals on every retry), and the content stays the full
+// replay for every reader.
+func TestOpenWritableRetryAddsNoSecondReplayJournal(t *testing.T) {
+	e := makeJournalDB(t, journalBatches(t), true)
+	journals := journalFiles(t, e.dir)
+	openErr := errors.New("injected open failure")
+	openDB = func(storage.Storage, *opt.Options) (*leveldb.DB, error) { return nil, openErr }
+	t.Cleanup(func() { openDB = leveldb.Open })
+	var after map[string]int64
+	for i := range 4 {
+		w, err := e.o.OpenWritable(context.Background(), e.dir)
+		if err == nil {
+			w.Close()
+			t.Fatal("OpenWritable succeeded with a failing open")
+		}
+		if !errors.Is(err, openErr) {
+			t.Fatalf("OpenWritable #%d: %v", i+1, err)
+		}
+		got := journalFiles(t, e.dir)
+		if i == 0 {
+			if len(got) != len(journals)+1 {
+				t.Fatalf("after the first attempt: journals %v, want one replay journal added to %v", got, journals)
+			}
+			after = got
+			continue
+		}
+		if !maps.Equal(got, after) {
+			t.Fatalf("attempt %d changed the journals: %v, was %v", i+1, got, after)
+		}
+	}
+	r, err := e.o.OpenSnapshot(context.Background(), e.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContent(t, "snapshot", r, journalWant(t))
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	openDB = leveldb.Open
+	w, err := e.o.OpenWritable(context.Background(), e.dir)
+	if err != nil {
+		t.Fatalf("OpenWritable: %v", err)
+	}
+	assertContent(t, "writable", w, journalWant(t))
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckJournals(e.dir); err != nil {
+		t.Fatalf("CheckJournals: %v", err)
+	}
+}
+
+// TestReplayedNeedsAnExactReplay: a newest journal counts as a replay
+// journal only when it holds exactly the earlier journals' batches, in
+// order, numbered above them.
+func TestReplayedNeedsAnExactReplay(t *testing.T) {
+	e := makeJournalDB(t, journalBatches(t), true)
+	st, err := inspectJournals(e.dir, writableOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.replayed() {
+		t.Fatal("a journal behind the manifest alone counts as replayed")
+	}
+	name, err := writeReplayJournal(e.dir, st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err = inspectJournals(e.dir, writableOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.replayed() {
+		t.Fatal("the replay journal is not recognised")
+	}
+	// An empty journal after it (a goleveldb open that failed at its
+	// commit leaves one) does not hide it.
+	empty := filepath.Join(e.dir, fmt.Sprintf("%06d.log", st.maxFileNum+1))
+	writeJournalFile(t, empty, nil)
+	if st, err = inspectJournals(e.dir, writableOptions()); err != nil || !st.replayed() {
+		t.Fatalf("the replay journal is not recognised before an empty journal: %v", err)
+	}
+	if err := os.Remove(empty); err != nil {
+		t.Fatal(err)
+	}
+	recs := readJournalFile(t, filepath.Join(e.dir, name))
+	for what, mutate := range map[string]func([][]byte) [][]byte{
+		"a batch missing": func(r [][]byte) [][]byte { return r[:len(r)-1] },
+		"batches swapped": func(r [][]byte) [][]byte { return [][]byte{r[1], r[0], r[2]} },
+		"a value changed": func(r [][]byte) [][]byte {
+			c := slices.Clone(r[0])
+			c[len(c)-1] ^= 1
+			return append([][]byte{c}, r[1:]...)
+		},
+		"numbered too low": func(r [][]byte) [][]byte { return renumber(r, 9000) },
+	} {
+		t.Run(what, func(t *testing.T) {
+			writeJournalFile(t, filepath.Join(e.dir, name), mutate(slices.Clone(recs)))
+			st, err := inspectJournals(e.dir, writableOptions())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if st.replayed() {
+				t.Fatal("counted as a replay journal")
+			}
+		})
+	}
+}
+
+// renumber returns batch records renumbered from seq on.
+func renumber(recs [][]byte, seq uint64) [][]byte {
+	out := make([][]byte, len(recs))
+	for i, r := range recs {
+		c := slices.Clone(r)
+		binary.LittleEndian.PutUint64(c, seq)
+		seq += uint64(binary.LittleEndian.Uint32(c[8:]))
+		out[i] = c
+	}
+	return out
 }

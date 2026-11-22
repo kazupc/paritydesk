@@ -129,9 +129,26 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   the database (every batch again, in order, renumbered above every
   sequence number in use; written to a temporary file and renamed) and
   then opens it; both LevelDB libraries read the result, and any state a
-  crash leaves, with the same content. Batches out of order are refused
-  (`kv.ErrJournalSequence`). The manifest is now chosen from `CURRENT`,
-  a pending `CURRENT.<n>` or `CURRENT.bak` as goleveldb chooses it.
+  crash leaves, with the same content. It takes the database's `LOCK`
+  before it writes the replay journal, so a process holding the database
+  stops it with nothing written (`kv.ErrLocked`), and it adds no second
+  replay journal when an earlier attempt's open failed after adding one.
+  Its checks (manifest, tables, journals) all run before anything is
+  written. Batches out of order are refused (`kv.ErrJournalSequence`).
+  The manifest is now chosen from `CURRENT`, a pending `CURRENT.<n>` or
+  `CURRENT.bak` as goleveldb chooses it.
+- The Local Storage format check reads only the tables the manifest
+  lists. A table file the C++ LevelDB library leaves unfinished when it
+  closes during a compaction (empty, or without its footer; both
+  libraries ignore and later remove it) no longer fails every run with
+  exit 70 at the format check, or a sync write, until Claude opens the
+  database again. A table the manifest lists but the folder lacks is
+  refused before anything is written.
+- When another process holds a folder's Local Storage lock as a rollback
+  or a restore opens it, the run stays open with exit 41 (quit Claude,
+  then `paritydesk recover`) instead of exit 70; a switch or sync that
+  finds it held when applying writes nothing and exits 40, saying the
+  folder is in use.
 - A Local Storage snapshot no longer fails when the database holds two
   journal files (after an unclean exit or during a flush): goleveldb's
   read-only open returns `EOF` there, so the private copy is then opened

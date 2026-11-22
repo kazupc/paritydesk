@@ -3,17 +3,21 @@ package orchestrator
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/kazupc/paritydesk/internal/gen"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/rows"
+	"github.com/kazupc/paritydesk/internal/sources"
 	"github.com/kazupc/paritydesk/internal/state"
+	"github.com/kazupc/paritydesk/internal/store/kv"
 )
 
 // Tests for the guards around folder moves and restores: recover's
@@ -595,5 +599,54 @@ func TestRollbackWaitsForQuiescence(t *testing.T) {
 	}
 	if e.gens.restores == 0 {
 		t.Error("nothing restored when quiet")
+	}
+}
+
+// TestRollbackLocalStorageLockedNeedsRecover: when another process holds
+// the Local Storage lock as a rollback opens it for its restore, the
+// writable open refuses with nothing written. That is not an internal
+// error: the run stays open with exit 41 and nothing restored, and
+// recover finishes the rollback once the folder is free.
+func TestRollbackLocalStorageLockedNeedsRecover(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	afterSwitch(t, e)
+	e.ui.interactive = true
+	var n uint64
+	for k := range e.gens.gens {
+		n = max(n, k)
+	}
+	g := e.gens.gens[n]
+	g.m.Entries = append(g.m.Entries, gen.Entry{Kind: gen.EntryLSValue, Row: model.RowSessions, Key: "dframe-store", Present: true})
+	e.mem.WritableErr = fmt.Errorf("leveldb: lock database: %w", kv.ErrLocked)
+	_, err := e.orch().Rollback(ctx, n, false)
+	if pderr.CodeOf(err) != pderr.NeedsRecover || !errors.Is(err, kv.ErrLocked) {
+		t.Fatalf("err = %v, want exit 41 wrapping kv.ErrLocked", err)
+	}
+	if e.gens.restores != 0 {
+		t.Error("restored although Local Storage could not be opened")
+	}
+	if root := e.st.root(t); root.Run == nil {
+		t.Fatal("the rollback run was closed; recover could not finish it")
+	}
+	e.mem.WritableErr = nil
+	e.mem.Put(sources.LevelDBPath(filepath.Join(e.root, ids.DefaultFolder)), kv.NewMem())
+	if _, err := e.orch().Recover(ctx, RecoverOptions{Yes: true}); err != nil {
+		t.Fatalf("recover once the folder is free: %v", err)
+	}
+	if e.gens.restores != 1 {
+		t.Errorf("restores = %d, want 1", e.gens.restores)
+	}
+	if root := e.st.root(t); root.Run != nil {
+		t.Errorf("run left open: %+v", root.Run)
+	}
+}
+
+func TestLSOpenErr(t *testing.T) {
+	if got := pderr.CodeOf(lsOpenErr("restore", fmt.Errorf("x: %w", kv.ErrLocked))); got != pderr.NeedsRecover {
+		t.Errorf("locked: code %d, want %d", got, pderr.NeedsRecover)
+	}
+	if got := pderr.CodeOf(lsOpenErr("restore", errors.New("disk"))); got != pderr.Internal {
+		t.Errorf("other: code %d, want %d", got, pderr.Internal)
 	}
 }

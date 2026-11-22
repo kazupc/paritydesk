@@ -24,12 +24,25 @@
 //
 // Writes: OpenWritable opens the original with strict checks
 // (opt.StrictAll), refuses table blocks whose compression is not "none" or
-// Snappy, and applies each batch with a synced write. For a journal behind
-// the manifest it first adds a replay journal to the original (every
-// batch again, in order, renumbered; written to a temporary file, synced
-// and renamed) and opens with goleveldb's journal check relaxed, so the
-// old copies are skipped; a crash at any point leaves a state both
-// libraries read with the same content. After Close the caller reopens
-// through OpenSnapshot to read back. leveldb.Recover and RecoverFile are
-// banned (a policy test enforces it).
+// Snappy, and applies each batch with a synced write. It reads the
+// manifest, the live tables and the journals before it takes LOCK, so a
+// refusal writes nothing, and takes LOCK before it writes anything: a
+// held lock fails with kv.ErrLocked and nothing written (on macOS this
+// also sees the C++ library's POSIX record lock). Holding the lock it
+// checks again; for a journal behind the manifest it then adds a replay
+// journal to the original (every batch again, in order, renumbered;
+// written to a temporary file, synced and renamed), unless the newest
+// journal already is one left by an earlier attempt, and opens with
+// goleveldb's journal check relaxed, so the old copies are skipped; a
+// crash or failed open at any point leaves a state both libraries read
+// with the same content, and a retry adds no journal. After Close the
+// caller reopens through OpenSnapshot to read back. leveldb.Recover and
+// RecoverFile are banned (a policy test enforces it).
+//
+// Tables: the compression check (CheckCompressions, CheckFormat and
+// OpenWritable) reads the tables the manifest lists as live and refuses a
+// live table that is missing or malformed. Table files it does not list
+// are ignored, as both libraries ignore and later remove them: the C++
+// library leaves an unfinished compaction output (empty, or without its
+// footer) when it closes during a compaction.
 package leveldb

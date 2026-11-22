@@ -28,6 +28,9 @@ var (
 	// the manifest's last sequence, which the C++ library can leave and
 	// both open paths replay.
 	ErrJournalSequence = errors.New("kv: journal batch out of sequence")
+	// ErrLocked is returned (wrapped) by OpenWritable when another
+	// process holds the database's lock. Nothing was written.
+	ErrLocked = errors.New("kv: database locked by another process")
 )
 
 // Reader reads keys. Values returned must not be modified by the caller.
@@ -57,11 +60,13 @@ type Opener interface {
 	// OpenWritable opens dir itself for writing. The caller must have
 	// proven quiescence (no process holds LOCK or has files open under the
 	// folder). Unknown block compression is refused, and so are journal
-	// batches out of order (ErrJournalSequence).
+	// batches out of order (ErrJournalSequence) and a lock another
+	// process holds (ErrLocked); a refusal writes nothing.
 	OpenWritable(ctx context.Context, dir string) (Writer, error)
-	// CheckFormat clones dir (as OpenSnapshot does) and checks every table
-	// block's compression type without opening the database. It returns
-	// an error wrapping ErrUnknownCompression for unknown types. It never
+	// CheckFormat clones dir (as OpenSnapshot does) and checks the
+	// compression type of every block of every live table (those the
+	// manifest lists) without opening the database. It returns an error
+	// wrapping ErrUnknownCompression for unknown types. It never
 	// writes outside the opener's temp root and works in read-only mode.
 	CheckFormat(ctx context.Context, dir string) error
 }
@@ -86,11 +91,13 @@ func (r readOnly) CheckFormat(ctx context.Context, dir string) error {
 // MemOpener is an in-memory Opener for tests: each directory maps to a
 // MemStore. OpenSnapshot returns an independent copy, OpenWritable the
 // store itself (reopened). Missing directories fail like a missing
-// database. FormatErr, if set, is returned by CheckFormat.
+// database. FormatErr, if set, is returned by CheckFormat, and
+// WritableErr by OpenWritable.
 type MemOpener struct {
-	mu        sync.Mutex
-	Stores    map[string]*MemStore
-	FormatErr error
+	mu          sync.Mutex
+	Stores      map[string]*MemStore
+	FormatErr   error
+	WritableErr error
 }
 
 // NewMemOpener returns an empty MemOpener.
@@ -124,6 +131,12 @@ func (o *MemOpener) OpenSnapshot(_ context.Context, dir string) (Reader, error) 
 
 // OpenWritable implements Opener.
 func (o *MemOpener) OpenWritable(_ context.Context, dir string) (Writer, error) {
+	o.mu.Lock()
+	werr := o.WritableErr
+	o.mu.Unlock()
+	if werr != nil {
+		return nil, werr
+	}
 	s, err := o.get(dir)
 	if err != nil {
 		return nil, err

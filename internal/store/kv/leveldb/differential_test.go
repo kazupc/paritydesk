@@ -317,7 +317,8 @@ func copyDB(t *testing.T, src string) string {
 // through it is read back the same by the C++ library, and by paritydesk
 // after the C++ library has opened (and possibly compacted) it. The
 // state a crash right after OpenWritable added its replay journal leaves
-// is read the same by the C++ library too.
+// is read the same by the C++ library too. An unfinished compaction
+// output the C++ library may leave does not stop OpenWritable.
 func TestDifferentialGoWritesCXXReads(t *testing.T) {
 	bin := cxxHelper(t)
 	for _, comp := range []string{"none", "snappy"} {
@@ -330,11 +331,16 @@ func TestDifferentialGoWritesCXXReads(t *testing.T) {
 				if err != nil || name == "" {
 					t.Fatalf("AddReplayJournal: %q, %v", name, err)
 				}
+				// A retry (after a failed open) finds it and adds none.
+				if again, err := leveldb.AddReplayJournal(crashed); err != nil || again != "" {
+					t.Fatalf("second AddReplayJournal: %q, %v", again, err)
+				}
 				got, r := readSnapshot(t, o, crashed)
 				sameContent(t, "snapshot read after a replay journal was added", want, got)
 				checkGets(t, r, want)
 				sameContent(t, "C++ dump after a replay journal was added", want, parseCXX(t, runCXX(t, bin, "dump", crashed)))
 			}
+			addOrphanTable(t, dir)
 			w, err := o.OpenWritable(context.Background(), dir)
 			if err != nil {
 				t.Fatalf("OpenWritable: %v", err)
@@ -383,6 +389,42 @@ func TestDifferentialGoWritesCXXReads(t *testing.T) {
 			sameContent(t, "snapshot read after the C++ dump", want, again)
 			checkGets(t, r2, want)
 		})
+	}
+}
+
+// addOrphanTable adds a table file the manifest does not list, cut short
+// before its footer, numbered above every file: what the C++ library
+// leaves when it closes during a compaction. Both libraries ignore it.
+func addOrphanTable(t *testing.T, dir string) {
+	t.Helper()
+	es, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var (
+		maxNum int64
+		table  string
+	)
+	for _, e := range es {
+		var n int64
+		var ext string
+		if _, err := fmt.Sscanf(e.Name(), "%d.%s", &n, &ext); err != nil {
+			continue
+		}
+		maxNum = max(maxNum, n)
+		if ext == "ldb" {
+			table = e.Name()
+		}
+	}
+	if table == "" {
+		t.Fatal("no table to copy")
+	}
+	b, err := os.ReadFile(filepath.Join(dir, table))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("%06d.ldb", maxNum+1)), b[:len(b)/2], 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -3,6 +3,7 @@ package apply
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -556,5 +557,22 @@ func TestApplyReportsTouched(t *testing.T) {
 					err, res.Touched, res.LSOpened, tc.wantErr, tc.wantTouched, tc.wantLSOpened)
 			}
 		})
+	}
+}
+
+// TestApplyLocalStorageLocked: when another process holds the Local
+// Storage lock, apply stops before writing anything, says the folder is
+// in use and reports it untouched, so nothing needs restoring.
+func TestApplyLocalStorageLocked(t *testing.T) {
+	e, _ := fixture(t)
+	e.kv.WritableErr = fmt.Errorf("leveldb: lock database: %w", kv.ErrLocked)
+	before := tree(t, e.folder)
+	res, err := e.applier().Apply(context.Background(), e.in)
+	pe := assertCode(t, err, pderr.Internal)
+	if !errors.Is(err, kv.ErrLocked) || !strings.Contains(pe.Msg, "in use") {
+		t.Fatalf("error does not say the folder is in use: %v", err)
+	}
+	if res.Touched || res.LSOpened || len(e.fs.Calls) != 0 || !mapsEqual(before, tree(t, e.folder)) {
+		t.Fatalf("changed something: touched %v ls %v calls %v", res.Touched, res.LSOpened, e.fs.Calls)
 	}
 }

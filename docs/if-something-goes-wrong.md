@@ -159,6 +159,12 @@ The previous account is active again, and the entering folder was
 restored from the backup generation. `paritydesk log` shows the step that
 failed. Please report it with that log.
 
+If the step failed before anything was written, nothing needed
+restoring. One such case is a process that still held the entering
+folder's Local Storage lock: the log says the folder is in use. Quit
+that process (for example a copy of Claude started with
+`--user-data-dir`), then run the command again.
+
 <a id="needs-recover"></a>
 ## Exit 41: a run was interrupted (PD-E41)
 
@@ -168,6 +174,10 @@ because the Mac shut down. Do not move data folders by hand. Run
 `--rollback` undoes it, and it never creates, merges or deletes a data
 folder. A profile add that waits for its first sign-in also shows here
 until you sign in to the new account in Claude.
+
+A rollback or a restore also stops here, with nothing restored, when
+another process holds the folder's Local Storage lock. Quit Claude (and
+any copy started with `--user-data-dir`), then run `paritydesk recover`.
 
 <a id="verify-drift"></a>
 ## Exit 50: values differ from what was written (PD-E50)

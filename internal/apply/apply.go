@@ -156,7 +156,7 @@ func (r *run) verify(ctx context.Context) error {
 	}
 	w, err := r.a.KV.OpenWritable(ctx, LSDir(r.in.Folder))
 	if err != nil {
-		return &pderr.Error{Code: pderr.Internal, Op: opApply, Msg: "opening Local Storage failed", Err: err}
+		return &pderr.Error{Code: pderr.Internal, Op: opApply, Msg: openLSMsg(err), Err: err}
 	}
 	r.w = w
 	r.res.Touched, r.res.LSOpened = true, true
@@ -170,6 +170,20 @@ func (r *run) verify(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// openLSMsg says why OpenWritable refused Local Storage. Each refusal
+// it names comes before anything is written, so the folder is untouched.
+func openLSMsg(err error) string {
+	switch {
+	case errors.Is(err, kv.ErrLocked):
+		return "the folder is in use: another process holds the Local Storage lock"
+	case errors.Is(err, kv.ErrUnknownCompression):
+		return "Local Storage uses an unknown block compression"
+	case errors.Is(err, kv.ErrJournalSequence):
+		return "Local Storage holds journal batches out of order"
+	}
+	return "opening Local Storage failed"
 }
 
 // checkFilePre compares a file's current hash with the op's pre-hash.

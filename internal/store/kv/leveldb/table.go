@@ -60,24 +60,51 @@ func decodeHandle(b []byte) (blockHandle, int, error) {
 	return blockHandle{offset: off, length: length}, n + m, nil
 }
 
-// isTableFile reports whether name is a LevelDB table file.
-func isTableFile(name string) bool {
-	return strings.HasSuffix(name, ".ldb") || strings.HasSuffix(name, ".sst")
+// errTableMissing marks a table the manifest lists but the directory
+// lacks. Both libraries refuse such a database when they open it.
+var errTableMissing = errors.New("table listed in the manifest is missing")
+
+// CheckCompressions checks every table the database in dir uses: the
+// live tables of the manifest goleveldb would open (chosen from CURRENT
+// as in journal.go, read leniently). It returns an error wrapping
+// kv.ErrUnknownCompression if any block uses a compression type outside
+// AllowedCompressions, and another error if a live table is missing or
+// malformed or the manifest cannot be read. Table files the manifest
+// does not list are ignored, as both libraries ignore them: the C++
+// library leaves an unfinished compaction output behind when it closes
+// during a compaction (empty, or cut short before its footer) and
+// removes it on its next open, as goleveldb does. It only reads files.
+func CheckCompressions(dir string) error {
+	m, err := readManifest(dir, false)
+	if err != nil {
+		return err
+	}
+	return checkLiveTables(dir, m)
 }
 
-// CheckCompressions scans every table file in dir and returns an error
-// wrapping kv.ErrUnknownCompression if any block uses a compression type
-// outside AllowedCompressions. It only reads files.
-func CheckCompressions(dir string) error {
+// checkLiveTables checks the live tables of m in dir. A table is looked
+// for as <n>.ldb and then <n>.sst, the order both libraries use.
+func checkLiveTables(dir string, m manifestState) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return fmt.Errorf("leveldb: list database directory: %w", err)
 	}
+	names := map[int64]string{}
 	for _, e := range entries {
-		if !isTableFile(e.Name()) {
+		num, kind, ok := parseFileName(e.Name())
+		if !ok || (kind != "ldb" && kind != "sst") {
 			continue
 		}
-		if err := checkTableFile(filepath.Join(dir, e.Name())); err != nil {
+		if prev, dup := names[num]; !dup || (kind == "ldb" && !strings.HasSuffix(prev, ".ldb")) {
+			names[num] = e.Name()
+		}
+	}
+	for _, num := range m.tableNums() {
+		name, ok := names[num]
+		if !ok {
+			return tableErr(fmt.Sprintf("%06d", num), errTableMissing)
+		}
+		if err := checkTableFile(filepath.Join(dir, name)); err != nil {
 			return err
 		}
 	}

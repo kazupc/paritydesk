@@ -1,6 +1,7 @@
 package leveldb
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -52,6 +53,10 @@ import (
 // the same content; so does goleveldb if it stops partway, since the
 // replay journal is removed only after its batches are in a table.
 
+// bytewiseComparator is the comparator name both libraries use by
+// default, and the only one goleveldb opens a database with.
+const bytewiseComparator = "leveldb.BytewiseComparator"
+
 // batchHeaderLen is a journal batch's sequence number and record count.
 const batchHeaderLen = 12
 
@@ -87,6 +92,32 @@ type manifestState struct {
 	journalNum, prevJournalNum, nextFileNum int64
 	lastSeq                                 uint64
 	hasJournalNum, hasLastSeq               bool
+	hasNextFileNum                          bool
+	comparator                              string
+	hasComparator                           bool
+	// tables are the live tables: those the records add and do not
+	// delete later, as both libraries build their version.
+	tables map[tableID]struct{}
+}
+
+// tableID is a table file in a level of the manifest's version.
+type tableID struct {
+	level uint64
+	num   int64
+}
+
+// tableNums returns the numbers of the live tables, in order.
+func (m manifestState) tableNums() []int64 {
+	seen := map[int64]bool{}
+	var out []int64
+	for id := range m.tables {
+		if !seen[id.num] {
+			seen[id.num] = true
+			out = append(out, id.num)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }
 
 // journalState is what inspectJournals found.
@@ -95,6 +126,9 @@ type journalState struct {
 	journals []string
 	// batches are the batches goleveldb would decode, in replay order.
 	batches []*leveldb.Batch
+	// info describes batches[i]: its journal, number and whether
+	// goleveldb drops it.
+	info []batchInfo
 	// behind names the first journal holding a batch goleveldb would drop
 	// (or refuse) for its sequence number; empty if there is none.
 	behind string
@@ -110,6 +144,57 @@ type journalState struct {
 	maxEnd uint64
 	// maxFileNum is the largest file number in the directory.
 	maxFileNum int64
+}
+
+// batchInfo is where a journal batch is and how goleveldb treats it.
+type batchInfo struct {
+	journal int // index into journalState.journals
+	seq     uint64
+	dropped bool // numbered below goleveldb's running sequence number
+}
+
+// replayed reports whether the newest journal holding batches already is
+// a replay journal for the ones before it: it holds their non-empty
+// batches again, in order, numbered above all of them, and goleveldb
+// drops none of its batches. (Empty journals after it, such as the new
+// journal of a goleveldb open that failed at its commit, do not matter.)
+// That is the state writeReplayJournal leaves (and a crash right after
+// it, or an open that failed later), so OpenWritable then opens the
+// database without adding another replay journal; a second one would hold
+// every batch of the first again and double the journals on every retry.
+func (s *journalState) replayed() bool {
+	if len(s.info) == 0 || s.behind == "" {
+		return false
+	}
+	n := s.info[len(s.info)-1].journal + 1 // journals up to the newest with batches
+	if n < 2 || s.behind == s.journals[n-1] {
+		return false
+	}
+	var earlier, last []int
+	var earlierEnd uint64
+	for i, in := range s.info {
+		switch {
+		case in.journal < n-1:
+			earlierEnd = max(earlierEnd, in.seq+uint64(s.batches[i].Len()))
+			if s.batches[i].Len() > 0 {
+				earlier = append(earlier, i)
+			}
+		default:
+			if in.dropped {
+				return false
+			}
+			last = append(last, i)
+		}
+	}
+	if len(last) == 0 || len(last) != len(earlier) || s.info[last[0]].seq < earlierEnd {
+		return false
+	}
+	for k, i := range last {
+		if !bytes.Equal(s.batches[i].Dump(), s.batches[earlier[k]].Dump()) {
+			return false
+		}
+	}
+	return true
 }
 
 // sequenceErr returns an error wrapping kv.ErrJournalSequence when the
@@ -158,14 +243,15 @@ func inspectJournals(dir string, o *opt.Options) (*journalState, error) {
 		prevEnd  uint64
 		seen     bool
 	)
-	for _, name := range names {
+	for ji, name := range names {
 		err := readJournal(filepath.Join(dir, name), strict, checksum, func(seq uint64, b *leveldb.Batch) {
 			end := seq + uint64(b.Len())
 			if seen && seq < prevEnd && st.disordered == "" {
 				st.disordered = name
 			}
 			st.maxEnd = max(st.maxEnd, end)
-			if seq < expect {
+			dropped := seq < expect
+			if dropped {
 				if st.behind == "" {
 					st.behind = name
 				}
@@ -174,6 +260,7 @@ func inspectJournals(dir string, o *opt.Options) (*journalState, error) {
 			}
 			prevEnd, seen = end, true
 			st.batches = append(st.batches, b)
+			st.info = append(st.info, batchInfo{journal: ji, seq: seq, dropped: dropped})
 		})
 		if err != nil {
 			return nil, fmt.Errorf("leveldb: journal %s: %w", name, err)
@@ -319,6 +406,14 @@ func readManifest(dir string, strict bool) (manifestState, error) {
 	if !m.hasJournalNum || !m.hasLastSeq {
 		return m, fmt.Errorf("leveldb: manifest %s: %w: no journal number or last sequence", name, errManifest)
 	}
+	// goleveldb refuses these when it opens the database; refusing them
+	// here keeps OpenWritable from writing anything first.
+	if !m.hasNextFileNum {
+		return m, fmt.Errorf("leveldb: manifest %s: %w: no next file number", name, errManifest)
+	}
+	if !m.hasComparator || m.comparator != bytewiseComparator {
+		return m, fmt.Errorf("leveldb: manifest %s: %w: comparator is not %s", name, errManifest, bytewiseComparator)
+	}
 	return m, nil
 }
 
@@ -400,8 +495,29 @@ func firstCurrent(dir string, names []string) (num int64, ok bool, err error) {
 func manifestName(n int64) string { return fmt.Sprintf("MANIFEST-%06d", n) }
 
 // decode applies one manifest record. Fields read before an error stay
-// applied, as in goleveldb.
+// applied, as in goleveldb; the record's table changes are applied only
+// when the whole record decodes (goleveldb commits a record's tables to
+// its version only then), deletions before additions.
 func (m *manifestState) decode(rec []byte) error {
+	var added, deleted []tableID
+	if err := m.decodeFields(rec, &added, &deleted); err != nil {
+		return err
+	}
+	if m.tables == nil {
+		m.tables = map[tableID]struct{}{}
+	}
+	for _, id := range deleted {
+		delete(m.tables, id)
+	}
+	for _, id := range added {
+		m.tables[id] = struct{}{}
+	}
+	return nil
+}
+
+// decodeFields applies one record's scalar fields and collects its table
+// changes.
+func (m *manifestState) decodeFields(rec []byte, added, deleted *[]tableID) error {
 	uvarint := func() (uint64, error) {
 		x, n := binary.Uvarint(rec)
 		switch {
@@ -438,7 +554,15 @@ func (m *manifestState) decode(rec []byte) error {
 		}
 		switch tag {
 		case tagComparator:
-			err = skipBytes()
+			var n uint64
+			if n, err = uvarint(); err == nil {
+				if n > uint64(len(rec)) {
+					err = errManifestShort
+				} else {
+					m.comparator, m.hasComparator = string(rec[:n]), true
+					rec = rec[n:]
+				}
+			}
 		case tagJournalNum, tagPrevJournalNum:
 			var x int64
 			if x, err = varint(); err == nil {
@@ -451,7 +575,7 @@ func (m *manifestState) decode(rec []byte) error {
 		case tagNextFileNum:
 			var x int64
 			if x, err = varint(); err == nil {
-				m.nextFileNum = x
+				m.nextFileNum, m.hasNextFileNum = x, true
 			}
 		case tagLastSequence:
 			var x uint64
@@ -463,15 +587,21 @@ func (m *manifestState) decode(rec []byte) error {
 				err = skipBytes()
 			}
 		case tagDeletedFile:
-			if _, err = uvarint(); err == nil {
-				_, err = varint()
+			var id tableID
+			if id.level, err = uvarint(); err == nil {
+				if id.num, err = varint(); err == nil {
+					*deleted = append(*deleted, id)
+				}
 			}
 		case tagNewFile:
-			if _, err = uvarint(); err == nil {
-				if _, err = varint(); err == nil {
+			var id tableID
+			if id.level, err = uvarint(); err == nil {
+				if id.num, err = varint(); err == nil {
 					if _, err = varint(); err == nil {
 						if err = skipBytes(); err == nil {
-							err = skipBytes()
+							if err = skipBytes(); err == nil {
+								*added = append(*added, id)
+							}
 						}
 					}
 				}

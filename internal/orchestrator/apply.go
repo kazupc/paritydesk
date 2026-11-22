@@ -24,6 +24,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/profile"
 	"github.com/kazupc/paritydesk/internal/sources"
 	"github.com/kazupc/paritydesk/internal/state"
+	"github.com/kazupc/paritydesk/internal/store/kv"
 )
 
 // harvest is P5 up to the commit: identity re-check, final plan,
@@ -457,7 +458,7 @@ func (o *Orchestrator) restoreFolder(ctx context.Context, n uint64, folder strin
 	if m, err := d.Gens.Load(n); err == nil && hasLSEntries(m) {
 		w, err := d.KV.OpenWritable(ctx, sources.LevelDBPath(folder))
 		if err != nil {
-			return gen.RestoreReport{}, pderr.Wrap(pderr.Internal, "restore", err)
+			return gen.RestoreReport{}, lsOpenErr("restore", err)
 		}
 		defer closeReader(w)
 		in.LS = w
@@ -467,6 +468,17 @@ func (o *Orchestrator) restoreFolder(ctx context.Context, n uint64, folder strin
 		return rep, pderr.Wrap(pderr.Internal, "restore", err)
 	}
 	return rep, nil
+}
+
+// lsOpenErr maps a failed writable open of Local Storage during a
+// restore or rollback. Another process holding its lock is not an
+// internal error: the run stays open, nothing was written to Local
+// Storage, and recover finishes once the folder is free (41).
+func lsOpenErr(op string, err error) error {
+	if errors.Is(err, kv.ErrLocked) {
+		return &pderr.Error{Code: pderr.NeedsRecover, Op: op, Msg: "another process holds the Local Storage lock; quit Claude (and any copy started with --user-data-dir), then run paritydesk recover", Err: err}
+	}
+	return pderr.Wrap(pderr.Internal, op, err)
 }
 
 // invalidateConflicted drops a profile's bases of rows with conflicts.

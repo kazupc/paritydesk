@@ -10,9 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/opt"
+	"github.com/syndtr/goleveldb/leveldb/storage"
 	"github.com/syndtr/goleveldb/leveldb/util"
 
 	"github.com/kazupc/paritydesk/internal/fsx"
@@ -41,6 +43,10 @@ func cloneRecoveryOptions() *opt.Options {
 func writableOptions() *opt.Options {
 	return &opt.Options{ErrorIfMissing: true, Strict: opt.StrictAll, NoSync: false}
 }
+
+// openDB is leveldb.Open; tests replace it to fail an open after the
+// checks and the replay journal.
+var openDB = leveldb.Open
 
 // syncWrite makes every batch durable before Write returns.
 var syncWrite = &opt.WriteOptions{Sync: true}
@@ -135,19 +141,25 @@ func (o *Opener) replayClone(name string, st *journalState) (*leveldb.DB, error)
 	return db, nil
 }
 
-// OpenWritable implements kv.Opener. It checks every table's block
-// compression and reads the manifest and journals with strict checks
-// first (both only read), then opens dir itself strictly. Batches out of
-// order fail with kv.ErrJournalSequence before anything is written. If a
-// journal holds batches goleveldb would drop for their sequence numbers
-// (journal.go), it first adds a replay journal holding every batch again,
-// in order and renumbered, and opens dir with goleveldb's journal check
-// relaxed so the old copies are skipped and the replay journal applied;
-// every other strict check stays. A failed open may leave the replay
-// journal, or goleveldb's partly done journal recovery, behind; either
-// holds the same content for both libraries. It never creates a database
-// and never runs recovery; errors after the open are returned wrapped so
-// the caller restores from its generation.
+// OpenWritable implements kv.Opener. It takes the database's LOCK
+// before it writes anything, so a process holding the database stops it
+// (kv.ErrLocked) with nothing written. It checks, only reading, the
+// manifest, every live table's block compression and the journals with
+// strict checks, once before taking the lock (so a refusal leaves the
+// directory as it was) and once more holding it (so what it writes
+// follows the files as they are then). Unknown compression fails with
+// kv.ErrUnknownCompression and batches out of order with
+// kv.ErrJournalSequence. If a journal holds batches goleveldb would drop
+// for their sequence numbers (journal.go), it adds a replay journal
+// holding every batch again, in order and renumbered, unless the newest
+// journal already is one (left by an earlier attempt), and opens dir with
+// goleveldb's journal check relaxed so the old copies are skipped and the
+// replay journal applied; every other strict check stays. A failed open
+// may leave the replay journal, or goleveldb's partly done journal
+// recovery, behind; either holds the same content for both libraries,
+// and a retry adds nothing. It never creates a database and never runs
+// recovery; errors after the open are returned wrapped so the caller
+// restores from its generation.
 func (o *Opener) OpenWritable(ctx context.Context, dir string) (kv.Writer, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -155,34 +167,70 @@ func (o *Opener) OpenWritable(ctx context.Context, dir string) (kv.Writer, error
 	if err := checkDir(dir); err != nil {
 		return nil, err
 	}
-	if err := CheckCompressions(dir); err != nil {
+	opts := writableOptions()
+	if _, err := checkWritable(dir, opts); err != nil {
 		return nil, err
 	}
-	opts := writableOptions()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	stor, err := storage.OpenFile(dir, false)
+	if err != nil {
+		if errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN) {
+			err = errors.Join(kv.ErrLocked, err)
+		}
+		return nil, fmt.Errorf("leveldb: lock database: %w", err)
+	}
+	db, err := openLocked(ctx, dir, stor, opts)
+	if err != nil {
+		return nil, errors.Join(err, stor.Close())
+	}
+	return &store{db: db, cleanup: stor.Close}, nil
+}
+
+// checkWritable reads dir's manifest, live tables and journals with the
+// strictness of opts and refuses what OpenWritable must not open. It
+// only reads files.
+func checkWritable(dir string, opts *opt.Options) (*journalState, error) {
 	st, err := inspectJournals(dir, opts)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkLiveTables(dir, st.manifest); err != nil {
 		return nil, err
 	}
 	if st.disordered != "" {
 		return nil, st.sequenceErr()
 	}
+	return st, nil
+}
+
+// openLocked checks dir again while stor holds its LOCK, adds a replay
+// journal when one is needed and opens the database on stor.
+func openLocked(ctx context.Context, dir string, stor storage.Storage, opts *opt.Options) (*leveldb.DB, error) {
+	st, err := checkWritable(dir, opts)
+	if err != nil {
+		return nil, err
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if st.behind != "" {
-		if _, err := writeReplayJournal(dir, st); err != nil {
-			return nil, fmt.Errorf("leveldb: open for writing: %w", err)
+		if !st.replayed() {
+			if _, err := writeReplayJournal(dir, st); err != nil {
+				return nil, fmt.Errorf("leveldb: open for writing: %w", err)
+			}
 		}
 		// The journals were just read with strict checks, so the only
 		// batches goleveldb skips now are the old copies of the replayed
 		// ones.
 		opts.Strict &^= opt.StrictJournal
 	}
-	db, err := leveldb.OpenFile(dir, opts)
+	db, err := openDB(stor, opts)
 	if err != nil {
 		return nil, fmt.Errorf("leveldb: open for writing: %w", err)
 	}
-	return &store{db: db}, nil
+	return db, nil
 }
 
 // CheckFormat implements kv.Opener: it clones dir under TempRoot and runs
@@ -270,8 +318,9 @@ func checkDir(dir string) error {
 	return nil
 }
 
-// store is a kv.Writer over an open goleveldb database. Snapshot stores
-// have a cleanup that removes their clone after the database is closed.
+// store is a kv.Writer over an open goleveldb database. Its cleanup runs
+// after the database is closed: a snapshot's removes its clone, a
+// writable store's closes the storage that holds LOCK.
 type store struct {
 	mu      sync.RWMutex
 	db      *leveldb.DB

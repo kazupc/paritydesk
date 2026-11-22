@@ -83,7 +83,9 @@ its manifest's last sequence, as the app may leave its own database on
 quit; the tests log it, and both the snapshot path and `OpenWritable`
 must read every key of that database as C++ left it. The tests also
 check that C++ reads the state a crash leaves right after `OpenWritable`
-added its replay journal. The C++
+added its replay journal, that a retry adds no second one, and that an
+unfinished table file the manifest does not list (as C++ leaves when it
+closes during a compaction) does not stop `OpenWritable`. The C++
 helper is built from `testdata/leveldb-cxx/`. Without
 `PARITYDESK_LEVELDB_CXX` the tests skip.
 
