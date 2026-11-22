@@ -12,11 +12,27 @@ import (
 
 // Errors.
 var (
-	// ErrQuitNotDelivered: the Apple Event could not be delivered (for
-	// example Automation permission denied). Nothing was quit.
+	// ErrQuitNotDelivered: the quit Apple Event failed before the app
+	// could answer it (refused by macOS, for example -10004 for a
+	// sandboxed sender, or an error osascript did not explain). Nothing
+	// is known to have quit. Only when it comes with ErrAutomationDenied
+	// is Automation the cause. A timeout is ErrEventTimedOut instead.
 	ErrQuitNotDelivered = errors.New("app: quit event not delivered")
-	// ErrAutomationDenied: macOS refused Automation for Claude.
+	// ErrEventTimedOut: an Apple Event got no reply in time (AppleScript
+	// error -1712). It may have been delivered: the app can hold its
+	// reply while it asks the user whether to quit. macOS also reports it
+	// when its Automation prompt was not answered, so it is neither a
+	// refusal nor proof of missing Automation.
+	ErrEventTimedOut = errors.New("app: the Apple Event got no reply in time")
+	// ErrAutomationDenied: macOS refused Automation for Claude
+	// (AppleScript error -1743 or -1744, and only those).
 	ErrAutomationDenied = errors.New("app: automation permission denied")
+	// ErrQuitRefused: the app received the quit event and answered that
+	// it cancelled the quit (AppleScript error -128, userCanceledErr, as
+	// AppKit replies when applicationShouldTerminate returns
+	// terminateCancel). The app keeps running; it may still quit by
+	// itself later. It is a quit veto, not missing Automation.
+	ErrQuitRefused = errors.New("app: the app refused to quit")
 	// ErrNotRunning: the app is not running.
 	ErrNotRunning = errors.New("app: not running")
 	// ErrInvalidSession: a session id failed validation.
@@ -92,7 +108,10 @@ type Bundle interface {
 // Controller sends Apple Events and opens the app.
 type Controller interface {
 	// Quit sends the quit Apple Event and returns once it was delivered
-	// (not once the app exited). ErrQuitNotDelivered if it was not.
+	// (not once the app exited). ErrQuitRefused if the app answered that
+	// it cancelled the quit; ErrEventTimedOut if no reply came in time;
+	// ErrQuitNotDelivered (with ErrAutomationDenied for -1743 or -1744)
+	// if it failed otherwise.
 	Quit(ctx context.Context, bundleID string) error
 	// Launch runs open -b bundleID.
 	Launch(ctx context.Context, bundleID string) error
@@ -204,12 +223,21 @@ type QuiescenceReport struct {
 
 // QuitResult is the outcome of QuitAndWait.
 type QuitResult struct {
-	Vetoed  bool // the app showed its "still working" dialog
+	// Vetoed is true when main.log showed the quit-vetoed line: the app
+	// showed its "still working" dialog.
+	Vetoed bool
+	// Refused is true when the app answered the quit event with a
+	// cancel (ErrQuitRefused).
+	Refused bool
+	// NoReply is true when the quit event got no reply in time
+	// (ErrEventTimedOut).
+	NoReply bool
 	Elapsed time.Duration
 	Exited  bool
-	// Pending is true when the app vetoed and was still running at the
-	// timeout: the dialog's answer is the user's, and the app may still
-	// quit later ("Wait for Claude"). The caller then watches with
-	// WaitExited instead of claiming the app keeps running.
+	// Pending is true when the app was still running at the timeout
+	// after a veto, a refusal or an unanswered quit event: the app may
+	// still quit later (for example "Wait for Claude" in its dialog). The
+	// caller then watches with WaitExited instead of claiming the app
+	// keeps running.
 	Pending bool
 }

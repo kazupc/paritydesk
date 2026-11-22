@@ -124,13 +124,14 @@ release:
     paritydesk cannot list busy sessions and never exits 12; `paritydesk
     doctor` says busy detection is unavailable. Expected: Claude's own
     quit dialog appears; if you answer it with "Cancel", paritydesk exits
-    10, nothing changes and Claude keeps running. If it exits 15 instead, the quit
-    event returned an error on "Cancel": record the AppleScript error
-    number from the error message in ADR 0003, since `app.Quit` reports
-    every AppleScript error other than -600 as an undelivered quit. Also
-    note how long the quit command waits while the dialog is open: if it
-    waits past `app.quit_timeout`, the timeout only starts after the
-    reply.
+    10, nothing changes and Claude keeps running. Record in ADR 0003 how
+    the quit event ended on "Cancel": no error, or the AppleScript error
+    number in the error message (-128 is a refusal and -1712 a reply
+    that did not come in time; both are expected to exit 10). Exit 15
+    there is a bug: only -1743 and -1744 mean missing Automation, so
+    record the number and the output. Also note how long
+    the quit command waits while the dialog is open: if it waits past
+    `app.quit_timeout`, the timeout only starts after the reply.
 16. **Deletion breaker.** Delete several scratch sessions on one account
     and switch. Expected: exit 22 unless `--allow-deletions` is given.
 17. **Rollback.** `paritydesk generations list`, then `paritydesk
@@ -138,9 +139,20 @@ release:
     anything changed afterwards is reported as a conflict, not
     overwritten.
 18. **Recovery drill.** `PARITYDESK_FAULT=after:P7 paritydesk switch
-    --yes`, then `paritydesk status` (expected: recover needed) and
+    --yes` (expected: exit 70, the run stopped as if killed), then
+    `paritydesk status` (expected: recover needed) and
     `paritydesk recover` (expected: a consistent state, Claude
-    relaunches on the right account). Repeat with `after:P8`.
+    relaunches on the right account). Repeat with `after:P8`. Set the
+    variable on the switch command only. Only phases with intents can be
+    named (P0, P3, P5 to P9); any other value is refused with exit 2
+    before anything runs, and so is every other command, `status` and
+    `recover` included, while the variable holds it. The profiles must
+    differ, so that the plan is not empty: a switch that skips the named
+    phase (P6 and P7 with an empty plan, P0 without a staged update, P9
+    after the fallback swap) stops just before P10 instead, with a
+    warning that says so, and still exits 70. The e2e job also kills
+    a switch with SIGKILL inside P7 after its first write
+    (`PARITYDESK_FAULT=pause:P7`, refused outside the e2e harness).
 19. **Worktree guard.** Leave uncommitted changes in a worktree that
     only the leaving account registers, then switch. Expected: exit 23.
 20. **Update gate.** With a Claude update downloaded, `paritydesk

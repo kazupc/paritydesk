@@ -576,3 +576,42 @@ func TestApplyLocalStorageLocked(t *testing.T) {
 		t.Fatalf("changed something: touched %v ls %v calls %v", res.Touched, res.LSOpened, e.fs.Calls)
 	}
 }
+
+// TestAfterFirstWrite: the e2e crash hook runs once, after the first file
+// op has landed and before the second; for a plan with only Local Storage
+// ops it runs after the batch is written and the store closed.
+func TestAfterFirstWrite(t *testing.T) {
+	e, _ := fixture(t)
+	a := e.applier()
+	var seen []string
+	a.AfterFirstWrite = func() {
+		b, _ := os.ReadFile(filepath.Join(e.folder, "claude_desktop_config.json"))
+		_, err := os.Stat(filepath.Join(e.folder, "claude-code-sessions/a/b/local_1.json"))
+		v, _ := e.getLS(t, "dframe-store")
+		seen = append(seen, fmt.Sprintf("%s|%v|%s", b, errors.Is(err, fs.ErrNotExist), v))
+	}
+	if _, err := a.Apply(context.Background(), e.in); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{`{"a":2}|true|{"state":{}}`}; !slices.Equal(seen, want) {
+		t.Fatalf("hook saw %q, want %q", seen, want)
+	}
+
+	e = newEnv(t)
+	e.putLS(t, "dframe-store", `{"state":{}}`)
+	e.in.Plan = &plan.Plan{Version: plan.Version, Ops: []plan.Op{putOp("dframe-store", lsH(`{"state":{}}`), `{"state":{"x":1}}`)}}
+	a = e.applier()
+	calls := 0
+	a.AfterFirstWrite = func() {
+		calls++
+		if v, _ := e.getLS(t, "dframe-store"); v != `{"state":{"x":1}}` {
+			t.Errorf("hook ran before the Local Storage batch landed: %s", v)
+		}
+	}
+	if _, err := a.Apply(context.Background(), e.in); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("hook ran %d times, want 1", calls)
+	}
+}

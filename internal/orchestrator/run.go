@@ -579,8 +579,13 @@ func (r *run) lockedChecks(ctx context.Context) error {
 		return pderr.Wrap(pderr.Internal, "preflight", err)
 	}
 	if len(procs) > 0 {
-		if err := d.App.ProbeAutomation(ctx, d.Config.App.BundleID); errors.Is(err, app.ErrAutomationDenied) {
+		switch err := d.App.ProbeAutomation(ctx, d.Config.App.BundleID); {
+		case errors.Is(err, app.ErrAutomationDenied):
 			return pderr.New(pderr.AutomationMissing, "preflight", "Automation permission for Claude is missing")
+		case errors.Is(err, app.ErrEventTimedOut):
+			// -1712: Claude is busy, or macOS shows an Automation prompt
+			// nobody answered. The quit can still work; say what to check.
+			r.warn(P0Preflight, "Claude did not answer an Apple Event in time (AppleScript error -1712); if macOS asks whether paritydesk may control Claude, allow it")
 		}
 	}
 	if r.resn.OutsideSwitch && r.kind == state.RunSwitch && !r.opts.Yes && r.opts.ConfirmedPlan == "" {
@@ -832,7 +837,13 @@ func (r *run) quitApp(ctx context.Context) error {
 }
 
 // sendQuit sends the quit Apple Event and handles every outcome short of
-// a clean exit by closing the run (exit 10 or 15).
+// a clean exit by closing the run. Only missing Automation (AppleScript
+// error -1743 or -1744, app.ErrAutomationDenied) exits 15. A quit the app
+// vetoed, refused or left without a reply, and any other failure of the
+// quit event, exit 10, with the underlying error kept in the chain and
+// its AppleScript error number named in the message. After a veto, a
+// refusal or a missing reply the app may still quit later, so the
+// late-quit watch runs and relaunches the leaving profile if it does.
 func (r *run) sendQuit(ctx context.Context) error {
 	d := r.d()
 	onVeto := func() {
@@ -845,18 +856,24 @@ func (r *run) sendQuit(ctx context.Context) error {
 	cctx, cancel := uncancel(ctx)
 	defer cancel()
 	switch {
-	case errors.Is(err, app.ErrQuitNotDelivered), errors.Is(err, app.ErrAutomationDenied):
+	case errors.Is(err, app.ErrAutomationDenied):
 		r.root.Run.QuitByUs = false
 		return r.abort(cctx, pderr.Wrap(pderr.AutomationMissing, "quit", err))
 	case qr.Pending:
 		r.o.progress(P3Quit, "start", "Claude did not quit in time; watching for a late quit")
 		exited, werr := d.App.WaitExited(cctx, r.bundle.Path, d.Config.App.LateQuitWatch.Duration)
 		if werr == nil && exited {
-			return r.abort(cctx, pderr.New(pderr.AppDidNotQuit, "quit", "Claude quit late; relaunched "+string(r.S.Profile.Alias)))
+			return r.abort(cctx, &pderr.Error{Code: pderr.AppDidNotQuit, Op: "quit",
+				Msg: "Claude quit late; relaunched " + string(r.S.Profile.Alias), Err: err})
 		}
 		r.root.Run.QuitByUs = false
-		r.res.QuitPending = true
-		return r.abort(cctx, pderr.New(pderr.AppDidNotQuit, "quit", "Claude is still asking whether to quit; your answer there decides"))
+		if qr.Vetoed {
+			r.res.QuitPending = true
+			return r.abort(cctx, &pderr.Error{Code: pderr.AppDidNotQuit, Op: "quit",
+				Msg: "Claude is still asking whether to quit; your answer there decides", Err: err})
+		}
+		return r.abort(cctx, &pderr.Error{Code: pderr.AppDidNotQuit, Op: "quit",
+			Msg: quitFailure(err) + "; it is still running and nothing was changed", Err: err})
 	}
 	if procs, perr := d.App.Running(cctx, r.bundle.Path); perr == nil && len(procs) > 0 {
 		r.root.Run.QuitByUs = false
@@ -864,7 +881,40 @@ func (r *run) sendQuit(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return r.abort(cctx, pderr.Wrap(pderr.Declined, "interrupted", ctx.Err()))
 	}
-	return r.abort(cctx, pderr.New(pderr.AppDidNotQuit, "quit", "Claude did not quit; nothing was changed"))
+	// The rest is exit 10: a timeout without a veto, or a quit event that
+	// failed before the app could answer (-10004, no number). Claude is
+	// relaunched only if it is gone after all; the raw error stays in the
+	// chain.
+	return r.abort(cctx, &pderr.Error{Code: pderr.AppDidNotQuit, Op: "quit", Msg: quitFailure(err) + "; nothing was changed", Err: err})
+}
+
+// quitFailure describes a failed quit for the exit 10 message, naming the
+// AppleScript error number when there is one, and what to do for the
+// numbers that point outside Claude: -1712 can be an unanswered
+// Automation prompt, -10004 a sandboxed paritydesk.
+func quitFailure(err error) string {
+	var ce *app.CommandError
+	status := 0
+	if errors.As(err, &ce) {
+		status = ce.OSAStatus
+	}
+	num := ""
+	if status != 0 {
+		num = fmt.Sprintf(" (AppleScript error %d)", status)
+	}
+	switch {
+	case errors.Is(err, app.ErrQuitRefused):
+		return "Claude refused to quit" + num
+	case errors.Is(err, app.ErrEventTimedOut):
+		return "Claude did not answer the quit event in time" + num +
+			"; if macOS asked whether paritydesk may control Claude, allow it (paritydesk doctor --grant-automation)"
+	case status == -10004:
+		return "macOS refused to send the quit event to Claude" + num +
+			", as it does for a sandboxed process; run paritydesk outside any sandbox, for example from Terminal"
+	case errors.Is(err, app.ErrQuitNotDelivered):
+		return "the quit event to Claude failed" + num
+	}
+	return "Claude did not quit" + num
 }
 
 // quiesce is P4 (and the P8 pre-swap check): wait until every quiescence

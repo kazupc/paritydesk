@@ -20,6 +20,12 @@
 // This package also holds the network-deny probe run by the macOS test
 // job under scripts/ci/nonet-exec.sh (PARITYDESK_NONET_PROBE=1).
 //
-// The package has no production code besides CheckTarget and RealHome,
-// which the tests use.
+// Besides the tests, the package holds only CheckTarget and RealHome.
+// They are production code and ship in the release binary: internal/cli
+// imports them to guard the test-only fault PARITYDESK_FAULT=pause:P7
+// (pause inside P7 after the first write, to be killed by TestStubApp),
+// which it honours only when PARITYDESK_E2E=1 is set, CheckTarget accepts
+// the configured bundle id and $HOME (as given and with symlinks
+// resolved), and the data root lies inside $HOME. Keep them free of
+// test-only dependencies.
 package e2e

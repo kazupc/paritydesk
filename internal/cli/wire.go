@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +15,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/clock"
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/config"
+	"github.com/kazupc/paritydesk/internal/e2e"
 	"github.com/kazupc/paritydesk/internal/fsx"
 	"github.com/kazupc/paritydesk/internal/gen"
 	"github.com/kazupc/paritydesk/internal/hook"
@@ -106,6 +106,13 @@ func buildDeps(ctx context.Context, g *globalFlags, in wireInput) (orchestrator.
 	if err := cfg.Validate(reserved, tags); err != nil {
 		return orchestrator.Deps{}, err
 	}
+	// PARITYDESK_FAULT is checked before anything is opened, so a refused
+	// fault leaves no trace.
+	flt, err := parseFaults(faultEnv{getenv: in.Getenv, home: in.Home, realHome: e2e.RealHome,
+		bundleID: cfg.App.BundleID, dataRoot: dataRoot, ui: in.UI, sleep: time.Sleep, exit: os.Exit})
+	if err != nil {
+		return orchestrator.Deps{}, err
+	}
 
 	clk := clock.System{}
 	base := fsx.Default()
@@ -159,14 +166,15 @@ func buildDeps(ctx context.Context, g *globalFlags, in wireInput) (orchestrator.
 		Compose:        plan.Compose,
 		Validate:       plan.Validate,
 		PermissionAcks: prefs.PermissionAcks,
-		Applier:        &apply.Applier{FS: ops, KV: kvo, Holders: holderCheck(plat), ReadOnly: readOnly},
-		Sessions:       sources.Directory{},
-		Worktrees:      worktrees.Guard{},
+		Applier: &apply.Applier{FS: ops, KV: kvo, Holders: holderCheck(plat), ReadOnly: readOnly,
+			AfterFirstWrite: flt.afterFirstWrite},
+		Sessions:  sources.Directory{},
+		Worktrees: worktrees.Guard{},
 		Detach: runner.Detacher{RunDir: in.Paths.RunDir, LogDir: in.Paths.LogDir, Binary: in.Executable,
 			UID: os.Getuid(), Launchd: runner.NewLaunchd(exec), Procs: plat.Procs, IsApp: isApp},
 		Plans:    runner.PlanStore{Dir: in.Paths.RunDir},
 		UI:       in.UI,
-		Crash:    faultInjector(in.Getenv),
+		Crash:    flt.crash,
 		ReadOnly: readOnly,
 	}, nil
 }
@@ -216,20 +224,6 @@ func holderCheck(plat *app.Platform) apply.HolderCheck {
 		}
 		return true, fmt.Sprintf("%d open files (first: pid %d)", len(hs), hs[0].PID), nil
 	}
-}
-
-// faultInjector implements PARITYDESK_FAULT=after:<phase> for the recovery
-// drill: the run stops right after that phase's intent, as if killed.
-func faultInjector(getenv func(string) string) func(orchestrator.Phase) bool {
-	if getenv == nil {
-		return nil
-	}
-	v, ok := strings.CutPrefix(getenv("PARITYDESK_FAULT"), "after:")
-	if !ok || v == "" {
-		return nil
-	}
-	phase := orchestrator.Phase(v)
-	return func(after orchestrator.Phase) bool { return after == phase }
 }
 
 // hookTimeout bounds the SessionStart hook (the plugin allows 5 s).

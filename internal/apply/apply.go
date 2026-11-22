@@ -37,6 +37,13 @@ type Applier struct {
 	KV       kv.Opener
 	Holders  HolderCheck
 	ReadOnly bool
+	// AfterFirstWrite, if non-nil, is called once per Apply, right after
+	// the first write has landed in the folder: the first file op written
+	// and read back as planned, or, for a plan with only Local Storage
+	// ops, the batch written and the store closed. It is the end-to-end
+	// crash test's hook (PARITYDESK_FAULT=pause:P7, internal/cli); it is
+	// nil otherwise.
+	AfterFirstWrite func()
 }
 
 // Input is one apply.
@@ -79,6 +86,16 @@ type run struct {
 	w       kv.Writer
 	res     Result
 	written []string // file paths written or quarantined, in order
+	hooked  bool     // AfterFirstWrite was called
+}
+
+// firstWrite calls the AfterFirstWrite hook once.
+func (r *run) firstWrite() {
+	if r.hooked || r.a.AfterFirstWrite == nil {
+		return
+	}
+	r.hooked = true
+	r.a.AfterFirstWrite()
 }
 
 // Apply executes in.Plan. It stops at the first error.
@@ -210,6 +227,7 @@ func (r *run) writeFiles() error {
 		}
 		r.written = append(r.written, op.Path)
 		r.res.Applied++
+		r.firstWrite()
 	}
 	return nil
 }
@@ -295,6 +313,7 @@ func (r *run) writeLS(ctx context.Context) error {
 	if err := w.Close(); err != nil {
 		return r.rolledBack(err, "closing Local Storage failed")
 	}
+	r.firstWrite()
 	return r.readBackLS(ctx, ops)
 }
 

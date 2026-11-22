@@ -255,20 +255,34 @@ func (e *CommandError) Error() string {
 }
 
 // osaStatusRE finds the error number osascript prints at the end of its
-// error line, e.g. "... (-1743)".
+// error line, e.g. "0:42: execution error: ... (-1743)".
 var osaStatusRE = regexp.MustCompile(`\((-[0-9]{1,6})\)\s*$`)
 
-// osaStatus returns the AppleScript error number in stderr, or 0.
+// osaCanceledRE matches an error line that says the event was cancelled
+// without giving a number (userCanceledErr's message is "User canceled.").
+var osaCanceledRE = regexp.MustCompile(`(?i)\buser cancell?ed\b`)
+
+// osaStatus returns the AppleScript error number osascript reported in
+// stderr: the number at the end of the last line that ends with one.
+// Without any number, a line saying "User canceled." gives -128
+// (userCanceledErr); otherwise it returns 0.
 func osaStatus(stderr []byte) int {
-	m := osaStatusRE.FindSubmatch(bytes.TrimSpace(stderr))
-	if m == nil {
-		return 0
+	lines := bytes.Split(bytes.TrimSpace(stderr), []byte("\n"))
+	for i := len(lines) - 1; i >= 0; i-- {
+		m := osaStatusRE.FindSubmatch(lines[i])
+		if m == nil {
+			continue
+		}
+		if n, err := strconv.Atoi(string(m[1])); err == nil {
+			return n
+		}
 	}
-	n, err := strconv.Atoi(string(m[1]))
-	if err != nil {
-		return 0
+	for _, l := range lines {
+		if osaCanceledRE.Match(l) {
+			return osaUserCanceled
+		}
 	}
-	return n
+	return 0
 }
 
 func isOSA(t Template) bool { return t == TmplQuit || t == TmplProbe || t == TmplNotify }

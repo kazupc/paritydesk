@@ -158,9 +158,11 @@ type Deps struct {
 	Detach         Detacher
 	Plans          PlanStore
 	UI             UI
-	// Crash, if non-nil, is consulted after every intent; returning true
-	// stops the run immediately without cleanup, as if the process had been
-	// killed (PARITYDESK_FAULT=after:<phase> and recovery tests).
+	// Crash, if non-nil, is consulted after every intent, and by a switch
+	// or sync once more with P10Commit just before P10 closes the run;
+	// returning true stops the run immediately without cleanup, as if the
+	// process had been killed (PARITYDESK_FAULT=after:<phase> and
+	// recovery tests).
 	Crash func(after Phase) bool
 	// ReadOnly plans only (--read-only, PARITYDESK_READONLY=1): no run
 	// lock, no state commit, no config save, no plan save, no runner

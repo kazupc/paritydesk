@@ -34,7 +34,7 @@ const (
 // sanitized; Data holds only validated, non-secret fields.
 type Event struct {
 	Phase   Phase          `json:"phase"`
-	Status  string         `json:"status"` // "start" | "ok" | "warn" | "fail"
+	Status  string         `json:"status"` // "start" | "ok" | "warn" | "fail"; "paused" only from the e2e fault (PARITYDESK_FAULT=pause:P7)
 	Message string         `json:"message"`
 	Data    map[string]any `json:"data,omitempty"`
 	Elapsed time.Duration  `json:"elapsed_ns,omitempty"`

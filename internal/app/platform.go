@@ -113,11 +113,18 @@ func (p *Platform) CheckQuiescence(ctx context.Context, in QuiescenceInput) (Qui
 func startedAfter(pr Process, t time.Time) bool { return !t.IsZero() && pr.Started.After(t) }
 
 // QuitAndWait sends the quit event and waits until the app's process set
-// is empty, up to timeout. A veto is reported through onVeto (so the UI
-// can tell the user to choose "Wait for Claude" or "Cancel") and waited
-// on. A timeout returns the result (Pending set after a veto) together with
-// *pderr.Error AppDidNotQuit; no signal is ever sent, and no command after
-// the one quit event.
+// is empty, up to timeout. A veto (main.log shows the quit-vetoed line) is
+// reported through onVeto (so the UI can tell the user to choose "Wait
+// for Claude" or "Cancel") and waited on. A quit the app refused
+// (ErrQuitRefused, AppleScript error -128) or left without a reply
+// (ErrEventTimedOut, -1712) is waited on the same way, since the app may
+// still quit by itself: it sets Refused or NoReply, and Vetoed only once
+// main.log shows the quit-vetoed line. A timeout returns the result
+// (Pending set when the app vetoed, refused or did not reply) together
+// with *pderr.Error AppDidNotQuit, wrapping the quit event's error after a
+// refusal or a missing reply; no signal is ever sent, and no command after
+// the one quit event. Any other failure of the quit event (Automation,
+// -10004, an unknown error) is returned at once.
 func (p *Platform) QuitAndWait(ctx context.Context, bundleID, bundlePath string, sig compat.Signals, timeout time.Duration, onVeto func()) (QuitResult, error) {
 	clk := p.clk()
 	start := clk.Now()
@@ -125,13 +132,21 @@ func (p *Platform) QuitAndWait(ctx context.Context, bundleID, bundlePath string,
 	if err != nil {
 		offset = -1 // veto detection unavailable; the wait still works
 	}
+	var res QuitResult
+	var cause error // the refused or unanswered quit's error, kept for the timeout error
 	if err := p.Control.Quit(ctx, bundleID); err != nil {
-		if !errors.Is(err, ErrNotRunning) {
+		switch {
+		case errors.Is(err, ErrNotRunning):
+		case errors.Is(err, ErrQuitRefused):
+			res.Refused, cause = true, err
+		case errors.Is(err, ErrEventTimedOut):
+			res.NoReply, cause = true, err
+		default:
 			return QuitResult{}, err
 		}
 	}
 	vetoSig := compat.Signals{QuitVetoed: sig.QuitVetoed}
-	var res QuitResult
+	logVeto := sig.QuitVetoed != "" && offset >= 0
 	for {
 		running, err := p.Running(ctx, bundlePath)
 		if err != nil {
@@ -142,7 +157,7 @@ func (p *Platform) QuitAndWait(ctx context.Context, bundleID, bundlePath string,
 			res.Exited = true
 			return res, nil
 		}
-		if !res.Vetoed && sig.QuitVetoed != "" && offset >= 0 {
+		if !res.Vetoed && logVeto {
 			evs, next, err := p.Log.Events(ctx, offset, vetoSig, "")
 			if err == nil {
 				offset = next
@@ -155,8 +170,15 @@ func (p *Platform) QuitAndWait(ctx context.Context, bundleID, bundlePath string,
 			}
 		}
 		if res.Elapsed >= timeout {
-			res.Pending = res.Vetoed
-			return res, pderr.New(pderr.AppDidNotQuit, "app/quit", "the app did not quit before the timeout")
+			res.Pending = res.Vetoed || res.Refused || res.NoReply
+			e := &pderr.Error{Code: pderr.AppDidNotQuit, Op: "app/quit", Msg: "the app did not quit before the timeout", Err: cause}
+			switch {
+			case res.Refused:
+				e.Msg = "the app refused to quit and did not quit before the timeout"
+			case res.NoReply:
+				e.Msg = "the quit event got no reply in time and the app did not quit before the timeout"
+			}
+			return res, e
 		}
 		if err := clk.Sleep(ctx, pollInterval); err != nil {
 			return res, err

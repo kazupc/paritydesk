@@ -20,6 +20,9 @@ Three rules hold for every error:
 Nothing was changed. Check the command with `paritydesk help <command>`.
 A switch inside a non-interactive context (a script, or the plugin) needs
 `--yes` or a confirmed plan, because paritydesk cannot ask you there.
+An unknown value in `PARITYDESK_FAULT` (the release checklist's
+recovery drill) also exits 2, for every command, `status` and `recover`
+included: unset the variable.
 
 <a id="declined"></a>
 ## Exit 3: the plan was declined (PD-E3)
@@ -38,6 +41,22 @@ session was still working and Claude asked whether to quit; your answer
 in Claude decides. If you chose "Wait for Claude" and Claude quits later,
 paritydesk relaunches the profile you were on. Finish or stop the running
 work, then run the command again.
+
+The same exit covers a quit event that Claude refused (AppleScript
+error -128) or did not answer in time (-1712), and one that failed for
+another reason. Whether Claude's own dialog makes the quit event fail
+with -128 or end without an error is not yet recorded. After a refusal
+or a missing answer paritydesk waits and watches for a late quit as
+above. The message names the AppleScript error number:
+
+- -1712 can also mean that macOS showed its Automation prompt and
+  nobody answered it. Allow it, or run
+  `paritydesk doctor --grant-automation` while you are at the Mac.
+- -10004 means macOS refused to send the event, as it does when
+  paritydesk runs inside a sandbox (for example under `sandbox-exec`).
+  Run paritydesk from Terminal instead.
+
+Missing Automation permission (-1743 or -1744) is exit 15, not 10.
 
 <a id="run-lock-busy"></a>
 ## Exit 11: another paritydesk run is in progress (PD-E11)
@@ -85,7 +104,11 @@ for them.
 ## Exit 15: Automation permission is missing (PD-E15)
 
 Nothing was changed. paritydesk quits Claude with an Apple Event, which
-macOS allows only with Automation permission. Run
+macOS allows only with Automation permission. paritydesk exits 15 only
+when macOS itself refuses the event for that reason (AppleScript error
+-1743 or -1744). An Automation prompt that nobody answered shows as a
+timeout instead (-1712, exit 10), and a quit that Claude refuses or that
+fails otherwise is exit 10 too. Run
 `paritydesk doctor --grant-automation` while you are at the Mac and allow
 the request, or enable it in System Settings, Privacy & Security,
 Automation.
@@ -207,6 +230,10 @@ Something unexpected happened. Run `paritydesk status` before trying
 again; if a run was interrupted it says so. Please report the problem
 with a support archive (see below), or with `paritydesk log` and
 `paritydesk doctor` output (both are redacted).
+
+The recovery drill of the release checklist (`PARITYDESK_FAULT=after:<phase>`)
+also exits 70 on purpose: the run stops as if the process had been
+killed, and `paritydesk status` then asks for `paritydesk recover`.
 
 ## Reporting a problem: the support archive
 

@@ -19,8 +19,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -85,6 +87,7 @@ func TestStubApp(t *testing.T) {
 	h := newHarness(t)
 	t.Run("switch a to b to a", h.testSwitchABA)
 	t.Run("recover after a killed run", h.testRecover)
+	t.Run("kill inside P7, then recover", h.testKillInP7)
 	t.Run("quit veto wait", h.testVetoWait)
 	t.Run("quit veto timeout writes nothing", h.testVetoTimeout)
 }
@@ -216,26 +219,119 @@ func (h *harness) testSwitchABA(t *testing.T) {
 func (h *harness) testRecover(t *testing.T) {
 	w := h.newWorld(t, "recover", "60s", stubSettings{})
 	h.initWorld(t, w)
-	// PARITYDESK_FAULT stops the run right after a phase's intent, as if
-	// the process had been killed there.
-	for _, phase := range []string{"P6", "P7", "P8", "P9", "P10", "P11"} {
-		target := other(h.status(t, w).Active)
-		h.ensureStub(t)
-		r := h.paritydesk(t, w, []string{"PARITYDESK_FAULT=after:" + phase}, []string{"switch"}, switchFlags(target)...)
-		t.Logf("fault after %s: switch exited %d", phase, r.code)
-		h.recover(t, w)
-		h.checkConsistent(t, w, "")
+	// PARITYDESK_FAULT=after:<phase> stops the run right after that phase's
+	// first intent is recorded, as if the process had been killed there.
+	// The injected stop is not a paritydesk error with a code of its own,
+	// so the switch exits 70 (internal error, "run paritydesk status"),
+	// as designed. What proves that the fault, and not another internal
+	// error, stopped the run is the journal: the open run's last intent is
+	// the phase's own and not done. P10 and P11 have no intents (P10
+	// closes the run in one commit), so paritydesk refuses them (exit 2).
+	//
+	// recover rolls the first three back (Claude still holds a) and
+	// finishes the last, so every switch here starts from a with the same
+	// non-empty plan and runs P6 and P7. The P8 fault fires right after
+	// the swapping intent, before the swap is tried, so before any
+	// fallback is chosen. P9 is skipped after the fallback swap (not used
+	// on APFS); the fault would then stop the run just before P10 with a
+	// done intent, and this test would fail on it.
+	cases := []struct {
+		phase  string
+		intent string // the last intent's expected name
+		active string // after recover
+	}{
+		{"P6", "backed_up", "a"},
+		{"P7", "applied", "a"},
+		{"P8", "swapping", "a"},
+		{"P9", "parked", "b"},
 	}
-	// A real SIGKILL once the apply phase has started.
-	target := other(h.status(t, w).Active)
-	h.ensureStub(t)
-	killed := h.killSwitchAt(t, w, target, "P7")
-	t.Logf("killed during P7: %v", killed)
-	if killed && !h.status(t, w).NeedsRecover {
-		t.Error("status does not report the killed run")
+	for _, c := range cases {
+		h.ensureStub(t)
+		r := h.paritydesk(t, w, []string{"PARITYDESK_FAULT=after:" + c.phase}, []string{"switch"}, switchFlags("b")...)
+		if r.code != 70 {
+			t.Fatalf("fault after %s: switch exited %d, want 70\n%s", c.phase, r.code, r.output())
+		}
+		run := h.journal(t, w).Run
+		if run == nil || run.From != "a" || run.To != "b" {
+			t.Fatalf("fault after %s: no open switch from a to b in the journal: %+v", c.phase, run)
+		}
+		if name, done := run.last(); name != c.intent || done {
+			t.Fatalf("fault after %s: last intent %q (done %v), want %s, not done", c.phase, name, done, c.intent)
+		}
+		if !h.status(t, w).NeedsRecover {
+			t.Fatalf("fault after %s: status does not report the interrupted run", c.phase)
+		}
+		h.recover(t, w)
+		h.checkConsistent(t, w, c.active)
+		if run := h.journal(t, w).Run; run != nil {
+			t.Fatalf("fault after %s: recover left the run open: %+v", c.phase, run)
+		}
+	}
+	for _, phase := range []string{"P10", "P11"} {
+		r := h.paritydesk(t, w, []string{"PARITYDESK_FAULT=after:" + phase}, []string{"switch"}, switchFlags("a")...)
+		if r.code != 2 {
+			t.Fatalf("fault after %s: switch exited %d, want 2 (refused: no intent to stop after)\n%s", phase, r.code, r.output())
+		}
+	}
+	h.checkConsistent(t, w, "b")
+	h.quitStub(t)
+}
+
+// testKillInP7 kills paritydesk with SIGKILL inside P7, after the first
+// write has landed in the entering folder: the crash window where that
+// folder is half written. PARITYDESK_FAULT=pause:P7 (honoured only with
+// PARITYDESK_E2E=1 inside the e2e guard) holds the run there, so the kill
+// cannot miss. recover must then roll the entering folder back: Claude
+// still holds a, so the run is undone, and both folders, Local Storage
+// included, read as before the switch.
+func (h *harness) testKillInP7(t *testing.T) {
+	w := h.newWorld(t, "kill-in-p7", "60s", stubSettings{})
+	h.initWorld(t, w)
+	h.launchStub(t)
+	folders := []string{ids.DefaultFolder, "Claude-b"}
+	before := map[string]folderContent{}
+	for _, f := range folders {
+		before[f] = readFolder(t, filepath.Join(w.data, f))
+	}
+
+	p := h.startPausedSwitch(t, w, "b")
+	p.waitPaused(t, 3*time.Minute)
+	// Paused: the run is open at P7 and the entering folder already holds
+	// at least one planned write.
+	run := h.journal(t, w).Run
+	if run == nil || run.From != "a" || run.To != "b" {
+		t.Fatalf("paused: no open switch from a to b in the journal: %+v", run)
+	}
+	if name, done := run.last(); name != "applied" || done {
+		t.Fatalf("paused: last intent %q (done %v), want applied, not done", name, done)
+	}
+	if sameTree(before["Claude-b"].files, readFiles(t, filepath.Join(w.data, "Claude-b"))) {
+		t.Fatal("paused: no write has landed in the entering folder yet")
+	}
+	p.kill(t)
+
+	if run := h.journal(t, w).Run; run == nil {
+		t.Fatal("killed: the journal has no open run")
+	} else if name, done := run.last(); name != "applied" || done {
+		t.Fatalf("killed: last intent %q (done %v), want applied, not done", name, done)
+	}
+	if !h.status(t, w).NeedsRecover {
+		t.Fatal("killed: status does not report the interrupted run")
 	}
 	h.recover(t, w)
-	h.checkConsistent(t, w, "")
+	h.checkConsistent(t, w, "a")
+	if run := h.journal(t, w).Run; run != nil {
+		t.Fatalf("recover left the run open: %+v", run)
+	}
+	for _, f := range folders {
+		after := readFolder(t, filepath.Join(w.data, f))
+		if d := diffKeys(before[f].files, after.files); len(d) > 0 {
+			t.Errorf("%s: files differ from before the switch: %v", f, d)
+		}
+		if d := diffKeys(before[f].ls, after.ls); len(d) > 0 {
+			t.Errorf("%s: Local Storage items differ from before the switch: %v", f, d)
+		}
+	}
 	h.quitStub(t)
 }
 
@@ -262,22 +358,21 @@ func (h *harness) testVetoWait(t *testing.T) {
 
 func (h *harness) testVetoTimeout(t *testing.T) {
 	// The stub refuses the quit and keeps running far past quit_timeout
-	// (5s, the minimum); late_quit_watch is 0.
+	// (5s, the minimum); late_quit_watch is 0. Its terminateCancel reply
+	// makes osascript fail with -128 (userCanceledErr), which is a veto
+	// (exit 10), never missing Automation (exit 15, -1743 and -1744 only).
 	w := h.newWorld(t, "veto-timeout", "5s", stubSettings{vetoSeconds: 300, vetoMode: "cancel"})
 	h.initWorld(t, w)
 	pid := h.launchStub(t)
+	logStart := fileSize(filepath.Join(h.logDir, "main.log"))
 	before := dataTree(t, w)
 	r := h.paritydesk(t, w, nil, []string{"switch"}, switchFlags("b")...)
-	switch r.code {
-	case 10: // AppDidNotQuit: the expected outcome
-	case 15:
-		// AutomationMissing: app.Quit maps any osascript failure except
-		// -600 to "quit not delivered". If the refused quit makes
-		// osascript fail, the user is told Automation is missing. The
-		// safety property below still holds; the message is wrong.
-		t.Logf("NOTE: a refused quit was reported as missing Automation (exit 15)")
-	default:
-		t.Fatalf("switch exited %d, want 10 (did not quit)\n%s", r.code, r.output())
+	if r.code != 10 {
+		t.Fatalf("switch exited %d, want 10 (the quit was vetoed)\n%s", r.code, r.output())
+	}
+	h.requireEvent(t, fmt.Sprintf("quit-request veto=300 mode=cancel pid=%d", pid))
+	if !strings.Contains(readFrom(t, filepath.Join(h.logDir, "main.log"), logStart), vetoLine) {
+		t.Error("main.log has no quit-vetoed line")
 	}
 	if !alive(pid) {
 		t.Fatal("the stub is no longer running; paritydesk must never force a quit")
@@ -363,16 +458,30 @@ func (h *harness) recover(t *testing.T, w *world) {
 	}
 }
 
-// killSwitchAt starts a switch with NDJSON progress and kills it with
-// SIGKILL as soon as phase starts. It reports whether the kill happened
-// before the run ended by itself.
-func (h *harness) killSwitchAt(t *testing.T, w *world, target, phase string) bool {
+// progressEvent is one NDJSON line of --json-progress.
+type progressEvent struct {
+	Phase  string `json:"phase"`
+	Status string `json:"status"`
+}
+
+// pausedRun is a switch started with PARITYDESK_FAULT=pause:P7 and
+// --json-progress, whose stderr events are read as they come.
+type pausedRun struct {
+	cmd    *exec.Cmd
+	events chan progressEvent // closed at the end of stderr
+	seen   []progressEvent
+	once   sync.Once
+	err    error // cmd.Wait's result, once waited
+}
+
+// startPausedSwitch starts the switch. Only this run gets the e2e marker
+// and the pause fault. The test's cleanup kills the process if the test
+// ends while it still runs, so no paused paritydesk is left behind.
+func (h *harness) startPausedSwitch(t *testing.T, w *world, target string) *pausedRun {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
 	args := append(h.argv(w, []string{"switch"}), append([]string{"--json-progress"}, switchFlags(target)...)...)
-	cmd := exec.CommandContext(ctx, h.bin, args...)
-	cmd.Env = h.env(nil)
+	cmd := exec.Command(h.bin, args...)
+	cmd.Env = h.env([]string{envE2E + "=1", "PARITYDESK_FAULT=pause:P7"})
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -380,27 +489,186 @@ func (h *harness) killSwitchAt(t *testing.T, w *world, target, phase string) boo
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	killed := false
-	sc := bufio.NewScanner(stderr)
-	sc.Buffer(make([]byte, 64<<10), 1<<20)
-	for sc.Scan() {
-		var ev struct {
-			Phase  string `json:"phase"`
-			Status string `json:"status"`
+	p := &pausedRun{cmd: cmd, events: make(chan progressEvent, 1024)}
+	go func() {
+		defer close(p.events)
+		sc := bufio.NewScanner(stderr)
+		sc.Buffer(make([]byte, 64<<10), 1<<20)
+		for sc.Scan() {
+			var ev progressEvent
+			if json.Unmarshal(sc.Bytes(), &ev) == nil && ev.Phase != "" {
+				p.events <- ev
+			}
 		}
-		if json.Unmarshal(sc.Bytes(), &ev) != nil || killed {
-			continue
+	}()
+	t.Cleanup(func() {
+		_ = cmd.Process.Signal(syscall.SIGKILL) // paritydesk's own pid only
+		p.wait()
+	})
+	return p
+}
+
+// wait drains stderr (bounded) and reaps the process, once.
+func (p *pausedRun) wait() error {
+	p.once.Do(func() {
+		timeout := time.After(time.Minute)
+	drain:
+		for {
+			select {
+			case ev, ok := <-p.events:
+				if !ok {
+					break drain
+				}
+				p.seen = append(p.seen, ev)
+			case <-timeout:
+				break drain
+			}
 		}
-		if ev.Phase == phase && ev.Status == "start" {
-			killed = cmd.Process.Kill() == nil
+		p.err = p.cmd.Wait()
+	})
+	return p.err
+}
+
+func (p *pausedRun) trace() string {
+	s := make([]string, len(p.seen))
+	for i, ev := range p.seen {
+		s[i] = ev.Phase + "/" + ev.Status
+	}
+	return strings.Join(s, " ")
+}
+
+// waitPaused waits for the pause event. It fails when the run ends, fails
+// or goes past P7 first, or when P7 did not start before the pause.
+func (p *pausedRun) waitPaused(t *testing.T, timeout time.Duration) {
+	t.Helper()
+	deadline := time.After(timeout)
+	p7 := false
+	for {
+		select {
+		case ev, ok := <-p.events:
+			if !ok {
+				t.Fatalf("the switch ended without pausing inside P7 (exit %v); events: %s", p.wait(), p.trace())
+			}
+			p.seen = append(p.seen, ev)
+			switch {
+			case ev.Phase == "P7" && ev.Status == "start":
+				p7 = true
+			case ev.Phase == "P7" && ev.Status == "paused":
+				if !p7 {
+					t.Fatalf("paused before P7 started; events: %s", p.trace())
+				}
+				return
+			case ev.Status == "fail" || (p7 && ev.Phase != "P7"):
+				t.Fatalf("the switch failed or went past P7 without pausing; events: %s", p.trace())
+			}
+		case <-deadline:
+			t.Fatalf("no pause inside P7 within %s; events: %s", timeout, p.trace())
 		}
 	}
-	err = cmd.Wait()
+}
+
+// kill sends SIGKILL to the paused paritydesk process (never to the app)
+// and requires that the signal, not the run itself, ended it, with no
+// progress after the pause.
+func (p *pausedRun) kill(t *testing.T) {
+	t.Helper()
+	n := len(p.seen)
+	if err := p.cmd.Process.Signal(syscall.SIGKILL); err != nil {
+		t.Fatalf("SIGKILL to the paused switch: %v", err)
+	}
+	err := p.wait()
 	var ee *exec.ExitError
-	if killed && !(errors.As(err, &ee) && ee.ProcessState.Sys().(syscall.WaitStatus).Signal() == syscall.SIGKILL) {
-		killed = false // the run had ended before the signal
+	if !errors.As(err, &ee) {
+		t.Fatalf("the paused switch was not killed (wait: %v); events: %s", err, p.trace())
 	}
-	return killed
+	if ws, ok := ee.ProcessState.Sys().(syscall.WaitStatus); !ok || !ws.Signaled() || ws.Signal() != syscall.SIGKILL {
+		t.Fatalf("the paused switch ended by itself (%v), not by SIGKILL; events: %s", ee, p.trace())
+	}
+	if len(p.seen) > n {
+		t.Fatalf("progress after the pause: the kill did not land inside P7; events: %s", p.trace())
+	}
+}
+
+// journal is the part of the state's root.json the tests read.
+type journal struct {
+	Run *journalRun `json:"run"`
+}
+
+type journalRun struct {
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Intents []struct {
+		Name string `json:"name"`
+		Done bool   `json:"done"`
+	} `json:"intents"`
+}
+
+// last returns the last intent's name and done flag.
+func (r *journalRun) last() (string, bool) {
+	if len(r.Intents) == 0 {
+		return "", false
+	}
+	l := r.Intents[len(r.Intents)-1]
+	return l.Name, l.Done
+}
+
+// journal reads the world's root.json (state/ in the support directory).
+func (h *harness) journal(t *testing.T, w *world) journal {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(w.support, "state", "root.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var j journal
+	if err := json.Unmarshal(b, &j); err != nil {
+		t.Fatalf("root.json: %v", err)
+	}
+	return j
+}
+
+// folderContent is what a data folder holds: its regular files (sha256
+// by relative path) without the Local Storage database's own files and
+// the stub's run log, and its Local Storage items as decoded text.
+type folderContent struct {
+	files map[string]string
+	ls    map[string]string
+}
+
+// readFolder reads a folder's content. Reading Local Storage opens a copy
+// of the database, so a database that does not open or decode fails the
+// test.
+func readFolder(t *testing.T, dir string) folderContent {
+	t.Helper()
+	return folderContent{files: readFiles(t, dir), ls: testkit.ReadLS(t, dir)}
+}
+
+func readFiles(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	files := testkit.TreeOf(t, dir)
+	for k := range files {
+		if strings.HasPrefix(k, testkit.LevelDBRel+"/") || k == "stubapp-runs.txt" {
+			delete(files, k)
+		}
+	}
+	return files
+}
+
+// diffKeys lists the keys whose values differ between a and b (names
+// only, never content).
+func diffKeys(a, b map[string]string) []string {
+	var out []string
+	for k, v := range a {
+		if w, ok := b[k]; !ok || w != v {
+			out = append(out, k)
+		}
+	}
+	for k := range b {
+		if _, ok := a[k]; !ok {
+			out = append(out, k)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // status is the part of `paritydesk status --json` the tests read.

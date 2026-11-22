@@ -395,6 +395,8 @@ type fakeApp struct {
 	lateExit    bool
 	updRelaunch bool
 	quitErr     error
+	quitRes     app.QuitResult // returned with quitErr
+	watches     int            // WaitExited calls
 	quits       int
 	launches    int
 	badLaunch   int
@@ -450,7 +452,10 @@ func (a *fakeApp) QuitAndWait(_ context.Context, _, _ string, _ compat.Signals, 
 	a.quits++
 	switch {
 	case a.quitErr != nil:
-		return app.QuitResult{}, a.quitErr
+		if a.quitRes.Vetoed && onVeto != nil {
+			onVeto()
+		}
+		return a.quitRes, a.quitErr
 	case a.veto:
 		if onVeto != nil {
 			onVeto()
@@ -464,6 +469,7 @@ func (a *fakeApp) QuitAndWait(_ context.Context, _, _ string, _ compat.Signals, 
 }
 
 func (a *fakeApp) WaitExited(context.Context, string, time.Duration) (bool, error) {
+	a.watches++
 	if a.lateExit {
 		a.running = false
 		return true, nil

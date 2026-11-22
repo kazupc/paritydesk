@@ -117,6 +117,12 @@ func (r *run) commitAndApply(ctx context.Context) error {
 	if r.kind == state.RunSync && r.root.Active != r.S.Profile.Alias {
 		r.root.Previous, r.root.Active = r.root.Active, r.S.Profile.Alias
 	}
+	// The last crash point before P10 closes the run: a fault armed for
+	// a phase this run skipped (Deps.Crash) stops here instead, so it
+	// never lets a whole switch or sync through.
+	if err := r.o.crashPoint(P10Commit); err != nil {
+		return err
+	}
 	return r.commitP10(ctx)
 }
 

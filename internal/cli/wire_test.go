@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kazupc/paritydesk/internal/app"
 	"github.com/kazupc/paritydesk/internal/apply"
@@ -17,6 +18,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/config"
 	"github.com/kazupc/paritydesk/internal/fsx"
 	"github.com/kazupc/paritydesk/internal/orchestrator"
+	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/runner"
 	"github.com/kazupc/paritydesk/internal/store/kv"
 )
@@ -156,15 +158,163 @@ func TestBuildDepsValidatesConfig(t *testing.T) {
 	}
 }
 
-func TestFaultInjector(t *testing.T) {
-	env := map[string]string{"PARITYDESK_FAULT": "after:P7"}
-	f := faultInjector(func(k string) string { return env[k] })
-	if f == nil || !f(orchestrator.P7Apply) || f(orchestrator.P8Swap) {
-		t.Fatal("PARITYDESK_FAULT=after:P7 not honoured")
+// TestBuildDepsFaults: buildDeps wires PARITYDESK_FAULT and refuses the
+// pause fault for the real app's bundle id even with the e2e marker set.
+func TestBuildDepsFaults(t *testing.T) {
+	home := t.TempDir()
+	with := func(env map[string]string) wireInput {
+		in := wireFor(home, false, &refusingRunner{})
+		in.Getenv = func(k string) string { return env[k] }
+		return in
 	}
-	if faultInjector(func(string) string { return "" }) != nil {
-		t.Fatal("fault injector without the variable")
+	d, err := buildDeps(context.Background(), &globalFlags{}, with(map[string]string{envFault: "after:P8"}))
+	if err != nil || d.Crash == nil || !d.Crash(orchestrator.P8Swap) {
+		t.Fatalf("after:P8 not wired: %v", err)
 	}
+	if a, ok := d.Applier.(*apply.Applier); !ok || a.AfterFirstWrite != nil {
+		t.Fatalf("applier hook set without the pause fault: %#v", d.Applier)
+	}
+	_, err = buildDeps(context.Background(), &globalFlags{}, with(map[string]string{envFault: "pause:P7", envE2E: "1"}))
+	if !errors.Is(err, errUsage) || !strings.Contains(err.Error(), "refusing the real app's bundle id") {
+		t.Fatalf("pause:P7 with the default bundle id: %v", err)
+	}
+}
+
+func TestParseFaults(t *testing.T) {
+	parse := func(env map[string]string) (faults, error) {
+		return parseFaults(faultEnv{getenv: func(k string) string { return env[k] }})
+	}
+	f, err := parse(map[string]string{envFault: "after:P7"})
+	if err != nil || f.crash == nil || !f.crash(orchestrator.P7Apply) || f.crash(orchestrator.P8Swap) || f.afterFirstWrite != nil {
+		t.Fatalf("PARITYDESK_FAULT=after:P7 not honoured: %v", err)
+	}
+	// A run that skipped P7 (an empty plan, for example) reaches the
+	// last crash point before P10: the fault stops it there and says so.
+	ui := &recordUI{}
+	f, err = parseFaults(faultEnv{getenv: func(k string) string { return map[string]string{envFault: "after:P7"}[k] }, ui: ui})
+	if err != nil || !f.crash(orchestrator.P10Commit) {
+		t.Fatalf("after:P7 does not stop a run that skipped P7: %v", err)
+	}
+	if len(ui.events) != 1 || ui.events[0].Status != "warn" || !strings.Contains(ui.events[0].Message, "skipped P7") {
+		t.Fatalf("events %+v", ui.events)
+	}
+	if f, err := parse(nil); err != nil || f.crash != nil || f.afterFirstWrite != nil {
+		t.Fatalf("faults without the variable: %v", err)
+	}
+	// Phases without intents would silently run a whole switch; unknown
+	// forms too. Both are usage errors.
+	for _, v := range []string{"after:P10", "after:P11", "after:P12", "after:", "after:p7", "P7", "pause", "pause:P8", "kill:P7"} {
+		if _, err := parse(map[string]string{envFault: v}); err == nil || !errors.Is(err, errUsage) {
+			t.Errorf("PARITYDESK_FAULT=%s: %v, want a usage error", v, err)
+		}
+	}
+}
+
+// TestPauseFaultGuard: pause:P7 is honoured only with the e2e harness's
+// marker, a test bundle id, a temporary HOME and a data root inside it.
+func TestPauseFaultGuard(t *testing.T) {
+	base := t.TempDir()
+	realHome := filepath.Join(base, "Users", "someone")
+	tmpHome := filepath.Join(base, "e2e", "home")
+	good := faultEnv{
+		home:     tmpHome,
+		realHome: func() (string, error) { return realHome, nil },
+		bundleID: "dev.paritydesk.stubapp",
+		dataRoot: filepath.Join(tmpHome, "worlds", "w", "data"),
+	}
+	env := map[string]string{envFault: "pause:P7", envE2E: "1"}
+	with := func(mod func(*faultEnv, map[string]string)) (faults, error) {
+		fe := good
+		e := map[string]string{}
+		for k, v := range env {
+			e[k] = v
+		}
+		mod(&fe, e)
+		fe.getenv = func(k string) string { return e[k] }
+		return parseFaults(fe)
+	}
+	f, err := with(func(*faultEnv, map[string]string) {})
+	if err != nil || f.afterFirstWrite == nil || f.crash != nil {
+		t.Fatalf("pause:P7 inside the guard: %v", err)
+	}
+	refused := map[string]func(*faultEnv, map[string]string){
+		"no marker":        func(_ *faultEnv, e map[string]string) { delete(e, envE2E) },
+		"marker not 1":     func(_ *faultEnv, e map[string]string) { e[envE2E] = "true" },
+		"real bundle id":   func(fe *faultEnv, _ map[string]string) { fe.bundleID = "com.anthropic.claudefordesktop" },
+		"vendor bundle id": func(fe *faultEnv, _ map[string]string) { fe.bundleID = "COM.Anthropic.other" },
+		"real home": func(fe *faultEnv, _ map[string]string) {
+			fe.home = realHome
+			fe.dataRoot = filepath.Join(realHome, "data")
+		},
+		"parent of real home": func(fe *faultEnv, _ map[string]string) {
+			fe.home = filepath.Dir(realHome)
+			fe.dataRoot = filepath.Join(fe.home, "d")
+		},
+		"under real Library": func(fe *faultEnv, _ map[string]string) {
+			fe.home = filepath.Join(realHome, "Library", "x")
+			fe.dataRoot = filepath.Join(fe.home, "d")
+		},
+		"data root outside": func(fe *faultEnv, _ map[string]string) { fe.dataRoot = filepath.Join(base, "elsewhere") },
+		"data root is HOME": func(fe *faultEnv, _ map[string]string) { fe.dataRoot = tmpHome },
+		"real home unknown": func(fe *faultEnv, _ map[string]string) {
+			fe.realHome = func() (string, error) { return "", errors.New("no user") }
+		},
+		// Lexically inside HOME, but a symlink leads elsewhere.
+		"data root through a symlink": func(fe *faultEnv, _ map[string]string) {
+			fe.dataRoot = filepath.Join(tmpHome, "escape", "data")
+		},
+		"HOME is a symlink to the real home": func(fe *faultEnv, _ map[string]string) {
+			fe.home = filepath.Join(base, "home-link")
+			fe.dataRoot = filepath.Join(fe.home, "data")
+		},
+	}
+	for _, d := range []string{realHome, tmpHome, filepath.Join(base, "elsewhere")} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(filepath.Join(base, "elsewhere"), filepath.Join(tmpHome, "escape")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(realHome, filepath.Join(base, "home-link")); err != nil {
+		t.Fatal(err)
+	}
+	for name, mod := range refused {
+		if f, err := with(mod); err == nil || !errors.Is(err, errUsage) || f.afterFirstWrite != nil {
+			t.Errorf("%s: pause:P7 not refused (%v)", name, err)
+		}
+	}
+	// With the folders present (and the temporary directory itself
+	// possibly behind a symlink, as /var is on macOS) it is still allowed.
+	if f, err := with(func(*faultEnv, map[string]string) {}); err != nil || f.afterFirstWrite == nil {
+		t.Fatalf("pause:P7 inside the guard, folders present: %v", err)
+	}
+}
+
+// TestPauseHook: the pause reports one "paused" event, then waits; a
+// pause nobody ends exits with code Internal. It runs once per process.
+func TestPauseHook(t *testing.T) {
+	ui := &recordUI{}
+	var slept time.Duration
+	exits := []int{}
+	hook := pauseHook(faultEnv{ui: ui, sleep: func(d time.Duration) { slept += d }, exit: func(c int) { exits = append(exits, c) }})
+	hook()
+	hook()
+	if slept != pauseLimit || len(exits) != 1 || exits[0] != int(pderr.Internal) {
+		t.Fatalf("slept %s, exits %v", slept, exits)
+	}
+	if len(ui.events) != 2 || ui.events[0].Phase != orchestrator.P7Apply || ui.events[0].Status != PausedStatus || ui.events[1].Status != "fail" {
+		t.Fatalf("events %+v", ui.events)
+	}
+}
+
+// recordUI records progress events.
+type recordUI struct{ events []orchestrator.Event }
+
+func (u *recordUI) Progress(ev orchestrator.Event) { u.events = append(u.events, ev) }
+func (u *recordUI) Interactive() bool              { return false }
+func (u *recordUI) Confirm(context.Context, orchestrator.Confirmation) (bool, error) {
+	return false, nil
 }
 
 // treeHash hashes every path, mode and file content under dir.

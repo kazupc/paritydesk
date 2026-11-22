@@ -117,6 +117,14 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 
 ### Fixed
 
+- A quit that Claude refuses (AppleScript error -128, as AppKit answers
+  when the app cancels termination) or does not answer in time (-1712)
+  is now waited on like the "still working" dialog, watched for a late
+  quit, and exits 10. It was reported as missing Automation (exit 15).
+  Exit 15 now means only AppleScript error -1743 or -1744; -10004 or any
+  other failure exits 10. The message names the error number, and for
+  -1712 and -10004 says what to check (an unanswered Automation prompt,
+  a sandbox).
 - Local Storage reads and writes no longer go wrong when a journal holds
   batches numbered below the manifest's last sequence. The C++ LevelDB
   library, which Chromium and so the app build on, can leave its
