@@ -64,6 +64,9 @@ type harness struct {
 	conf     string // stubapp.conf next to the bundle
 	logDir   string // HOME/Library/Logs/Claude (main.log)
 	stateDir string // the stub's pid and events files
+	// stubData is the data_dir the stub's config names (writeStubConf):
+	// the folder every stub launched from now on must report.
+	stubData string
 }
 
 // stubSettings are the stub's per-world settings.
@@ -83,6 +86,15 @@ type world struct {
 	stub    stubSettings
 }
 
+// TestStubApp runs the scenarios in order on one installed stub. Every
+// subtest starts with no stub process running (begin) and its cleanup
+// stops the stub again, so no subtest sees an instance an earlier one
+// left behind. That matters because paritydesk relaunches the app with
+// open -b and, in recover, rollback and abort, returns without waiting
+// for it to finish launching: a stub still starting when a subtest ends
+// has no pid file yet, and if it survived, the next subtest's open -b
+// would only bring that instance (still on the earlier world's data
+// folder) forward, so no launch would ever be recorded.
 func TestStubApp(t *testing.T) {
 	h := newHarness(t)
 	t.Run("switch a to b to a", h.testSwitchABA)
@@ -144,7 +156,7 @@ func newHarness(t *testing.T) *harness {
 		h.command(t, time.Minute, lsregister, "-f", h.app)
 		t.Cleanup(func() { _ = exec.Command(lsregister, "-u", h.app).Run() })
 	}
-	t.Cleanup(func() { h.quitStub(t) })
+	t.Cleanup(func() { h.stopStub(t) })
 	h.probeAppleEvents(t)
 	return h
 }
@@ -196,29 +208,43 @@ func (h *harness) probeAppleEvents(t *testing.T) {
 // ---------------------------------------------------------------- scenarios
 
 func (h *harness) testSwitchABA(t *testing.T) {
+	h.begin(t)
 	w := h.newWorld(t, "switch", "60s", stubSettings{})
 	h.initWorld(t, w)
 	pid := h.launchStub(t)
 
+	from, logStart := h.eventCount(t), h.mainLogSize()
 	h.mustSwitch(t, w, "b", nil)
 	h.waitExited(t, pid, 10*time.Second)
-	pid = h.waitRelaunched(t, pid)
+	pid = h.waitLaunch(t, from, pid, "the switch to b did not relaunch the stub")
+	h.requireAppAccount(t, logStart, "b", "after the switch to b")
 	h.checkConsistent(t, w, "b")
 	// Session 11 exists only in a's folder; the switch carries it to b.
 	h.requireSession(t, w, 11)
 
+	from, logStart = h.eventCount(t), h.mainLogSize()
 	h.mustSwitch(t, w, "a", nil)
 	h.waitExited(t, pid, 10*time.Second)
-	h.waitRelaunched(t, pid)
+	h.waitLaunch(t, from, pid, "the switch to a did not relaunch the stub")
+	h.requireAppAccount(t, logStart, "a", "after the switch to a")
 	h.checkConsistent(t, w, "a")
 	// Session 12 exists only in b's folder.
 	h.requireSession(t, w, 12)
-	h.quitStub(t)
 }
 
 func (h *harness) testRecover(t *testing.T) {
+	h.begin(t)
 	w := h.newWorld(t, "recover", "60s", stubSettings{})
 	h.initWorld(t, w)
+	// Claude (the stub) runs before every fault switch, so P3 really
+	// quits it and the run records quit_by_us; recover then closes the
+	// run and relaunches it, which the test waits for and checks (it
+	// becomes the running stub of the next case). Without a running stub
+	// the switches would skip the quit and recover would relaunch
+	// nothing, and the test would pass without exercising either. The
+	// subtest takes only a few seconds: every switch here stops before
+	// P10, so none of them waits in P12 for the relaunched app.
+	pid := h.launchStub(t)
 	// PARITYDESK_FAULT=after:<phase> stops the run right after that phase's
 	// first intent is recorded, as if the process had been killed there.
 	// The injected stop is not a paritydesk error with a code of its own,
@@ -246,7 +272,7 @@ func (h *harness) testRecover(t *testing.T) {
 		{"P9", "parked", "b"},
 	}
 	for _, c := range cases {
-		h.ensureStub(t)
+		h.requireStub(t, pid, "fault after "+c.phase+": before the switch")
 		r := h.paritydesk(t, w, []string{"PARITYDESK_FAULT=after:" + c.phase}, []string{"switch"}, switchFlags("b")...)
 		if r.code != 70 {
 			t.Fatalf("fault after %s: switch exited %d, want 70\n%s", c.phase, r.code, r.output())
@@ -258,23 +284,34 @@ func (h *harness) testRecover(t *testing.T) {
 		if name, done := run.last(); name != c.intent || done {
 			t.Fatalf("fault after %s: last intent %q (done %v), want %s, not done", c.phase, name, done, c.intent)
 		}
+		if !run.QuitByUs {
+			t.Fatalf("fault after %s: the run does not record that paritydesk quit Claude", c.phase)
+		}
+		h.waitExited(t, pid, 10*time.Second)
+		h.requireNoStub(t, "fault after "+c.phase+": after the switch quit the stub")
 		if !h.status(t, w).NeedsRecover {
 			t.Fatalf("fault after %s: status does not report the interrupted run", c.phase)
 		}
+		from, logStart := h.eventCount(t), h.mainLogSize()
 		h.recover(t, w)
+		pid = h.waitLaunch(t, from, pid, "fault after "+c.phase+": recover did not relaunch the stub it found quit by paritydesk")
+		h.requireAppAccount(t, logStart, c.active, "fault after "+c.phase+": after recover")
 		h.checkConsistent(t, w, c.active)
 		if run := h.journal(t, w).Run; run != nil {
 			t.Fatalf("fault after %s: recover left the run open: %+v", c.phase, run)
 		}
+		// One line per case, so the job log shows how long each took.
+		t.Logf("fault after %s: switch exited 70, recover relaunched the stub as pid %d on %s", c.phase, pid, c.active)
 	}
 	for _, phase := range []string{"P10", "P11"} {
 		r := h.paritydesk(t, w, []string{"PARITYDESK_FAULT=after:" + phase}, []string{"switch"}, switchFlags("a")...)
 		if r.code != 2 {
 			t.Fatalf("fault after %s: switch exited %d, want 2 (refused: no intent to stop after)\n%s", phase, r.code, r.output())
 		}
+		// Refused before the run: Claude was not touched.
+		h.requireStub(t, pid, "fault after "+phase+": after the refused switch")
 	}
 	h.checkConsistent(t, w, "b")
-	h.quitStub(t)
 }
 
 // testKillInP7 kills paritydesk with SIGKILL inside P7, after the first
@@ -285,9 +322,10 @@ func (h *harness) testRecover(t *testing.T) {
 // still holds a, so the run is undone, and both folders, Local Storage
 // included, read as before the switch.
 func (h *harness) testKillInP7(t *testing.T) {
+	h.begin(t)
 	w := h.newWorld(t, "kill-in-p7", "60s", stubSettings{})
 	h.initWorld(t, w)
-	h.launchStub(t)
+	pid := h.launchStub(t)
 	folders := []string{ids.DefaultFolder, "Claude-b"}
 	before := map[string]folderContent{}
 	for _, f := range folders {
@@ -305,9 +343,16 @@ func (h *harness) testKillInP7(t *testing.T) {
 	if name, done := run.last(); name != "applied" || done {
 		t.Fatalf("paused: last intent %q (done %v), want applied, not done", name, done)
 	}
+	if !run.QuitByUs {
+		t.Fatal("paused: the run does not record that paritydesk quit Claude")
+	}
 	if sameTree(before["Claude-b"].files, readFiles(t, filepath.Join(w.data, "Claude-b"))) {
 		t.Fatal("paused: no write has landed in the entering folder yet")
 	}
+	// P3 quit Claude before the pause, so the kill lands with the app
+	// stopped, as in a real crash inside P7.
+	h.waitExited(t, pid, 10*time.Second)
+	h.requireNoStub(t, "paused")
 	p.kill(t)
 
 	if run := h.journal(t, w).Run; run == nil {
@@ -318,7 +363,13 @@ func (h *harness) testKillInP7(t *testing.T) {
 	if !h.status(t, w).NeedsRecover {
 		t.Fatal("killed: status does not report the interrupted run")
 	}
+	from, logStart := h.eventCount(t), h.mainLogSize()
 	h.recover(t, w)
+	// recover relaunches Claude because paritydesk had quit it, and
+	// returns without waiting for the launch to finish. Wait for it here,
+	// before the folders are read and before the cleanup quits it.
+	h.waitLaunch(t, from, pid, "recover did not relaunch the stub it found quit by paritydesk")
+	h.requireAppAccount(t, logStart, "a", "after recover")
 	h.checkConsistent(t, w, "a")
 	if run := h.journal(t, w).Run; run != nil {
 		t.Fatalf("recover left the run open: %+v", run)
@@ -332,15 +383,16 @@ func (h *harness) testKillInP7(t *testing.T) {
 			t.Errorf("%s: Local Storage items differ from before the switch: %v", f, d)
 		}
 	}
-	h.quitStub(t)
 }
 
 func (h *harness) testVetoWait(t *testing.T) {
 	const veto = 6
+	h.begin(t)
 	w := h.newWorld(t, "veto", "60s", stubSettings{vetoSeconds: veto, vetoMode: "later", session: testkit.FakeSession(1)})
 	h.initWorld(t, w)
 	pid := h.launchStub(t)
-	logStart := fileSize(filepath.Join(h.logDir, "main.log"))
+	logStart := h.mainLogSize()
+	from := h.eventCount(t)
 	start := time.Now()
 	h.mustSwitch(t, w, "b", nil)
 	if elapsed := time.Since(start); elapsed < veto*time.Second {
@@ -352,31 +404,43 @@ func (h *harness) testVetoWait(t *testing.T) {
 		t.Error("main.log has no quit-vetoed line")
 	}
 	h.waitExited(t, pid, 10*time.Second)
+	// P11 relaunches the stub (paritydesk quit it); P12 waited for it.
+	h.waitLaunch(t, from, pid, "the switch did not relaunch the stub after the veto")
+	h.requireAppAccount(t, logStart, "b", "after the vetoed switch")
 	h.checkConsistent(t, w, "b")
-	h.quitStub(t)
 }
 
 func (h *harness) testVetoTimeout(t *testing.T) {
 	// The stub refuses the quit and keeps running far past quit_timeout
 	// (5s, the minimum); late_quit_watch is 0. Its terminateCancel reply
-	// makes osascript fail with -128 (userCanceledErr), which is a veto
-	// (exit 10), never missing Automation (exit 15, -1743 and -1744 only).
+	// should make osascript fail with -128 (userCanceledErr), which is a
+	// veto (exit 10), never missing Automation (exit 15, -1743 and -1744
+	// only). The runner has not confirmed that number yet; see the exit
+	// code check below.
+	h.begin(t)
 	w := h.newWorld(t, "veto-timeout", "5s", stubSettings{vetoSeconds: 300, vetoMode: "cancel"})
 	h.initWorld(t, w)
 	pid := h.launchStub(t)
-	logStart := fileSize(filepath.Join(h.logDir, "main.log"))
+	logStart := h.mainLogSize()
 	before := dataTree(t, w)
 	r := h.paritydesk(t, w, nil, []string{"switch"}, switchFlags("b")...)
+	// The exit code is how paritydesk names the refusal; it depends on
+	// the error number osascript reports for the stub's reply, which this
+	// job has not yet recorded with the current classification (8e761d4).
+	// It is checked with Errorf, so the safety checks below still run and
+	// a wrong message is not mistaken for a broken guarantee. The output
+	// is logged in full, so the job log shows paritydesk's message for
+	// whatever osascript reported.
 	if r.code != 10 {
-		t.Fatalf("switch exited %d, want 10 (the quit was vetoed)\n%s", r.code, r.output())
+		t.Errorf("switch exited %d, want 10 (the quit was vetoed)\n%s", r.code, r.output())
 	}
 	h.requireEvent(t, fmt.Sprintf("quit-request veto=300 mode=cancel pid=%d", pid))
 	if !strings.Contains(readFrom(t, filepath.Join(h.logDir, "main.log"), logStart), vetoLine) {
 		t.Error("main.log has no quit-vetoed line")
 	}
-	if !alive(pid) {
-		t.Fatal("the stub is no longer running; paritydesk must never force a quit")
-	}
+	// The same stub still runs: paritydesk never forces a quit, and
+	// nothing relaunched it.
+	h.requireStub(t, pid, "after the timed-out quit")
 	if after := dataTree(t, w); !sameTree(before, after) {
 		t.Fatal("the data root changed although the quit timed out")
 	}
@@ -384,7 +448,6 @@ func (h *harness) testVetoTimeout(t *testing.T) {
 	if st.Active != "a" || st.NeedsRecover {
 		t.Fatalf("after the timeout: active %q, needs_recover %v; want a, false", st.Active, st.NeedsRecover)
 	}
-	h.quitStub(t)
 }
 
 // ---------------------------------------------------------------- worlds
@@ -443,16 +506,14 @@ func (h *harness) mustSwitch(t *testing.T, w *world, target string, env []string
 	return r
 }
 
-// recover runs paritydesk recover. When it asks for the app to be quit
-// first (exit 41 while the stub runs), it quits the stub and tries once
-// more, as a user would.
+// recover runs paritydesk recover, which must succeed at once. Every
+// caller has checked that the stub is stopped (the interrupted switch
+// quit it), so recover has no reason to ask for a quit (exit 41); a
+// retry after quitting the stub here would hide a stub that something
+// else relaunched.
 func (h *harness) recover(t *testing.T, w *world) {
 	t.Helper()
 	r := h.paritydesk(t, w, nil, []string{"recover"}, "--yes")
-	if r.code == 41 && h.stubRunning() {
-		h.quitStub(t)
-		r = h.paritydesk(t, w, nil, []string{"recover"}, "--yes")
-	}
 	if r.code != 0 {
 		t.Fatalf("recover exited %d\n%s", r.code, r.output())
 	}
@@ -595,9 +656,12 @@ type journal struct {
 }
 
 type journalRun struct {
-	From    string `json:"from"`
-	To      string `json:"to"`
-	Intents []struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+	// QuitByUs is set when paritydesk quit the app for this run, so an
+	// abort or recover relaunches it.
+	QuitByUs bool `json:"quit_by_us"`
+	Intents  []struct {
 		Name string `json:"name"`
 		Done bool   `json:"done"`
 	} `json:"intents"`
@@ -753,13 +817,6 @@ func (h *harness) requireSession(t *testing.T, w *world, n int) {
 	}
 }
 
-func other(alias string) string {
-	if alias == "a" {
-		return "b"
-	}
-	return "a"
-}
-
 // dataTree hashes every file of the data root except paritydesk's
 // temporary directory.
 func dataTree(t *testing.T, w *world) map[string]string {
@@ -858,6 +915,7 @@ func (h *harness) writeStubConf(t *testing.T, data string, s stubSettings) {
 	}
 	text := fmt.Sprintf("# written by internal/e2e\ndata_dir = %s\nlog_dir = %s\nstate_dir = %s\nveto_seconds = %d\nveto_mode = %s\nsession = %s\n",
 		filepath.Join(data, ids.DefaultFolder), h.logDir, h.stateDir, s.vetoSeconds, mode, s.session)
+	h.stubData = filepath.Join(data, ids.DefaultFolder)
 	tmp := h.conf + ".tmp"
 	if err := os.WriteFile(tmp, []byte(text), 0o644); err != nil {
 		t.Fatal(err)
@@ -903,48 +961,140 @@ func (h *harness) command(t *testing.T, timeout time.Duration, name string, args
 	return out
 }
 
+// begin starts a subtest from a known app state: no stub process runs.
+// A stub left over from an earlier step is reported, stopped, and fails
+// this subtest (requireNoStub), instead of turning the next launch into a
+// 60 s "did not launch". The subtest's cleanup stops every stub process
+// again, whatever the subtest did and wherever it failed, and checks that
+// none is left.
+//
+// When the subtest failed, the cleanup first logs the stub's events since
+// the subtest began and the stub processes that run, so the job log shows
+// what the stub did and which instance was left, not only the failed
+// assertion.
+func (h *harness) begin(t *testing.T) {
+	t.Helper()
+	from := h.eventCount(t)
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Logf("stub events during this subtest: %s", eventTail(h.events(t), from, 40))
+			t.Logf("stub processes at the end of this subtest: %s", describeStubs(h.stubPIDs(t), h.events(t)))
+		}
+		h.stopStub(t)
+		if pids := h.stubPIDs(t); len(pids) > 0 {
+			t.Errorf("the stub still runs after the subtest's cleanup (pids %v)", pids)
+		}
+	})
+	h.requireNoStub(t, "at the start of the subtest")
+}
+
 // launchStub opens the stub by bundle id, as paritydesk does, and returns
-// its pid.
+// its pid. No stub may run before: open -b would only bring that instance
+// forward.
 func (h *harness) launchStub(t *testing.T) int {
 	t.Helper()
-	from := len(h.events(t))
+	h.requireNoStub(t, "before launching the stub")
+	from := h.eventCount(t)
 	h.command(t, time.Minute, "/usr/bin/open", "-b", h.bundleID)
-	return h.waitLaunch(t, from, 0)
+	return h.waitLaunch(t, from, 0, "open -b did not launch the stub")
 }
 
-// ensureStub launches the stub unless it runs.
-func (h *harness) ensureStub(t *testing.T) {
-	t.Helper()
-	if !h.stubRunning() {
-		h.launchStub(t)
-	}
-}
-
-// waitRelaunched waits for a launch by another process than old.
-func (h *harness) waitRelaunched(t *testing.T, old int) int {
-	t.Helper()
-	return h.waitLaunch(t, 0, old)
-}
+// soleStubSettle is how long waitLaunch lets other stub processes go away
+// once the expected launch is seen: an old instance still finishing its
+// exit, or a second instance LaunchServices started, is reported only if
+// it is still there after this.
+const soleStubSettle = 10 * time.Second
 
 // waitLaunch waits for a launch event at or after index from whose pid is
-// not skip, and for that process to run.
-func (h *harness) waitLaunch(t *testing.T, from, skip int) int {
+// not skip and runs, then requires that it reports the data folder of the
+// current stub config (h.stubData) and that, within soleStubSettle, it is
+// the only stub process. On a timeout it fails with what it found
+// (launchFailure): in particular a stub that already ran, which open -b
+// brought forward instead of launching a new one. what names the expected
+// launch.
+func (h *harness) waitLaunch(t *testing.T, from, skip int, what string) int {
 	t.Helper()
 	deadline := time.Now().Add(60 * time.Second)
-	for time.Now().Before(deadline) {
+	for {
 		evs := h.events(t)
-		for i := len(evs) - 1; i >= from; i-- {
-			if !strings.HasPrefix(evs[i], "launch ") {
-				continue
+		if l, ok := lastLaunch(evs, from, skip, alive); ok {
+			if l.dataDir != h.stubData {
+				t.Fatalf("%s: the stub launched (pid %d) on %s, want this world's %s", what, l.pid, l.dataDir, h.stubData)
 			}
-			if pid := eventPID(evs[i]); pid > 0 && pid != skip && alive(pid) {
-				return pid
-			}
+			h.waitSoleStub(t, l.pid, what)
+			return l.pid
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatalf("%s within 60s: %s", what, launchFailure(h.stubPIDs(t), evs, from))
+			return 0
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	t.Fatal("the stub did not launch")
-	return 0
+}
+
+// waitSoleStub waits up to soleStubSettle for pid to be the only stub
+// process, and fails naming every stub process if it is not.
+func (h *harness) waitSoleStub(t *testing.T, pid int, what string) {
+	t.Helper()
+	settle := time.Now().Add(soleStubSettle)
+	for {
+		pids := h.stubPIDs(t)
+		if len(pids) == 1 && pids[0] == pid {
+			return
+		}
+		if !time.Now().Before(settle) {
+			t.Fatalf("%s: stub processes %s after the launch: %s; want only pid %d", what, soleStubSettle, describeStubs(pids, h.events(t)), pid)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// requireStub requires that pid is the one stub process running and that
+// it was launched on the current stub config's data folder.
+func (h *harness) requireStub(t *testing.T, pid int, when string) {
+	t.Helper()
+	if pids := h.stubPIDs(t); len(pids) != 1 || pids[0] != pid {
+		t.Fatalf("%s: stub processes %v, want exactly the stub pid %d running", when, pids, pid)
+	}
+	if d, ok := launchDataDir(h.events(t), pid); !ok || d != h.stubData {
+		t.Fatalf("%s: the running stub (pid %d) reports data folder %q, want this world's %s", when, pid, d, h.stubData)
+	}
+}
+
+// requireNoStub fails when any stub process runs, naming each one with
+// the data folder its launch event reports. It stops them first, so one
+// failure does not spill into the subtests after it.
+func (h *harness) requireNoStub(t *testing.T, when string) {
+	t.Helper()
+	pids := h.stubPIDs(t)
+	if len(pids) == 0 {
+		return
+	}
+	desc := describeStubs(pids, h.events(t))
+	h.stopStub(t)
+	t.Fatalf("%s: the stub is already running (%s), left over from an earlier step; open -b would only bring that instance forward on its old data folder, so no launch would be recorded. It has been stopped.", when, desc)
+}
+
+// requireAppAccount requires that the newest account line written to
+// main.log after offset logStart names alias's account. The stub writes
+// that line (the real app's "[ScheduledTasks] Initialized" line) at
+// launch from the config.json of the folder it opened, before its launch
+// event, so after waitLaunch it shows which profile the relaunched app
+// found in Claude. The folder paths alone cannot tell: the app always
+// opens Claude, whichever profile it holds.
+func (h *harness) requireAppAccount(t *testing.T, logStart int64, alias, what string) {
+	t.Helper()
+	want, ok := accounts[alias]
+	if !ok {
+		t.Fatalf("no account for alias %q", alias)
+	}
+	got, ok := lastAccount(readFrom(t, filepath.Join(h.logDir, "main.log"), logStart))
+	if !ok {
+		t.Fatalf("%s: the relaunched stub logged no account line in main.log", what)
+	}
+	if got != string(want) {
+		t.Fatalf("%s: the relaunched stub opened account %s, want %s's %s", what, got, alias, want)
+	}
 }
 
 // waitExited waits for pid's exit event.
@@ -986,26 +1136,73 @@ func (h *harness) events(t *testing.T) []string {
 	return strings.Split(strings.TrimRight(string(b), "\n"), "\n")
 }
 
-func eventPID(line string) int {
-	i := strings.LastIndex(line, " pid=")
-	if i < 0 {
-		return 0
-	}
-	n, err := strconv.Atoi(line[i+len(" pid="):])
-	if err != nil {
-		return 0
-	}
-	return n
+// eventCount is the index the next event line will have.
+func (h *harness) eventCount(t *testing.T) int {
+	t.Helper()
+	return len(h.events(t))
 }
 
-// stubRunning reports whether the pid in the stub's pid file runs.
-func (h *harness) stubRunning() bool {
-	b, err := os.ReadFile(filepath.Join(h.stateDir, "stubapp.pid"))
+// stubExe is the installed stub's executable.
+func (h *harness) stubExe() string {
+	return filepath.Join(h.app, "Contents", "MacOS", "stubapp")
+}
+
+func (h *harness) pidFile() string { return filepath.Join(h.stateDir, "stubapp.pid") }
+
+// pidFromFile returns the pid in the stub's pid file, or 0. The stub
+// writes it in applicationDidFinishLaunching, so a stub that is still
+// starting has none yet.
+func (h *harness) pidFromFile() int {
+	b, err := os.ReadFile(h.pidFile())
 	if err != nil {
-		return false
+		return 0
 	}
 	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
-	return err == nil && pid > 0 && alive(pid)
+	if err != nil || pid <= 0 {
+		return 0
+	}
+	return pid
+}
+
+// stubPIDs lists the running processes of the installed stub's
+// executable, from ps. The match (parseStubPIDs) is stricter than
+// scripts/ci/e2e.sh is_stub_pid, which accepts any command that starts
+// with the executable's path: here the command must be that path, alone
+// or followed by arguments. Unlike the pid file it also sees a stub that
+// is still starting.
+func (h *harness) stubPIDs(t *testing.T) []int {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "/bin/ps", "-axww", "-o", "pid=,command=")
+	cmd.Env = h.env(nil)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("ps: %v", err)
+	}
+	var live []int
+	for _, pid := range parseStubPIDs(out, h.stubExe()) {
+		if alive(pid) {
+			live = append(live, pid)
+		}
+	}
+	return live
+}
+
+// waitNoStub waits until no stub process runs and reports whether that
+// happened in time.
+func (h *harness) waitNoStub(t *testing.T, timeout time.Duration) bool {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		if len(h.stubPIDs(t)) == 0 {
+			return true
+		}
+		if !time.Now().Before(deadline) {
+			return false
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 // alive reports whether pid exists (signal 0 checks without sending).
@@ -1021,33 +1218,228 @@ func (h *harness) osaQuit(ctx context.Context) ([]byte, error) {
 	return cmd.CombinedOutput()
 }
 
-// quitStub quits the stub when it runs: first by Apple Event with the
-// veto cleared, then, if it is still there, with SIGKILL. Only the stub's
-// own pid is ever signalled.
-func (h *harness) quitStub(t *testing.T) {
+// stopStub stops every running stub process and removes the pid file.
+// It finds the processes with ps, not the pid file, so it also stops a
+// stub that paritydesk relaunched and that is still starting (recover
+// returns right after open -b). It waits (bounded) for such a stub to
+// write its pid file, so the quit Apple Event finds a running
+// application, then quits by Apple Event with the veto cleared. A process
+// still there gets SIGTERM, then SIGKILL, each sent only to a pid that ps
+// has just shown running the installed stub's executable (as
+// scripts/ci/e2e.sh stop_stub does). That executable lives in the
+// temporary HOME the guards of newHarness checked, so no other app is
+// signalled; as in e2e.sh, a pid that exits and is reused between the ps
+// listing and the signal is not excluded. This runs wherever the e2e
+// tests run, which includes a maintainer's Mac when the release checklist
+// runs scripts/ci/e2e.sh there.
+func (h *harness) stopStub(t *testing.T) {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(h.stateDir, "stubapp.pid"))
-	if err != nil {
+	defer func() { _ = os.Remove(h.pidFile()) }()
+	pids := h.stubPIDs(t)
+	if len(pids) == 0 {
 		return
 	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
-	if err != nil || pid <= 0 || !alive(pid) {
-		return
+	for i := 0; i < 50 && len(pids) > 0 && !containsPID(pids, h.pidFromFile()); i++ {
+		time.Sleep(200 * time.Millisecond)
+		pids = h.stubPIDs(t)
 	}
-	h.clearVeto(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	_, _ = h.osaQuit(ctx)
-	cancel()
-	for i := 0; i < 100 && alive(pid); i++ {
-		time.Sleep(100 * time.Millisecond)
-	}
-	if alive(pid) {
-		_ = syscall.Kill(pid, syscall.SIGKILL)
-		for i := 0; i < 50 && alive(pid); i++ {
-			time.Sleep(100 * time.Millisecond)
+	if len(pids) > 0 {
+		h.clearVeto(t)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		_, _ = h.osaQuit(ctx)
+		cancel()
+		if h.waitNoStub(t, 10*time.Second) {
+			return
 		}
 	}
-	_ = os.Remove(filepath.Join(h.stateDir, "stubapp.pid"))
+	for _, sig := range []syscall.Signal{syscall.SIGTERM, syscall.SIGKILL} {
+		pids = h.stubPIDs(t)
+		if len(pids) == 0 {
+			return
+		}
+		t.Logf("the stub (pids %v) did not quit by Apple Event; sending %v", pids, sig)
+		for _, pid := range pids {
+			_ = syscall.Kill(pid, sig) // a verified stub pid only
+		}
+		if h.waitNoStub(t, 5*time.Second) {
+			return
+		}
+	}
+	t.Errorf("the stub (pids %v) could not be stopped", h.stubPIDs(t))
+}
+
+// ---------------------------------------------------------------- stub state (pure)
+
+// launchEvent is one "launch data_dir=<dir> pid=<pid>" line of the stub's
+// events file.
+type launchEvent struct {
+	pid     int
+	dataDir string
+}
+
+// parseLaunch parses a launch event line.
+func parseLaunch(line string) (launchEvent, bool) {
+	const prefix = "launch data_dir="
+	if !strings.HasPrefix(line, prefix) {
+		return launchEvent{}, false
+	}
+	i := strings.LastIndex(line, " pid=")
+	if i < len(prefix) {
+		return launchEvent{}, false
+	}
+	pid := eventPID(line)
+	if pid <= 0 {
+		return launchEvent{}, false
+	}
+	return launchEvent{pid: pid, dataDir: line[len(prefix):i]}, true
+}
+
+func eventPID(line string) int {
+	i := strings.LastIndex(line, " pid=")
+	if i < 0 {
+		return 0
+	}
+	n, err := strconv.Atoi(line[i+len(" pid="):])
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// lastLaunch returns the newest launch event at or after index from whose
+// pid is not skip and runs.
+func lastLaunch(events []string, from, skip int, running func(int) bool) (launchEvent, bool) {
+	if from < 0 {
+		from = 0
+	}
+	for i := len(events) - 1; i >= from; i-- {
+		if l, ok := parseLaunch(events[i]); ok && l.pid != skip && running(l.pid) {
+			return l, true
+		}
+	}
+	return launchEvent{}, false
+}
+
+// launchDataDir returns the data folder of pid's newest launch event.
+func launchDataDir(events []string, pid int) (string, bool) {
+	for i := len(events) - 1; i >= 0; i-- {
+		if l, ok := parseLaunch(events[i]); ok && l.pid == pid {
+			return l.dataDir, true
+		}
+	}
+	return "", false
+}
+
+// describeStubs names running stub processes with the data folder each
+// one's launch event reports, or says "none".
+func describeStubs(pids []int, events []string) string {
+	if len(pids) == 0 {
+		return "none"
+	}
+	parts := make([]string, len(pids))
+	for i, pid := range pids {
+		if d, ok := launchDataDir(events, pid); ok {
+			parts[i] = fmt.Sprintf("pid %d on %s", pid, d)
+		} else {
+			parts[i] = fmt.Sprintf("pid %d, no launch event yet (still starting)", pid)
+		}
+	}
+	return strings.Join(parts, "; ")
+}
+
+// eventTail returns the events at or after index from, at most max of
+// them (the newest), joined for a log line.
+func eventTail(events []string, from, limit int) string {
+	if from < 0 {
+		from = 0
+	}
+	if from >= len(events) {
+		return "none"
+	}
+	tail := events[from:]
+	skipped := 0
+	if len(tail) > limit {
+		skipped = len(tail) - limit
+		tail = tail[skipped:]
+	}
+	s := strings.Join(tail, " | ")
+	if skipped > 0 {
+		s = fmt.Sprintf("(%d earlier omitted) %s", skipped, s)
+	}
+	return s
+}
+
+// launchFailure explains why no launch was seen after event index from,
+// given the stub processes that run.
+func launchFailure(running []int, events []string, from int) string {
+	if len(running) > 0 {
+		return fmt.Sprintf("no new launch event, but the stub already runs (%s): open -b brought that instance forward instead of launching one, so a stub was left running by an earlier step", describeStubs(running, events))
+	}
+	tail := events
+	switch {
+	case from > len(events):
+		tail = nil
+	case from > 0:
+		tail = events[from:]
+	}
+	if len(tail) > 5 {
+		tail = tail[len(tail)-5:]
+	}
+	if len(tail) == 0 {
+		return fmt.Sprintf("no stub process runs and the stub recorded no event after event %d", from)
+	}
+	return fmt.Sprintf("no stub process runs and no launch event was recorded after event %d (last events: %s)", from, strings.Join(tail, " | "))
+}
+
+// parseStubPIDs returns, sorted, the pids of the lines of `ps -o
+// pid=,command=` output whose command is exe, alone or followed by
+// arguments.
+func parseStubPIDs(ps []byte, exe string) []int {
+	var out []int
+	for _, line := range strings.Split(string(ps), "\n") {
+		line = strings.TrimSpace(line)
+		f := strings.IndexAny(line, " \t")
+		if f < 0 {
+			continue
+		}
+		pid, err := strconv.Atoi(line[:f])
+		if err != nil || pid <= 0 {
+			continue
+		}
+		cmd := strings.TrimLeft(line[f:], " \t")
+		if cmd == exe || strings.HasPrefix(cmd, exe+" ") {
+			out = append(out, pid)
+		}
+	}
+	sort.Ints(out)
+	return out
+}
+
+// accountLineRE matches the account line the stub writes to main.log at
+// launch (internal/compat/manifests/6.x.toml, signals.active_org).
+var accountLineRE = regexp.MustCompile(`\[(?:CCD)?ScheduledTasks\] Initialized \{ accountId: '([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})'`)
+
+// lastAccount returns the account of the newest account line in log.
+func lastAccount(log string) (string, bool) {
+	m := accountLineRE.FindAllStringSubmatch(log, -1)
+	if len(m) == 0 {
+		return "", false
+	}
+	return m[len(m)-1][1], true
+}
+
+func containsPID(pids []int, pid int) bool {
+	for _, p := range pids {
+		if p == pid {
+			return true
+		}
+	}
+	return false
+}
+
+// mainLogSize is the offset the stub's next main.log line will start at.
+func (h *harness) mainLogSize() int64 {
+	return fileSize(filepath.Join(h.logDir, "main.log"))
 }
 
 func fileSize(p string) int64 {
