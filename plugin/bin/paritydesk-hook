@@ -1,0 +1,12 @@
+#!/bin/sh
+# Resolves the paritydesk binary from fixed locations only (never from the
+# working directory) and runs `paritydesk hook <event>`. A missing binary or
+# any failure is silent and exits 0, so a session never fails because of
+# this hook. Work item WI-8 adds the version-skew check.
+for b in /opt/homebrew/bin/paritydesk /usr/local/bin/paritydesk "$HOME/go/bin/paritydesk"; do
+  if [ -x "$b" ]; then
+    "$b" hook "$@" 2>/dev/null
+    exit 0
+  fi
+done
+exit 0

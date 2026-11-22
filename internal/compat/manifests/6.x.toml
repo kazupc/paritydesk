@@ -1,0 +1,15 @@
+# Compatibility manifest for Claude desktop 6.x.
+#
+# Placeholder written with the skeleton. Work item WI-3 fills in every row,
+# probe, classification entry and signal from docs/dev/implementation-plan.md
+# (which restates design section 7 and ADR 0003). Values here are key names
+# and file names as they appear on disk; never byte offsets or identifiers
+# from the app bundle.
+
+name = "6.x"
+min_version = "6.0.0"
+max_version = "6.999999.999"
+tested = []
+known_bad = []
+ls_backend = "leveldb"
+compressions = [0, 1]

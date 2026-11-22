@@ -1,0 +1,11 @@
+{
+  "name": "paritydesk",
+  "owner": { "name": "paritydesk maintainers" },
+  "plugins": [
+    {
+      "name": "paritydesk",
+      "source": "./plugin",
+      "description": "Switch the Claude desktop app between accounts from a Code session."
+    }
+  ]
+}
