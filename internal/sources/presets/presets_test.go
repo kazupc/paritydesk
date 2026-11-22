@@ -136,8 +136,13 @@ func TestChangedSourceSecretIsSkipped(t *testing.T) {
 	src := root.AddFolder(t, testkit.FolderSpec{Name: "Claude-s", Replica: rep, Presets: []map[string]any{preset("a", "m1", testkit.Canary)}})
 	dst := root.AddFolder(t, testkit.FolderSpec{Name: "Claude", Replica: rep, Presets: []map[string]any{preset("a", "m2", "old")}})
 	res, _ := syncOps(t, m, src, dst, func() {
-		b, _ := json.Marshal(map[string]any{"state": map[string]any{"presets": []any{preset("a", "m1", "rotated")}}, "version": 0})
+		rotated := []any{preset("a", "m1", "rotated")}
+		b, _ := json.Marshal(map[string]any{"state": map[string]any{"presets": rotated}, "version": testkit.PresetsVersion})
 		testkit.WriteLS(t, src, map[string]string{"persisted.ccd-session-presets." + string(rep.Account): string(b)})
+		f, _ := json.Marshal(map[string]any{"byAccount": map[string]any{string(rep.Account): map[string]any{"presets": rotated}}})
+		if err := os.WriteFile(filepath.Join(src, presets.FileName), f, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	})
 	if len(res.Edits) != 0 {
 		t.Fatalf("edits for a skipped secret: %+v", res.Edits)
@@ -177,5 +182,150 @@ func TestStartedEntriesEditedByPath(t *testing.T) {
 	e := res.Edits[0]
 	if strings.Join(e.Path, "/") != "state/bySessionId/"+testkit.FakeSession(2) || !e.Destructive {
 		t.Fatalf("edit %+v", e)
+	}
+}
+
+// TestMirrorFirstAndStaleLS: the file byAccount[<acct>] mirrors the Local
+// Storage item, so it is read first; a differing Local Storage copy is
+// listed in Stale per preset key, and Local Storage is used only when the
+// file has no entry for the account.
+func TestMirrorFirstAndStaleLS(t *testing.T) {
+	m := testkit.Manifest(t)
+	folder := testkit.NewDataRoot(t).AddFolder(t, testkit.FolderSpec{Name: "Claude", Replica: rep,
+		Presets: []map[string]any{preset("a", "m1", ""), preset("b", "m1", "")}})
+	ls, _ := json.Marshal(map[string]any{"version": testkit.PresetsVersion, "state": map[string]any{
+		"presets": []any{preset("a", "stale", ""), preset("b", "m1", ""), preset("c", "m1", "")}, "fileMirrored": true}})
+	testkit.WriteLS(t, folder, map[string]string{"persisted.ccd-session-presets." + string(rep.Account): string(ls)})
+	s := read(t, rc(t, m, folder))
+	if strings.Join(s.Order, ",") != "preset/a,preset/b" {
+		t.Fatalf("order %v", s.Order)
+	}
+	if !strings.Contains(string(s.Items["preset/a"].Value), `"m1"`) {
+		t.Fatalf("value is not the mirror's: %s", s.Items["preset/a"].Value)
+	}
+	if strings.Join(s.Stale, ",") != "preset/a,preset/c" {
+		t.Fatalf("stale %v", s.Stale)
+	}
+	if err := os.Remove(filepath.Join(folder, presets.FileName)); err != nil {
+		t.Fatal(err)
+	}
+	s = read(t, rc(t, m, folder))
+	if strings.Join(s.Order, ",") != "preset/a,preset/b,preset/c" || len(s.Stale) != 0 {
+		t.Fatalf("without the file: order %v stale %v", s.Order, s.Stale)
+	}
+}
+
+// TestEditsBothCopies: a changed preset is written to the Local Storage
+// item and the file together, and both read back the same.
+func TestEditsBothCopies(t *testing.T) {
+	m := testkit.Manifest(t)
+	root := testkit.NewDataRoot(t)
+	src := root.AddFolder(t, testkit.FolderSpec{Name: "Claude-s", Replica: rep, Presets: []map[string]any{preset("a", "m2", "")}})
+	dst := root.AddFolder(t, testkit.FolderSpec{Name: "Claude", Replica: rep, Presets: []map[string]any{preset("a", "m1", "")}})
+	res, desired := syncOps(t, m, src, dst, nil)
+	locs := map[string]bool{}
+	for _, e := range res.Edits {
+		locs[e.Loc.File+e.Loc.LSKey] = true
+	}
+	if len(locs) != 2 || !locs[presets.FileName] || !locs["persisted.ccd-session-presets."+string(rep.Account)] {
+		t.Fatalf("edited locations %v", locs)
+	}
+	testkit.Apply(t, dst, res.Edits)
+	got := read(t, rc(t, m, dst))
+	if !sources.SameItems(got, desired, false) || len(got.Stale) != 0 {
+		t.Fatalf("after apply: %v stale %v", got.Keys(), got.Stale)
+	}
+}
+
+// TestPerOrgItemNeverTouched: the per-org presets item is observed but not
+// understood; it is never read, and edits never name it.
+func TestPerOrgItemNeverTouched(t *testing.T) {
+	m := testkit.Manifest(t)
+	root := testkit.NewDataRoot(t)
+	src := root.AddFolder(t, testkit.FolderSpec{Name: "Claude-s", Replica: rep, Presets: []map[string]any{preset("a", "m2", "")}})
+	dst := root.AddFolder(t, testkit.FolderSpec{Name: "Claude", Replica: rep, Presets: []map[string]any{preset("b", "m1", "")}})
+	perOrg := "persisted.ccd-session-presets." + string(rep.Account) + "." + string(rep.Org)
+	before, ok := testkit.ReadLS(t, dst)[perOrg]
+	if !ok {
+		t.Fatal("fixture lacks the per-org item")
+	}
+	if _, found := read(t, rc(t, m, dst)).Items["preset/per-org-only"]; found {
+		t.Fatal("the per-org item was read")
+	}
+	res, _ := syncOps(t, m, src, dst, nil)
+	for _, e := range res.Edits {
+		if e.Loc.LSKey == perOrg {
+			t.Fatalf("edit names the per-org item: %+v", e.Loc)
+		}
+	}
+	testkit.Apply(t, dst, res.Edits)
+	if after := testkit.ReadLS(t, dst)[perOrg]; after != before {
+		t.Fatal("the per-org item changed")
+	}
+}
+
+// TestVersionsMatchManifest ties the versions the adapter writes to the
+// manifest's probes.
+func TestVersionsMatchManifest(t *testing.T) {
+	m := testkit.Manifest(t)
+	if spec := testkit.Spec(t, m, model.RowEnvironments, rep); spec.PersistVersion != testkit.PresetsVersion {
+		t.Fatalf("persist_version %d", spec.PersistVersion)
+	}
+	for _, p := range m.Probes {
+		if p.ID == "started-environments-version" && p.Version != presets.StartedVersion {
+			t.Fatalf("started version %d, adapter writes %d", p.Version, presets.StartedVersion)
+		}
+	}
+	root := testkit.NewDataRoot(t)
+	src := root.AddFolder(t, testkit.FolderSpec{Name: "Claude-s", Replica: rep, Presets: []map[string]any{preset("a", "m", "")},
+		StartedEnvironments: map[string]string{testkit.FakeSession(1): "a"}})
+	dst := root.AddFolder(t, testkit.FolderSpec{Name: "Claude", Replica: rep})
+	res, _ := syncOps(t, m, src, dst, nil)
+	testkit.Apply(t, dst, res.Edits)
+	ls := testkit.ReadLS(t, dst)
+	if !strings.Contains(ls["persisted.ccd-session-presets."+string(rep.Account)], `"version":4`) ||
+		!strings.Contains(ls["persisted.ccd-started-environments"], `"version":1`) {
+		t.Fatalf("created items %v", ls)
+	}
+}
+
+// TestDisagreeingCopiesNotWritten: when the target's Local Storage presets
+// differ from its file mirror (an edit the file has not caught up with,
+// or mirroring off), a preset change from the source is not written, so
+// neither copy overwrites the other. Without fileMirrored the Local
+// Storage copy is the one read.
+func TestDisagreeingCopiesNotWritten(t *testing.T) {
+	for _, mirrored := range []bool{false, true} {
+		m := testkit.Manifest(t)
+		root := testkit.NewDataRoot(t)
+		src := root.AddFolder(t, testkit.FolderSpec{Name: "Claude-s", Replica: rep,
+			Presets: []map[string]any{preset("a", "m1", ""), preset("b", "m2", "")}})
+		dst := root.AddFolder(t, testkit.FolderSpec{Name: "Claude", Replica: rep,
+			Presets: []map[string]any{preset("a", "m1", ""), preset("b", "m1", "")}})
+		lsKey := "persisted.ccd-session-presets." + string(rep.Account)
+		ls, _ := json.Marshal(map[string]any{"version": testkit.PresetsVersion, "state": map[string]any{
+			"presets": []any{preset("a", "USEREDIT", ""), preset("b", "m1", "")}, "fileMirrored": mirrored}})
+		testkit.WriteLS(t, dst, map[string]string{lsKey: string(ls)})
+		s := read(t, rc(t, m, dst))
+		if strings.Join(s.Stale, ",") != "preset/a" {
+			t.Fatalf("mirrored=%v: stale %v", mirrored, s.Stale)
+		}
+		if got := strings.Contains(string(s.Items["preset/a"].Value), "USEREDIT"); got == mirrored {
+			t.Fatalf("mirrored=%v: read the wrong copy: %s", mirrored, s.Items["preset/a"].Value)
+		}
+		res, _ := syncOps(t, m, src, dst, nil)
+		for _, e := range res.Edits {
+			// placeDefaults (Local Storage only) may still be written.
+			if e.Loc.File == presets.FileName || (e.Loc.LSKey == lsKey && e.Item != presets.PlaceDefaults) {
+				t.Fatalf("mirrored=%v: presets written while the copies disagree: %+v", mirrored, e)
+			}
+		}
+		if len(res.Skipped) == 0 || res.Skipped[0].Note != presets.NoteCopiesDisagree {
+			t.Fatalf("mirrored=%v: skipped %+v", mirrored, res.Skipped)
+		}
+		testkit.Apply(t, dst, res.Edits)
+		if !strings.Contains(testkit.ReadLS(t, dst)[lsKey], "USEREDIT") {
+			t.Fatalf("mirrored=%v: the Local Storage edit was lost", mirrored)
+		}
 	}
 }

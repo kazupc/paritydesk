@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/kazupc/paritydesk/internal/model"
+	"github.com/kazupc/paritydesk/internal/testkit"
 )
 
 // sessionFields is a manifest-like field list used only by tests.
@@ -12,7 +13,7 @@ func sessionFields() map[string][]string {
 	return map[string][]string{
 		RolePerField:     {"title", "isArchived", "envScopeId", "startedFromEnvironmentId", "model"},
 		RoleMaxTime:      {"lastActivityAt"},
-		RoleRunState:     {"interruptedByQuitAt"},
+		RoleRunState:     {"priorErrorMark"},
 		RoleAccountBound: {"bridgeSessionIds"},
 		RoleParent:       {"parentSessionId"},
 		RolePermission:   {"permissionMode"},
@@ -119,9 +120,9 @@ func TestSessionsPermissionCap(t *testing.T) {
 }
 
 func TestSessionsRunStateAndAccountBound(t *testing.T) {
-	newRec := rec(t, 4, `"interruptedByQuitAt":5,"bridgeSessionIds":["l"]`, 50)
-	targetKnown := rec(t, 5, `"interruptedByQuitAt":9,"bridgeSessionIds":["e"],"title":"x"`, 10)
-	leavingKnown := rec(t, 5, `"interruptedByQuitAt":1,"bridgeSessionIds":["l"],"title":"y"`, 70)
+	newRec := rec(t, 4, `"priorErrorMark":5,"bridgeSessionIds":["l"]`, 50)
+	targetKnown := rec(t, 5, `"priorErrorMark":9,"bridgeSessionIds":["e"],"title":"x"`, 10)
+	leavingKnown := rec(t, 5, `"priorErrorMark":1,"bridgeSessionIds":["l"],"title":"y"`, 70)
 	pol := sessPolicy()
 	in := input(model.RowSessions,
 		snap(model.RowSessions, newRec, leavingKnown), snap(model.RowSessions, targetKnown),
@@ -132,9 +133,9 @@ func TestSessionsRunStateAndAccountBound(t *testing.T) {
 		name, key, field string
 		want             any
 	}{
-		{"run state cleared on new copy", fakeSession(4), "interruptedByQuitAt", nil},
+		{"run state cleared on new copy", fakeSession(4), "priorErrorMark", nil},
 		{"account bound carried on new copy", fakeSession(4), "bridgeSessionIds", []any{"l"}},
-		{"run state kept from target", fakeSession(5), "interruptedByQuitAt", float64(9)},
+		{"run state kept from target", fakeSession(5), "priorErrorMark", float64(9)},
 		{"account bound kept from target", fakeSession(5), "bridgeSessionIds", []any{"e"}},
 		{"other edits carried", fakeSession(5), "title", "y"},
 	}
@@ -296,6 +297,192 @@ func TestSessionExcluderFailsClosed(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := sessionExcluder(tc.exclude, tc.field)(tc.key, tc.it); got != tc.want {
 				t.Fatalf("excluded = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// manifestFields returns the sessions row's field lists from the embedded
+// manifest, so these tests exercise the observed field names.
+func manifestFields(t *testing.T) map[string][]string {
+	t.Helper()
+	s, ok := testkit.Manifest(t).Row(model.RowSessions)
+	if !ok {
+		t.Fatal("no sessions row")
+	}
+	return s.Fields
+}
+
+func manifestPolicy(t *testing.T) Policy {
+	p := openPolicy()
+	p.Fields = manifestFields(t)
+	return p
+}
+
+// TestSessionsSecurityGrantsNeverCarried: the per-session security grants
+// never cross accounts. A copy new to the target carries none of them; a
+// record the target knows keeps the target's own grants, including their
+// absence. Account-bound fields keep the target's values on known records.
+func TestSessionsSecurityGrantsNeverCarried(t *testing.T) {
+	grants := `"chromePermissionMode":"skip_all_permission_checks","cuAllowedApps":["app.one"],` +
+		`"cuGrantFlags":{"clipboardRead":true,"clipboardWrite":true,"systemKeyCombos":true},` +
+		`"sessionPermissionUpdates":[{"type":"addDirectories","destination":"session","directories":["/tmp/x"]}],` +
+		`"alwaysAllowedReasons":["r1"],"remoteControlUserEnabled":true,"artifactsMcpVouchedCalls":["c1"]`
+	newRec := rec(t, 20, `"title":"n",`+grants+`,"publishedArtifacts":[{"url":"u"}]`, 50)
+	targetKnown := rec(t, 21, `"title":"x","chromePermissionMode":"ask","cuAllowedApps":[],"publishedArtifacts":[{"url":"mine"}],"remoteControlUserEnabled":false`, 10)
+	leavingKnown := rec(t, 21, `"title":"y",`+grants+`,"publishedArtifacts":[{"url":"theirs"}]`, 70)
+	in := input(model.RowSessions,
+		snap(model.RowSessions, newRec, leavingKnown), snap(model.RowSessions, targetKnown),
+		snap(model.RowSessions, targetKnown), snap(model.RowSessions, targetKnown),
+		snap(model.RowSessions, targetKnown), manifestPolicy(t))
+	out := mustMerge(t, model.RowSessions, in)
+	grantFields := manifestFields(t)[RoleGrant]
+	// The remote-control opt-in and vouched calls are opt-ins of one
+	// account, so they are grants: a copy new to another account has
+	// neither.
+	if len(grantFields) != 7 {
+		t.Fatalf("grant fields %v", grantFields)
+	}
+	n := out.Desired.Items[fakeSession(20)]
+	for _, f := range grantFields {
+		if v := field(t, n, f); v != nil {
+			t.Errorf("new copy carries %s = %v", f, v)
+		}
+	}
+	if field(t, n, "title") != "n" || fmt.Sprint(field(t, n, "publishedArtifacts")) == "" {
+		t.Errorf("new copy lost other fields: %s", n.Value)
+	}
+	k := out.Desired.Items[fakeSession(21)]
+	want := map[string]any{"chromePermissionMode": "ask", "cuAllowedApps": "[]", "cuGrantFlags": nil,
+		"sessionPermissionUpdates": nil, "alwaysAllowedReasons": nil, "title": "y",
+		"publishedArtifacts": "[map[url:mine]]", "remoteControlUserEnabled": false}
+	for f, w := range want {
+		got := field(t, k, f)
+		if fmt.Sprint(got) != fmt.Sprint(w) && !(w == nil && got == nil) {
+			t.Errorf("known record %s = %v, want %v", f, got, w)
+		}
+	}
+	if field(t, out.Canonical.Items[fakeSession(21)], "chromePermissionMode") != "skip_all_permission_checks" {
+		t.Error("canonical must keep the leaving side's record unchanged")
+	}
+}
+
+// TestSessionsParentRoles: every observed parent field (nested ones
+// included) keeps a family whole, a parent that no input holds leaves the
+// child as it is, an excluded parent stays private, and rewind edges do
+// not count as parents.
+func TestSessionsParentRoles(t *testing.T) {
+	parentKey := fakeSession(30)
+	parent := rec(t, 30, `"title":"p","cwd":"/work/p"`, 100)
+	for _, tc := range []struct {
+		name, link string
+		revived    bool
+	}{
+		{"forkedFromSessionId", fmt.Sprintf(`"forkedFromSessionId":%q`, parentKey), true},
+		{"spawnedFrom.sessionId", fmt.Sprintf(`"spawnedFrom":{"sessionId":%q,"taskId":"t"}`, parentKey), true},
+		{"startChain.firstSessionId", fmt.Sprintf(`"startChain":{"depth":1,"firstSessionId":%q}`, parentKey), true},
+		{"rewind edge is not a parent", fmt.Sprintf(`"rewindEdges":[{"id":"e","parent":%q,"child":"c"}]`, parentKey), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			child := rec(t, 31, tc.link+`,"title":"c","cwd":"/work/c"`, 100)
+			childEdited := rec(t, 31, tc.link+`,"title":"c2","cwd":"/work/c"`, 600)
+			lCur := withTombs(snap(model.RowSessions), model.Tombstone{Key: parentKey, At: 500}, model.Tombstone{Key: child.Key, At: 500})
+			both := snap(model.RowSessions, parent, child)
+			in := input(model.RowSessions, lCur, both, snap(model.RowSessions, parent, childEdited), both, both, manifestPolicy(t))
+			out := mustMerge(t, model.RowSessions, in)
+			if _, ok := out.Desired.Items[child.Key]; !ok {
+				t.Fatal("edited child not revived")
+			}
+			if _, ok := out.Desired.Items[parentKey]; ok != tc.revived {
+				t.Fatalf("parent present = %v, want %v", ok, tc.revived)
+			}
+		})
+	}
+	t.Run("parent absent everywhere", func(t *testing.T) {
+		child := rec(t, 32, fmt.Sprintf(`"forkedFromSessionId":%q,"title":"c"`, fakeSession(39)), 100)
+		in := input(model.RowSessions, snap(model.RowSessions, child), snap(model.RowSessions),
+			snap(model.RowSessions), snap(model.RowSessions), snap(model.RowSessions), manifestPolicy(t))
+		out := mustMerge(t, model.RowSessions, in)
+		got, ok := out.Desired.Items[child.Key]
+		if !ok || field(t, got, "forkedFromSessionId") != fakeSession(39) {
+			t.Fatalf("child not carried as is: %v", out.Desired.Keys())
+		}
+		if len(out.Desired.Items) != 1 {
+			t.Fatalf("desired %v", out.Desired.Keys())
+		}
+	})
+	t.Run("parent absent on the target", func(t *testing.T) {
+		child := rec(t, 33, fmt.Sprintf(`"spawnedFrom":{"sessionId":%q}`, parentKey), 100)
+		in := input(model.RowSessions, snap(model.RowSessions, parent, child), snap(model.RowSessions),
+			snap(model.RowSessions), snap(model.RowSessions), snap(model.RowSessions), manifestPolicy(t))
+		out := mustMerge(t, model.RowSessions, in)
+		for _, k := range []string{child.Key, parentKey} {
+			if !hasChange(out, model.ChangeAdded, k) {
+				t.Errorf("%s not added: %+v", k, out.Changes)
+			}
+		}
+	})
+	t.Run("excluded parent stays private", func(t *testing.T) {
+		child := rec(t, 34, fmt.Sprintf(`"forkedFromSessionId":%q,"cwd":"/work/c"`, parentKey), 100)
+		pol := manifestPolicy(t)
+		pol.Exclude = []string{"/work/p/**"}
+		in := input(model.RowSessions, snap(model.RowSessions, parent, child), snap(model.RowSessions),
+			snap(model.RowSessions), snap(model.RowSessions), snap(model.RowSessions), pol)
+		out := mustMerge(t, model.RowSessions, in)
+		if _, ok := out.Desired.Items[child.Key]; !ok {
+			t.Fatal("child not carried")
+		}
+		if _, ok := out.Canonical.Items[parentKey]; ok {
+			t.Fatal("an excluded parent reached canonical")
+		}
+		if _, ok := out.Desired.Items[parentKey]; ok {
+			t.Fatal("an excluded parent reached the target")
+		}
+		if _, ok := out.LeavingOverlay.Items[parentKey]; !ok {
+			t.Fatal("the excluded parent left its own overlay")
+		}
+	})
+}
+
+// TestSessionsWorktreeGroup: a session's worktree fields move as one unit
+// in a field merge, so a record never pairs one side's worktree name with
+// the other side's path or branch.
+func TestSessionsWorktreeGroup(t *testing.T) {
+	wt := func(name string) string {
+		return fmt.Sprintf(`"worktreeName":%q,"worktreePath":"/tmp/wt/%s","branch":"wt/%s","sourceBranch":"main"`, name, name, name)
+	}
+	base := rec(t, 40, `"title":"old",`+wt("a"), 100)
+	renamed := rec(t, 40, `"title":"new",`+wt("a"), 150)
+	moved := rec(t, 40, `"title":"old",`+wt("b"), 120)
+	movedC := rec(t, 40, `"title":"new",`+wt("c"), 160)
+	for _, tc := range []struct {
+		name     string
+		leaving  model.Item
+		entering model.Item
+		title    string
+		wt       string
+		conflict bool
+	}{
+		{"only one side moved the worktree", renamed, moved, "new", "b", false},
+		{"both sides moved it", movedC, moved, "new", "c", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := input(model.RowSessions,
+				snap(model.RowSessions, tc.leaving), snap(model.RowSessions, base),
+				snap(model.RowSessions, tc.entering), snap(model.RowSessions, base),
+				snap(model.RowSessions, base), manifestPolicy(t))
+			out := mustMerge(t, model.RowSessions, in)
+			got := out.Desired.Items[fakeSession(40)]
+			if field(t, got, "title") != tc.title {
+				t.Fatalf("title %v", field(t, got, "title"))
+			}
+			for f, want := range map[string]string{"worktreeName": tc.wt, "worktreePath": "/tmp/wt/" + tc.wt, "branch": "wt/" + tc.wt} {
+				if field(t, got, f) != want {
+					t.Errorf("%s = %v, want %s", f, field(t, got, f), want)
+				}
+			}
+			if (len(out.Conflicts) > 0) != tc.conflict {
+				t.Errorf("conflicts %+v, want %v", out.Conflicts, tc.conflict)
 			}
 		})
 	}

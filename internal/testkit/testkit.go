@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -38,7 +39,8 @@ func FakeUUID(n int) string { return fmt.Sprintf("00000000-0000-4000-8000-%012x"
 // FakeSession returns the n-th fake local session id.
 func FakeSession(n int) string { return "local_" + FakeUUID(n) }
 
-// Session is one synthetic session record.
+// Session is one synthetic session record. Records carry the member names
+// and nesting observed on app 6.28899.2 (ADR 0004).
 type Session struct {
 	N              int // FakeSession(N)
 	Title          string
@@ -46,9 +48,21 @@ type Session struct {
 	LastActivityAt int64
 	PermissionMode string
 	EnvScopeID     string
-	Worktree       string
-	CLISessionID   string
-	Extra          map[string]any // unknown fields to prove preservation
+	// Worktree is the worktree's absolute path; the record then also
+	// names the worktree (its base name) and its branches.
+	Worktree     string
+	CLISessionID string
+	Extra        map[string]any // more fields, or unknown fields to prove preservation
+}
+
+// Decoy is another account's session directory left in a data folder
+// (claude-code-sessions/<acct>/<org> of a replica that is not the
+// folder's). Adapters must never read, merge or write it.
+type Decoy struct {
+	Replica  model.Replica
+	Sessions []Session
+	// Tombstones maps session N to deletion time, as in FolderSpec.
+	Tombstones map[int]int64
 }
 
 // FolderSpec describes one data folder.
@@ -57,12 +71,13 @@ type FolderSpec struct {
 	Replica     model.Replica
 	WithToken   bool // plant Canary in config.json
 	Sessions    []Session
-	Tombstones  map[int]int64 // session N -> deletion time
+	Tombstones  map[int]int64 // session N -> deletion time (a bare JSON number)
 	Presets     []map[string]any
 	GroupOrder  []string
 	PinnedOrder []string
 	AppPrefs    map[string]any
 	MCPServers  map[string]any
+	// Worktrees are git-worktrees.json entries keyed by worktree name.
 	Worktrees   map[string]any
 	WindowState []byte
 	// LS adds raw Local Storage items by name. They are written last and
@@ -76,13 +91,19 @@ type FolderSpec struct {
 	// scheduled-tasks.json when non-nil.
 	Backlog        []map[string]any
 	ScheduledTasks []map[string]any
-	// WaitingInput holds files under waiting-input/, by relative path.
+	// WaitingInput holds files under waiting-input/, by relative path. The
+	// directory itself is always created, as the app does.
 	WaitingInput map[string][]byte
 	// StartedEnvironments maps session ids to environment ids
 	// (persisted.ccd-started-environments).
 	StartedEnvironments map[string]string
 	// TmpRecords holds app-written local_<id>.json.tmp files by session N.
 	TmpRecords map[int]map[string]any
+	// Decoys are other accounts' session directories in this folder.
+	Decoys []Decoy
+	// Extras are top-level files the app keeps that paritydesk never
+	// touches (relative path -> content).
+	Extras map[string][]byte
 }
 
 // DataRoot is a temporary data root.
@@ -106,16 +127,26 @@ func (d *DataRoot) AddFolder(t testing.TB, spec FolderSpec) string {
 	w := &writer{t: t, folder: folder}
 	w.mkdir(".")
 	w.config(spec)
-	w.sessions(spec)
+	w.sessions(spec.Replica, spec.Sessions, spec.Tombstones)
+	w.sessionExtras(spec)
+	for _, dec := range spec.Decoys {
+		w.sessions(dec.Replica, dec.Sessions, dec.Tombstones)
+		w.mkdir(sessDir(dec.Replica) + "/waiting-input")
+	}
 	w.tasks(spec)
 	ls := map[string]string{}
 	w.presets(spec, ls)
 	w.mirror(spec, ls)
 	if spec.Worktrees != nil {
-		w.json("git-worktrees.json", map[string]any{"worktrees": spec.Worktrees, "untrackedDirGc": map[string]any{}, "pendingTombstones": []any{}}, true)
+		w.json("git-worktrees.json", map[string]any{"schemaVersion": 2, "worktrees": spec.Worktrees,
+			"originPins": map[string]any{}, "originUrls": map[string]any{},
+			"pendingTombstones": []any{}, "untrackedDirGc": map[string]any{}}, true)
 	}
 	if spec.WindowState != nil {
 		w.file("window-state.json", spec.WindowState, 0o644)
+	}
+	for rel, data := range spec.Extras {
+		w.file(rel, data, 0o600)
 	}
 	for k, v := range spec.LS {
 		ls[k] = v
@@ -177,29 +208,52 @@ func (w *writer) config(spec FolderSpec) {
 	w.json("config.json", cfg, true)
 }
 
-func (w *writer) sessDir(spec FolderSpec) string {
-	return "claude-code-sessions/" + string(spec.Replica.Account) + "/" + string(spec.Replica.Org)
+func sessDir(r model.Replica) string {
+	return "claude-code-sessions/" + string(r.Account) + "/" + string(r.Org)
 }
 
-func record(s Session) map[string]any {
-	rec := map[string]any{
-		"sessionId":      FakeSession(s.N),
-		"title":          s.Title,
-		"isArchived":     s.Archived,
-		"lastActivityAt": s.LastActivityAt,
-		"cwd":            "/tmp/project",
+// Record returns the record object AddFolder writes for s.
+func Record(s Session) map[string]any {
+	mode := s.PermissionMode
+	if mode == "" {
+		mode = "default"
 	}
-	if s.PermissionMode != "" {
-		rec["permissionMode"] = s.PermissionMode
+	cli := s.CLISessionID
+	if cli == "" {
+		cli = FakeUUID(50000 + s.N)
+	}
+	rec := map[string]any{
+		"sessionId":                 FakeSession(s.N),
+		"cliSessionId":              cli,
+		"cwd":                       "/tmp/project",
+		"originCwd":                 "/tmp/project",
+		"createdAt":                 s.LastActivityAt / 2,
+		"lastActivityAt":            s.LastActivityAt,
+		"lastFocusedAt":             s.LastActivityAt,
+		"isArchived":                s.Archived,
+		"title":                     s.Title,
+		"titleSource":               "user",
+		"model":                     "model-a",
+		"effort":                    "high",
+		"permissionMode":            mode,
+		"chromePermissionMode":      "skip_all_permission_checks",
+		"classifierSummaryEnabled":  false,
+		"alwaysAllowedReasons":      []any{},
+		"sessionPermissionUpdates":  []any{},
+		"remoteMcpServersConfig":    []any{},
+		"spawnSeed":                 map[string]any{},
+		"interruptedAwaitingPerson": nil,
+		"steeredByRemoteClient":     nil,
 	}
 	if s.EnvScopeID != "" {
 		rec["envScopeId"] = s.EnvScopeID
 	}
 	if s.Worktree != "" {
+		name := path.Base(s.Worktree)
+		rec["worktreeName"] = name
 		rec["worktreePath"] = s.Worktree
-	}
-	if s.CLISessionID != "" {
-		rec["cliSessionId"] = s.CLISessionID
+		rec["branch"] = "wt/" + name
+		rec["sourceBranch"] = "main"
 	}
 	for k, v := range s.Extra {
 		rec[k] = v
@@ -207,22 +261,20 @@ func record(s Session) map[string]any {
 	return rec
 }
 
-func (w *writer) sessions(spec FolderSpec) {
-	dir := w.sessDir(spec)
+// sessions writes one replica's records, tombstones and archive index.
+func (w *writer) sessions(r model.Replica, list []Session, tombs map[int]int64) {
+	dir := sessDir(r)
 	w.mkdir(dir)
 	archived := []string{}
-	for _, s := range spec.Sessions {
-		w.json(dir+"/"+FakeSession(s.N)+".json", record(s), true)
+	for _, s := range list {
+		w.json(dir+"/"+FakeSession(s.N)+".json", Record(s), true)
 		if s.Archived {
 			archived = append(archived, FakeSession(s.N))
 		}
 	}
-	for n, rec := range spec.TmpRecords {
-		w.json(dir+"/"+FakeSession(n)+".json.tmp", rec, false)
-	}
-	for n, at := range spec.Tombstones {
+	for n, at := range tombs {
 		rel := dir + "/deleted_" + FakeUUID(n)
-		w.json(rel, map[string]any{"deletedAt": at}, false)
+		w.file(rel, []byte(fmt.Sprint(at)), 0o644)
 		mt := time.UnixMilli(at)
 		if err := os.Chtimes(filepath.Join(w.folder, filepath.FromSlash(rel)), mt, mt); err != nil {
 			w.t.Fatal(err)
@@ -233,31 +285,59 @@ func (w *writer) sessions(spec FolderSpec) {
 		V        int      `json:"v"`
 		Archived []string `json:"archived"`
 	}{1, archived}, false)
+}
+
+// sessionExtras writes tmp candidates and waiting-input/ (always a
+// directory) of the folder's own replica.
+func (w *writer) sessionExtras(spec FolderSpec) {
+	dir := sessDir(spec.Replica)
+	for n, rec := range spec.TmpRecords {
+		w.json(dir+"/"+FakeSession(n)+".json.tmp", rec, false)
+	}
+	w.mkdir(dir + "/waiting-input")
 	for rel, data := range spec.WaitingInput {
 		w.file(dir+"/waiting-input/"+rel, data, 0o600)
 	}
 }
 
 func (w *writer) tasks(spec FolderSpec) {
-	dir := w.sessDir(spec)
+	dir := sessDir(spec.Replica)
 	if spec.Backlog != nil {
-		w.json(dir+"/backlog/tasks.json", map[string]any{"items": spec.Backlog, "version": 1}, true)
+		w.json(dir+"/backlog/tasks.json", map[string]any{"version": 1, "items": spec.Backlog}, true)
 	}
 	if spec.ScheduledTasks != nil {
-		w.json(dir+"/scheduled-tasks.json", map[string]any{"scheduledTasks": spec.ScheduledTasks, "lastCheck": 1}, true)
+		w.json(dir+"/scheduled-tasks.json", map[string]any{"scheduledTasks": spec.ScheduledTasks,
+			"recordedSkips": map[string]any{}, "dayFieldsOrBoundaryStamped": true, "sundayAliasBoundaryStamped": true}, true)
 	}
 }
 
+// PresetsVersion is the persisted version of the presets items.
+const PresetsVersion = 4
+
+func builtIns() map[string]any {
+	return map[string]any{"local": map[string]any{"settings": map[string]any{"effort": "high", "modelId": "model-a"}}}
+}
+
+// presets writes the presets item, its file mirror byAccount.<acct>, the
+// per-org presets item (which paritydesk never reads) and the started
+// environments map.
 func (w *writer) presets(spec FolderSpec, ls map[string]string) {
 	acct := string(spec.Replica.Account)
 	if spec.Presets != nil {
-		state := map[string]any{"presets": spec.Presets, "placeDefaults": map[string]any{}, "seededFromDraft": true}
-		ls["persisted.ccd-session-presets."+acct] = string(mustJSON(w.t, map[string]any{"state": state, "version": 0}, false))
-		file := map[string]any{"byAccount": map[string]any{acct: map[string]any{"presets": spec.Presets, "seededFromDraft": true}}}
+		state := map[string]any{"presets": spec.Presets, "builtIns": builtIns(),
+			"placeDefaults": map[string]any{"local::/tmp/project": map[string]any{"effort": "high"}},
+			"autoStartedAt": 0, "fileMirrored": true, "seededFromDraft": true, "seededFromHistory": true,
+			"startedFrom": []any{}, "startedPlaces": []any{}}
+		ls["persisted.ccd-session-presets."+acct] = string(mustJSON(w.t, map[string]any{"state": state, "version": PresetsVersion}, false))
+		org := map[string]any{"presets": []any{map[string]any{"id": "per-org-only", "name": "per org"}},
+			"builtIns": builtIns(), "placeDefaults": map[string]any{}, "roamingUnsentAt": 0}
+		ls["persisted.ccd-session-presets."+acct+"."+string(spec.Replica.Org)] = string(mustJSON(w.t, map[string]any{"state": org, "version": PresetsVersion}, false))
+		file := map[string]any{"byAccount": map[string]any{acct: map[string]any{"presets": spec.Presets, "builtIns": builtIns(), "seededFromDraft": true}}}
 		w.file("ccd-session-presets.json", mustJSON(w.t, file, true), 0o600)
 	}
 	if spec.StartedEnvironments != nil {
-		st := map[string]any{"state": map[string]any{"bySessionId": spec.StartedEnvironments}, "version": StoreVersion}
+		st := map[string]any{"state": map[string]any{"bySessionId": spec.StartedEnvironments,
+			"backfill": map[string]any{"before": 0, "version": 1}}, "version": StoreVersion}
 		ls["persisted.ccd-started-environments"] = string(mustJSON(w.t, st, false))
 	}
 }
@@ -266,8 +346,12 @@ func envelope(t testing.TB, v any) string {
 	return string(mustJSON(t, map[string]any{"value": v, "tabId": LSTabID, "timestamp": LSTimestamp}, false))
 }
 
+// StoreBackupKey is the app's backup copy of dframe-store, written next
+// to it by AddFolder; paritydesk never writes it.
+const StoreBackupKey = "dframe-store.backup.v1"
+
 // mirror writes claude_desktop_config.json and the LS copies of every
-// mirrored key.
+// mirrored key, including dframe-store and its backup copy.
 func (w *writer) mirror(spec FolderSpec, ls map[string]string) {
 	if spec.AppPrefs == nil && spec.GroupOrder == nil && spec.PinnedOrder == nil && spec.SidebarView == nil && spec.MCPServers == nil {
 		return
@@ -278,14 +362,16 @@ func (w *writer) mirror(spec FolderSpec, ls map[string]string) {
 	for k, v := range spec.AppPrefs {
 		prefs[k] = v
 	}
-	ep := map[string]any{"claude-code-preferred-editor": "default"}
-	store := map[string]any{"lastSeen": 1}
+	ep := map[string]any{"dframe-group-scopes": map[string]any{}, "starred-local-code-sessions": []any{}}
+	store := map[string]any{"homeProjectsPinnedOrder": []any{}, "collapsedGroups": []any{}, "collapsedFamilies": []any{},
+		"openedGroups": []any{}, "sidebarWidth": 280, "lastKnownMode": "code",
+		"customGroupsByScope": map[string]any{scope: map[string]any{"groups": []any{}, "assignments": map[string]any{}, "order": []any{}}}}
 	if spec.GroupOrder != nil {
 		ep["code-projects-order."+acct] = spec.GroupOrder
 		ls["LSS-persisted.code-projects-order."+acct] = envelope(w.t, spec.GroupOrder)
 	}
 	if spec.PinnedOrder != nil {
-		slice := map[string]any{"pinnedOrder": spec.PinnedOrder, "collapsedGroups": []string{}}
+		slice := map[string]any{"pinnedOrder": spec.PinnedOrder, "homeProjectsPinnedOrder": []string{}}
 		ep["dframe-local-slice"] = slice
 		ls["LSS-persisted.dframe-local-slice"] = envelope(w.t, slice)
 		store["pinnedOrder"] = spec.PinnedOrder
@@ -297,10 +383,12 @@ func (w *writer) mirror(spec FolderSpec, ls map[string]string) {
 		store["codeSidebarByScope"] = secs
 	}
 	if spec.PinnedOrder != nil || spec.SidebarView != nil {
-		ls["dframe-store"] = string(mustJSON(w.t, map[string]any{"state": store, "version": StoreVersion}, false))
+		doc := string(mustJSON(w.t, map[string]any{"version": StoreVersion, "shared": 1, "state": store}, false))
+		ls["dframe-store"] = doc
+		ls[StoreBackupKey] = doc
 	}
 	prefs["epitaxyPrefs"] = ep
-	cfg := map[string]any{"preferences": prefs}
+	cfg := map[string]any{"preferences": prefs, "coworkUserFilesPath": "/Users/test/cowork"}
 	if spec.MCPServers != nil {
 		cfg["mcpServers"] = spec.MCPServers
 	}

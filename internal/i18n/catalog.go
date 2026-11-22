@@ -46,6 +46,7 @@ const (
 	AskPurge          Msg = "ask.purge"
 	AskUninstall      Msg = "ask.uninstall"
 	AskAlias          Msg = "ask.alias"
+	AskManaged        Msg = "ask.managed"
 	ConfirmExpired    Msg = "confirm.expired"
 	ConfirmNoTTY      Msg = "confirm.no_tty"
 	Declined          Msg = "confirm.declined"
@@ -124,8 +125,11 @@ const (
 	RollbackConflict Msg = "rollback.conflict"
 	RebaseDone       Msg = "rebase.done"
 
-	DoctorHookBinary Msg = "doctor.hook_binary"
-	InitDone         Msg = "init.done"
+	DoctorHookBinary   Msg = "doctor.hook_binary"
+	DoctorBundleDone   Msg = "doctor.bundle_done"
+	DoctorBundleExists Msg = "doctor.bundle_exists"
+	DoctorBundleInData Msg = "doctor.bundle_in_data"
+	InitDone           Msg = "init.done"
 
 	GenerationsNone Msg = "generations.none"
 	GenerationShow  Msg = "generation.show"
@@ -191,6 +195,7 @@ var catalog = map[Msg]string{
 	AskPurge:          "Remove every backup generation? This cannot be undone. [y/N] ",
 	AskUninstall:      "Remove paritydesk's state? Every data folder is kept. [y/N] ",
 	AskAlias:          "Alias for the account in Claude now (a-z, 0-9, -): ",
+	AskManaged:        "Is the account of %s managed by an employer or client? Preset secrets never cross a managed account's boundary. [y/N] ",
 	ConfirmExpired:    "the confirmation expired; run the command again",
 	ConfirmNoTTY:      "no terminal to ask; run the command in Terminal, or pass --yes",
 	Declined:          "declined; nothing was changed",
@@ -268,8 +273,11 @@ var catalog = map[Msg]string{
 	RollbackConflict: "Kept newer value (conflict): %s",
 	RebaseDone:       "Every sync base was dropped; the next switch is a first sync.",
 
-	DoctorHookBinary: "Recorded this binary for the plugin hook: %s",
-	InitDone:         "paritydesk is set up; the account in Claude is profile %s.",
+	DoctorHookBinary:   "Recorded this binary for the plugin hook: %s",
+	DoctorBundleDone:   "Support archive written: %s (mode 0600). Read it before you attach it to an issue.",
+	DoctorBundleExists: "The file already exists; choose a new name.",
+	DoctorBundleInData: "The support archive must not be written inside a Claude data folder.",
+	InitDone:           "paritydesk is set up; the account in Claude is profile %s.",
 
 	GenerationsNone: "No backup generations.",
 	GenerationShow:  "Generation %d (run %s, profile %s, created %s, complete: %s)",

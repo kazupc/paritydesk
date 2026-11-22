@@ -1,0 +1,110 @@
+# GoReleaser v2 configuration for paritydesk releases.
+#
+# The release workflow (.github/workflows/release.yml) runs this on a v*
+# tag after the tests and govulncheck pass. To try it locally without
+# publishing anything:
+#
+#   go run github.com/goreleaser/goreleaser/v2@v2.18.3 release --snapshot --clean
+#
+# Builds are designed to be reproducible: -trimpath, no build id, CGO
+# off, and every timestamp (binary mtime, archive entries) comes from the
+# commit, not from the clock. A rebuild must use the same Go version as
+# the release (release checklist step 31); this has not been checked yet. paritydesk is not notarized (there is no Developer ID);
+# see docs/install.md.
+version: 2
+
+project_name: paritydesk
+
+before:
+  hooks:
+    - go mod verify
+
+builds:
+  - id: paritydesk
+    main: ./cmd/paritydesk
+    binary: paritydesk
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - arm64
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -buildid=
+      - -X github.com/kazupc/paritydesk/internal/cli.Version={{ .Version }}
+      - -X github.com/kazupc/paritydesk/internal/cli.Commit={{ .FullCommit }}
+      - -X github.com/kazupc/paritydesk/internal/cli.Date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+universal_binaries:
+  - id: paritydesk-universal
+    ids:
+      - paritydesk
+    name_template: paritydesk
+    # Keep the single-architecture binaries as well.
+    replace: false
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: paritydesk
+    ids:
+      - paritydesk
+      - paritydesk-universal
+    formats:
+      - tar.gz
+    # paritydesk_0.1.0_darwin_arm64.tar.gz, ..._darwin_amd64.tar.gz and
+    # ..._darwin_universal.tar.gz (the universal binary's Arch is "all").
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ if eq .Arch "all" }}universal{{ else }}{{ .Arch }}{{ end }}
+    builds_info:
+      mtime: "{{ .CommitDate }}"
+    files:
+      - src: LICENSE
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: README.md
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: CHANGELOG.md
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: PRIVACY.md
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: SECURITY.md
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: DISCLAIMER.md
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: docs/install.md
+        info:
+          mtime: "{{ .CommitDate }}"
+
+# The source archive is what the Homebrew formula builds from when it is
+# pointed at a release asset instead of the tag tarball.
+source:
+  enabled: true
+  name_template: "{{ .ProjectName }}_{{ .Version }}_source"
+
+checksum:
+  name_template: SHA256SUMS
+  algorithm: sha256
+
+# An SBOM is optional. It needs syft on the runner; enable it by
+# uncommenting the block and installing syft in the release workflow.
+# sboms:
+#   - artifacts: archive
+
+release:
+  # A person reviews the draft and publishes it (release checklist).
+  draft: true
+  prerelease: auto
+  name_template: "paritydesk {{ .Version }}"
+
+changelog:
+  # Release notes come from CHANGELOG.md, pasted by hand into the draft.
+  disable: true

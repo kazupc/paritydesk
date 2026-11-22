@@ -369,7 +369,15 @@ func (r *run) resolve(ctx context.Context) error {
 	}
 	r.folders = folders
 	var hints profile.Hints
-	if org, found, err := d.App.ActiveOrg(ctx, r.sig); err == nil && found {
+	// main.log is shared by every account: the org hint counts only when
+	// its line names the account the active folder holds.
+	var acct ids.AccountID
+	for _, f := range folders {
+		if f.Name == ids.DefaultFolder && f.Identity != nil {
+			acct = f.Identity.Account
+		}
+	}
+	if org, found, err := d.App.ActiveOrg(ctx, r.sig, acct); err == nil && found {
 		hints.ActiveOrg = org
 	}
 	res, err := d.Resolve(d.Config, r.root, folders, hints)
@@ -447,6 +455,8 @@ func (r *run) gate(ctx context.Context) error {
 		in.CompressionOK = ok
 	}
 	in.NativeMultiAccount = r.nativeMulti()
+	in.Downgraded = downgraded(r.root.LastAppVersion, r.bundle.Version)
+	in.SQLiteLS = sqliteLS(r.sPath) || (r.kind != state.RunSync && sqliteLS(r.tPath))
 	r.decision = d.Compat.Decide(in)
 	r.res.Mode = r.decision.Mode
 	switch r.decision.Mode {
@@ -507,6 +517,27 @@ func (r *run) formatOK(ctx context.Context) (bool, error) {
 	}
 	return true, nil
 }
+
+// downgraded reports whether the installed app version is older than the
+// one the last committed run used.
+func downgraded(last, now string) bool {
+	return last != "" && now != "" && compat.CompareVersions(now, last) < 0
+}
+
+// sqliteLS reports whether a data folder has Chromium's SQLite Local
+// Storage backend (<partition>/LocalStorage, next to the LevelDB
+// "Local Storage"), which paritydesk cannot read; every Local Storage row
+// is then refused (swap-only).
+func sqliteLS(folder string) bool {
+	if folder == "" {
+		return false
+	}
+	_, err := os.Lstat(filepath.Join(folder, sqliteLSName))
+	return err == nil
+}
+
+// sqliteLSName is the SQLite Local Storage entry of a data folder.
+const sqliteLSName = "LocalStorage"
 
 // nativeMulti reports signs of the app's own multi-account mode.
 func (r *run) nativeMulti() bool {

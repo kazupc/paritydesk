@@ -2,13 +2,16 @@ package compat_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/kazupc/paritydesk/internal/app"
 	"github.com/kazupc/paritydesk/internal/compat"
+	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/testkit"
 )
@@ -58,10 +61,87 @@ func TestEmbeddedManifest(t *testing.T) {
 		t.Errorf("preset limits %v", env.Limits)
 	}
 	sess, _ := m.Row(model.RowSessions)
-	for _, role := range []string{"per_field", "account_bound", "run_state", "max_time", "parent"} {
+	for _, role := range []string{"per_field", "account_bound", "grant", "run_state", "busy", "max_time", "parent",
+		"worktree", "worktree_path", "project_path", "tombstone_time"} {
 		if _, ok := sess.Fields[role]; !ok {
 			t.Errorf("sessions fields.%s missing", role)
 		}
+	}
+	if len(sess.Fields["tombstone_time"]) != 0 {
+		t.Error("a tombstone's content is a bare number; tombstone_time must be empty")
+	}
+	if contains(sess.Fields["run_state"], "interruptedByQuitAt") {
+		t.Error("run_state lists a field that was never observed")
+	}
+	for _, f := range []string{"chromePermissionMode", "cuAllowedApps", "cuGrantFlags", "sessionPermissionUpdates", "alwaysAllowedReasons",
+		"remoteControlUserEnabled", "artifactsMcpVouchedCalls"} {
+		if !contains(sess.Fields["grant"], f) {
+			t.Errorf("grant lacks %s", f)
+		}
+		for role, l := range sess.Fields {
+			if role != "grant" && contains(l, f) {
+				t.Errorf("security grant %s is also listed in %s", f, role)
+			}
+		}
+	}
+	for _, f := range []string{"publishedArtifacts", "toolSurfaceSnapshot"} {
+		if !contains(sess.Fields["account_bound"], f) {
+			t.Errorf("account_bound lacks %s", f)
+		}
+	}
+	for _, f := range []string{"forkedFromSessionId", "spawnedFrom.sessionId", "startChain.firstSessionId"} {
+		if !contains(sess.Fields["parent"], f) {
+			t.Errorf("parent lacks %s", f)
+		}
+	}
+	if sess.Fields["project_path"][0] != "cwd" {
+		t.Error("project_path must be cwd")
+	}
+	if !contains(sess.Fields["worktree"], "cwd") {
+		t.Error("cwd must move with the worktree group")
+	}
+	wt, _ := m.Row(model.RowWorktrees)
+	for _, f := range []string{"autoTrusted", "creationGrant"} {
+		if !contains(wt.Fields["grant"], f) {
+			t.Errorf("worktrees grant lacks %s", f)
+		}
+	}
+	tasks, _ := m.Row(model.RowTasks)
+	if !contains(tasks.Fields["project_path"], "cwd") || !contains(tasks.Fields["session_ref"], "originSessionId") {
+		t.Errorf("tasks fields %v", tasks.Fields)
+	}
+	for _, want := range []string{"dframe-store.backup.*", "persisted.ccd-session-presets.*.*"} {
+		if !contains(m.Classification.LSNeverTouched, want) {
+			t.Errorf("ls_never_touched lacks %s", want)
+		}
+	}
+	r := testkit.Replica(1)
+	synced := m.SyncedFor(r)
+	if !contains(synced, "claude-code-sessions/"+string(r.Account)+"/"+string(r.Org)+"/**") || contains(synced, "claude-code-sessions/**") {
+		t.Errorf("synced must be limited to the replica's own session directory: %v", synced)
+	}
+	versions := map[string]int{}
+	for _, p := range m.Probes {
+		if p.Kind == compat.ProbePersistVersion || p.Kind == compat.ProbeJSONVersion {
+			versions[p.ID] = p.Version
+			if p.Critical {
+				t.Errorf("version probe %s is critical; a failed one skips its row", p.ID)
+			}
+		}
+	}
+	for id, v := range map[string]int{"sidebar-store-version": 1, "pinned-store-version": 1, "started-environments-version": 1,
+		"presets-version": 4, "tasks-backlog-version": 1, "worktrees-schema": 2} {
+		if versions[id] != v {
+			t.Errorf("probe %s version %d, want %d", id, versions[id], v)
+		}
+	}
+	for _, rid := range []model.RowID{model.RowSidebarView, model.RowPinnedOrder} {
+		if s, _ := m.Row(rid); s.PersistVersion != 1 {
+			t.Errorf("%s persist_version %d", rid, s.PersistVersion)
+		}
+	}
+	if env, _ := m.Row(model.RowEnvironments); env.PersistVersion != 4 {
+		t.Errorf("environments persist_version %d", env.PersistVersion)
 	}
 	if !sess.PerOrg {
 		t.Error("sessions must be per org")
@@ -124,11 +204,110 @@ func TestSignals(t *testing.T) {
 	if compile(sig.TurnEnded).MatchString("[Stop hook] Query completed for session " + testkit.FakeSession(2)) {
 		t.Error("turn_ended matches another session")
 	}
-	for name, p := range map[string]string{"turn_started": sig.TurnStarted, "app_started": sig.AppStarted, "active_org": sig.ActiveOrg,
+	for name, p := range map[string]string{"turn_started": sig.TurnStarted,
 		"pairing_disabled": sig.PairingDisabled, "login_required": sig.LoginRequired, "native_multi_account": sig.NativeMultiAccount} {
 		if p != "" {
 			t.Errorf("%s must stay empty until observed", name)
 		}
+	}
+	started := regexp.MustCompile(sig.AppStarted)
+	for line, want := range map[string]bool{
+		"[2026-11-22 10:00:00.000] [info] [startup-perf] main window shown 1234 ms after launch": true,
+		"[info] [startup-perf] main window shown 7 ms after launch":                              true,
+		"[info] [startup-perf] main window shown soon ms after launch":                           false,
+		"[info] main window shown 12 ms after launch":                                            false,
+	} {
+		if started.MatchString(line) != want {
+			t.Errorf("app_started on %q: want %v", line, want)
+		}
+	}
+}
+
+// TestActiveOrgSignal checks the active_org pattern on synthetic lines:
+// the org is captured only from well-formed lowercase UUIDs, in the named
+// group the app package reads.
+func TestActiveOrgSignal(t *testing.T) {
+	re := regexp.MustCompile(testkit.Manifest(t).Signals.ActiveOrg)
+	org := re.SubexpIndex("org")
+	if org < 0 || re.SubexpIndex("account") < 0 {
+		t.Fatal("active_org needs the named groups org and account")
+	}
+	acct, o := testkit.FakeUUID(0xa1), testkit.FakeUUID(0xb2)
+	line := func(tag, a, b string) string {
+		return "[2026-11-22 10:00:00.000] [info] [" + tag + "] Initialized { accountId: '" + a + "', orgId: '" + b + "' }"
+	}
+	tests := []struct {
+		name, line, want string
+	}{
+		{"ccd tag", line("CCDScheduledTasks", acct, o), o},
+		{"plain tag", line("ScheduledTasks", acct, o), o},
+		{"upper-case org", line("CCDScheduledTasks", acct, strings.ToUpper(o)), ""},
+		{"short org", line("CCDScheduledTasks", acct, o[:35]), ""},
+		{"org not quoted", strings.Replace(line("CCDScheduledTasks", acct, o), "'"+o+"'", o, 1), ""},
+		{"bad account", line("CCDScheduledTasks", "x", o), ""},
+		{"other tag", line("OtherTasks", acct, o), ""},
+		{"trailing text inside the id", line("CCDScheduledTasks", acct, o+"0"), ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			m := re.FindStringSubmatch(tc.line)
+			got := ""
+			if m != nil {
+				got = m[org]
+			}
+			if got != tc.want {
+				t.Fatalf("captured %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// nopRunner refuses every command: the log checks below run none.
+type nopRunner struct{}
+
+func (nopRunner) Run(context.Context, app.Template, ...string) ([]byte, error) {
+	return nil, errors.New("no commands in this test")
+}
+
+// TestSignalsReadByApp feeds a synthetic main.log in a temporary home to
+// the app package with the embedded manifest's signals: the active org is
+// the last Initialized line's, and busy detection reports the signal as
+// unknown (turn_started is empty), which callers treat as "fall back".
+func TestSignalsReadByApp(t *testing.T) {
+	m := testkit.Manifest(t)
+	home := t.TempDir()
+	dir := filepath.Join(home, "Library", "Logs", "Claude")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	acct, first, last := testkit.FakeUUID(0xa1), testkit.FakeUUID(0xb2), testkit.FakeUUID(0xc3)
+	log := strings.Join([]string{
+		"[2026-11-22 10:00:00.000] [info] [startup-perf] main window shown 900 ms after launch",
+		"[2026-11-22 10:00:01.000] [info] [CCDScheduledTasks] Initialized { accountId: '" + acct + "', orgId: '" + first + "' }",
+		"[2026-11-22 11:00:00.000] [info] [startup-perf] main window shown 800 ms after launch",
+		"[2026-11-22 11:00:01.000] [info] [ScheduledTasks] Initialized { accountId: '" + acct + "', orgId: '" + last + "' }",
+		"[2026-11-22 11:00:02.000] [info] [Stop hook] Query completed for session " + testkit.FakeSession(1),
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(dir, "main.log"), []byte(log), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p, err := app.NewDarwin(app.DarwinConfig{Home: home, Exec: nopRunner{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	org, found, err := p.ActiveOrg(context.Background(), m.Signals, ids.AccountID(acct))
+	if err != nil || !found || string(org) != last {
+		t.Fatalf("active org %q found %v err %v", org, found, err)
+	}
+	if _, err := p.BusySessions(context.Background(), 0, m.Signals); !errors.Is(err, app.ErrSignalUnknown) {
+		t.Fatalf("busy sessions: %v, want ErrSignalUnknown", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.log"), []byte("[info] [CCDScheduledTasks] Initialized { accountId: 'x', orgId: 'y' }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := p.ActiveOrg(context.Background(), m.Signals, ids.AccountID(acct)); err != nil || found {
+		t.Fatalf("malformed ids gave found %v err %v", found, err)
 	}
 }
 
@@ -157,6 +336,13 @@ func TestOverrides(t *testing.T) {
 		{"unknown key", base + "\nsurprise = 1\n", false, nil},
 		{"unknown row key", strings.Replace(base, `row = "tasks"`, "row = \"tasks\"\nbogus = true", 1), false, nil},
 		{"bad signal", strings.Replace(base, `unclean_exit = 'Previous run did not exit cleanly'`, `unclean_exit = '('`, 1), false, nil},
+		{"removes ls_never_touched", strings.Replace(base, `  "dframe-store.backup.*",`+"\n", "", 1), false, nil},
+		{"removes never_until_classified", strings.Replace(base, `  "scratch-workspaces/**",`+"\n", "", 1), false, nil},
+		{"widens synced", strings.Replace(base, `synced = [`, `synced = [
+  "**",`, 1), false, nil},
+		{"other name over the same range", strings.Replace(strings.Replace(strings.Replace(base, `name = "6.x"`, `name = "local"`, 1),
+			`min_version = "6.0.0"`, `min_version = "5.0.0"`, 1), `  "Cookies",`+"\n", "", 1), false, nil},
+		{"bad json-version probe", strings.Replace(base, "path = [\"schemaVersion\"]\nversion = 2", "path = [\"schemaVersion\"]\nversion = 0", 1), false, nil},
 		{"new manifest", strings.Replace(strings.Replace(base, `name = "6.x"`, `name = "7.x"`, 1),
 			`min_version = "6.0.0"`+"\n"+`max_version = "6.999999.999"`, `min_version = "7.0.0"`+"\n"+`max_version = "7.999999.999"`, 1), true,
 			func(t *testing.T, ms []*compat.Manifest) {
@@ -284,6 +470,34 @@ func TestProbesFailOnMutatedShapes(t *testing.T) {
 			writeOverride(t, f, "claude_desktop_config.json", `{"preferences":{"epitaxyPrefs":{"code-projects-order.`+string(r.Account)+`":{}}}}`)
 		}, "group-order-mirror"},
 		{"worktrees type", func(t *testing.T, f string) { writeOverride(t, f, "git-worktrees.json", `{"worktrees":"x"}`) }, "worktrees"},
+		{"worktrees schema", func(t *testing.T, f string) {
+			writeOverride(t, f, "git-worktrees.json", `{"schemaVersion":3,"worktrees":{}}`)
+		}, "worktrees-schema"},
+		{"worktrees schema missing", func(t *testing.T, f string) { writeOverride(t, f, "git-worktrees.json", `{"worktrees":{}}`) }, "worktrees-schema"},
+		{"store version", func(t *testing.T, f string) {
+			testkit.WriteLS(t, f, map[string]string{"dframe-store": `{"version":2,"shared":1,"state":{}}`})
+		}, "sidebar-store-version"},
+		{"pinned store version", func(t *testing.T, f string) {
+			testkit.WriteLS(t, f, map[string]string{"dframe-store": `{"version":0,"state":{}}`})
+		}, "pinned-store-version"},
+		{"presets version", func(t *testing.T, f string) {
+			testkit.WriteLS(t, f, map[string]string{"persisted.ccd-session-presets." + string(r.Account): `{"state":{"presets":[]},"version":3}`})
+		}, "presets-version"},
+		{"started version", func(t *testing.T, f string) {
+			testkit.WriteLS(t, f, map[string]string{"persisted.ccd-started-environments": `{"state":{"bySessionId":{}},"version":0}`})
+		}, "started-environments-version"},
+		{"presets file account", func(t *testing.T, f string) {
+			writeOverride(t, f, "ccd-session-presets.json", `{"byAccount":{"`+string(r.Account)+`":{"presets":{}}}}`)
+		}, "presets-file-account"},
+		{"backlog version", func(t *testing.T, f string) {
+			writeOverride(t, filepath.Join(f, sess, "backlog"), "tasks.json", `{"version":2,"items":[]}`)
+		}, "tasks-backlog-version"},
+		{"backlog version not a number", func(t *testing.T, f string) {
+			writeOverride(t, filepath.Join(f, sess, "backlog"), "tasks.json", `{"version":"1","items":[]}`)
+		}, "tasks-backlog-version"},
+		{"scheduled skips type", func(t *testing.T, f string) {
+			writeOverride(t, filepath.Join(f, sess), "scheduled-tasks.json", `{"scheduledTasks":[],"recordedSkips":[]}`)
+		}, "tasks-scheduled-skips"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -294,6 +508,26 @@ func TestProbesFailOnMutatedShapes(t *testing.T) {
 				t.Fatalf("probe %s did not fail (failed: %v)", tc.probe, f)
 			}
 		})
+	}
+}
+
+// TestProbesPassWhenOptionalPartsAbsent: mcpServers is absent from the
+// config on the surveyed Mac, and a folder may lack the backlog, the
+// worktree registry or the presets; none of that fails a probe.
+func TestProbesPassWhenOptionalPartsAbsent(t *testing.T) {
+	m := testkit.Manifest(t)
+	r := testkit.Replica(1)
+	spec := testkit.Rich("Claude", 1)
+	spec.MCPServers = nil
+	spec.Worktrees = nil
+	spec.Backlog = nil
+	folder := testkit.NewDataRoot(t).AddFolder(t, spec)
+	b, err := os.ReadFile(filepath.Join(folder, "claude_desktop_config.json"))
+	if err != nil || strings.Contains(string(b), "mcpServers") {
+		t.Fatalf("fixture still has mcpServers: %v", err)
+	}
+	if f := failed(t, m, probeEnv(t, folder, r)); len(f) != 0 {
+		t.Fatalf("failed: %v", f)
 	}
 }
 

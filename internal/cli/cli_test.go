@@ -263,7 +263,7 @@ func TestOptionsMapping(t *testing.T) {
 	}
 	h.svc.args = nil
 	for _, args := range [][]string{
-		{"profile", "adopt", "home", "Claude-home"},
+		{"profile", "adopt", "home", "Claude-home", "--unmanaged"},
 		{"profile", "add", "client", "--managed"},
 		{"profile", "rename", "home", "personal"},
 		{"profile", "remove", "personal"},
@@ -292,7 +292,7 @@ func TestReadOnlyEnvironment(t *testing.T) {
 	if h.gens.purged || h.gens.pruned != nil {
 		t.Fatal("generations changed in read-only mode")
 	}
-	if code, _, _ := h.run("", "init", "--alias", "work"); code != 0 {
+	if code, _, _ := h.run("", "init", "--alias", "work", "--unmanaged"); code != 0 {
 		t.Fatal("init failed")
 	}
 	if _, err := os.Stat(filepath.Join(h.home, "Library", "Application Support", "paritydesk", HookBinaryFile)); err == nil {
@@ -386,6 +386,41 @@ func TestProgress(t *testing.T) {
 	})
 }
 
+// TestManagedIsAskedOrRequired: init, profile add and profile adopt ask
+// whether the account is managed on a terminal, and refuse without a
+// terminal unless --managed or --unmanaged is given.
+func TestManagedIsAskedOrRequired(t *testing.T) {
+	for _, args := range [][]string{
+		{"init", "--alias", "work"},
+		{"profile", "add", "client"},
+		{"profile", "adopt", "home", "Claude-home"},
+	} {
+		h := newHarness(t)
+		if code, _, e := h.run("", args...); code != 2 || !strings.Contains(e, "--managed or --unmanaged") {
+			t.Errorf("%q without a terminal: code %d %s", args, code, e)
+		}
+		if code, _, _ := h.run("", append(args, "--managed", "--unmanaged")...); code != 2 {
+			t.Errorf("%q with both flags: code %d", args, code)
+		}
+		h = newHarness(t)
+		h.tty = true
+		code, _, errOut := h.run("y\n", args...)
+		if code != 0 || !strings.Contains(errOut, "managed by an employer or client") {
+			t.Errorf("%q on a terminal: code %d stderr %q", args, code, errOut)
+		}
+	}
+	h := newHarness(t)
+	h.tty = true
+	if code, _, _ := h.run("yes\n", "init", "--alias", "work"); code != 0 || !h.svc.initOpts.Managed {
+		t.Fatalf("init answer yes: %+v", h.svc.initOpts)
+	}
+	h = newHarness(t)
+	h.tty = true
+	if code, _, _ := h.run("\n", "init", "--alias", "work"); code != 0 || h.svc.initOpts.Managed {
+		t.Fatalf("init default answer: %+v", h.svc.initOpts)
+	}
+}
+
 func TestInitAsksForAliasOnATerminal(t *testing.T) {
 	h := newHarness(t)
 	h.tty = true
@@ -396,7 +431,7 @@ func TestInitAsksForAliasOnATerminal(t *testing.T) {
 }
 
 func TestHookBinaryRecorded(t *testing.T) {
-	for _, cmd := range [][]string{{"init", "--alias", "work"}, {"doctor"}} {
+	for _, cmd := range [][]string{{"init", "--alias", "work", "--unmanaged"}, {"doctor"}} {
 		h := newHarness(t)
 		if code, _, e := h.run("", cmd...); code != 0 {
 			t.Fatalf("%q: %s", cmd, e)

@@ -16,13 +16,19 @@ type taskFile struct {
 	name   string // relative to the session directory
 	member string // the array member keyed by id
 	prefix string // item key prefix
+	// fresh are the other members a file paritydesk creates starts with.
+	fresh map[string]json.RawMessage
 }
 
-// taskFiles are the backlog and the scheduled tasks. Other top-level
-// members of each file stay the target's.
+// taskFiles are the backlog ({"version":1,"items":[...]}) and the
+// scheduled tasks ({"scheduledTasks":[...],"recordedSkips":{},...}).
+// Other top-level members of each file (the version, recorded skips and
+// the app's migration stamps) stay the target's and are never edited.
 var taskFiles = []taskFile{
-	{name: "backlog/tasks.json", member: "items", prefix: "backlog/"},
-	{name: "scheduled-tasks.json", member: "scheduledTasks", prefix: "scheduled/"},
+	{name: "backlog/tasks.json", member: "items", prefix: "backlog/",
+		fresh: map[string]json.RawMessage{"version": json.RawMessage("1")}},
+	{name: "scheduled-tasks.json", member: "scheduledTasks", prefix: "scheduled/",
+		fresh: map[string]json.RawMessage{"recordedSkips": json.RawMessage("{}")}},
 }
 
 // Tasks is the adapter for row model.RowTasks.
@@ -90,8 +96,9 @@ func addTasks(snap *model.RowSnapshot, v json.RawMessage, f taskFile, label stri
 
 // Ops implements sources.Adapter: each file's array member is rewritten
 // at its literal path when its items or their order differ; unchanged
-// tasks keep the target's bytes. A missing file is created holding only
-// the array.
+// tasks keep the target's bytes. A missing file is created holding the
+// array and the file's fresh members (the backlog's version 1, an empty
+// recordedSkips); the app's migration stamps are left for the app to add.
 func (Tasks) Ops(ctx context.Context, oc sources.OpsContext, current, desired *model.RowSnapshot) (sources.OpsResult, error) {
 	var res sources.OpsResult
 	if err := ctx.Err(); err != nil {
@@ -128,7 +135,11 @@ func taskEdits(oc sources.OpsContext, f taskFile, current, desired *model.RowSna
 	}
 	b := sources.NewBuilder(doc, model.RowTasks)
 	if !doc.Present {
-		out, err := jsonx.Marshal(map[string]json.RawMessage{f.member: arr})
+		obj := map[string]json.RawMessage{f.member: arr}
+		for k, v := range f.fresh {
+			obj[k] = v
+		}
+		out, err := jsonx.Marshal(obj)
 		if err != nil {
 			return nil, fmt.Errorf("sessions: encode %s: %w", f.name, err)
 		}

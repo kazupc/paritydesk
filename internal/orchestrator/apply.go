@@ -5,11 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strconv"
 
 	"github.com/kazupc/paritydesk/internal/app"
 	"github.com/kazupc/paritydesk/internal/apply"
+	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/fsx"
 	"github.com/kazupc/paritydesk/internal/gen"
 	"github.com/kazupc/paritydesk/internal/ids"
@@ -89,6 +93,19 @@ func (r *run) stillQuiet(ctx context.Context) error {
 	return nil
 }
 
+// allowedPaths returns the manifest's synced globs expanded for the
+// entering replica. File ops outside them are refused, so an entry the
+// manifest does not classify is never touched, and no op reaches another
+// account's session directory. An empty list would allow everything, so
+// a manifest without synced globs allows nothing.
+func allowedPaths(m *compat.Manifest, rep model.Replica) []string {
+	out := m.SyncedFor(rep)
+	if len(out) == 0 {
+		return []string{nothingAllowed}
+	}
+	return out
+}
+
 // validate runs plan.Validate with the manifest's lists and the worktree
 // guard's risks.
 func (r *run) validate(ctx context.Context) error {
@@ -105,6 +122,8 @@ func (r *run) validate(ctx context.Context) error {
 		Limits: plan.Limits{MaxDeleteFraction: cfg.Limits.MaxDeleteFraction, MaxDeleteMin: cfg.Limits.MaxDeleteMin,
 			AllowDeletions: r.opts.AllowDeletions},
 		DenyPaths:          append(append([]string(nil), r.manifest.Classification.NeverTouched...), r.manifest.Classification.NeverUntilClassified...),
+		DenyLSKeys:         r.manifest.Classification.LSNeverTouched,
+		AllowPaths:         allowedPaths(r.manifest, r.T.Replica),
 		AllowLSKeys:        expandedLSKeys(r.manifest, r.rows, r.T.Replica),
 		TmpRecoveryGlobs:   r.manifest.TmpRecoveryGlobs,
 		SecretsMayCross:    mayCross,
@@ -125,24 +144,69 @@ func (r *run) validate(ctx context.Context) error {
 	return nil
 }
 
-// worktreeRisks lists worktrees the leaving sessions reference that the
-// entering side will not, with their dirty state.
+// worktreeRisks lists worktree directories that the entering folder will
+// no longer register after apply, with their dirty state: worktrees the
+// leaving sessions reference that the entering sessions will not, and
+// registry entries of the entering folder that the worktrees row deletes
+// or replaces with another directory. The second part runs even when the
+// sessions row is skipped. A worktree directory that no longer exists
+// while its parent does holds nothing to lose and is left out; any other
+// path that cannot be checked counts as dirty.
 func (r *run) worktreeRisks(ctx context.Context) ([]plan.WorktreeRisk, error) {
 	d := r.d()
-	w := r.p5.Work[model.RowSessions]
-	if w == nil || d.Worktrees == nil || r.kind != state.RunSwitch {
+	if d.Worktrees == nil || r.kind != state.RunSwitch {
 		return nil, nil
 	}
-	lost, err := d.Worktrees.LostRegistrations(w.S, w.Out.Desired)
-	if err != nil {
-		return nil, pderr.Wrap(pderr.Internal, "worktree guard", err)
+	var lost []string
+	if w := r.p5.Work[model.RowSessions]; w != nil {
+		var fields []string
+		if spec, ok := r.manifest.Row(model.RowSessions); ok {
+			fields = spec.Fields[sources.RoleWorktreePath]
+		}
+		l, err := d.Worktrees.LostRegistrations(w.S, w.Out.Desired, fields)
+		if err != nil {
+			return nil, pderr.Wrap(pderr.Internal, "worktree guard", err)
+		}
+		lost = append(lost, l...)
 	}
+	if w := r.p5.Work[model.RowWorktrees]; w != nil && w.T != nil && w.Out.Desired != nil {
+		var fields []string
+		if spec, ok := r.manifest.Row(model.RowWorktrees); ok {
+			fields = spec.Fields[sources.RoleWorktreePath]
+		}
+		l, err := d.Worktrees.LostEntries(w.T, w.Out.Desired, fields)
+		if err != nil {
+			return nil, pderr.Wrap(pderr.Internal, "worktree guard", err)
+		}
+		lost = append(lost, l...)
+	}
+	sort.Strings(lost)
+	lost = slices.Compact(lost)
 	var out []plan.WorktreeRisk
 	for _, p := range lost {
+		if worktreeGone(p) {
+			continue
+		}
 		dirty, err := d.App.GitDirty(ctx, p)
 		out = append(out, plan.WorktreeRisk{Path: p, Dirty: dirty || err != nil})
 	}
 	return out, nil
+}
+
+// worktreeGone reports whether an absolute worktree path does not exist
+// while its parent directory does. Only a definite "does not exist"
+// counts. A path whose parent is missing too (for example on an external
+// volume that is not mounted now) stays in the guard, as does a path
+// that cannot be checked.
+func worktreeGone(p string) bool {
+	if !filepath.IsAbs(p) {
+		return false
+	}
+	if _, err := os.Lstat(p); !errors.Is(err, fs.ErrNotExist) {
+		return false
+	}
+	fi, err := os.Stat(filepath.Dir(p))
+	return err == nil && fi.IsDir()
 }
 
 // commitP5 records the harvest: objects, canonical, both overlays, S's

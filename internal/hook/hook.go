@@ -114,14 +114,22 @@ func ParsePayload(b []byte) (SessionStartInput, bool) {
 
 // Skewed reports whether the plugin's version, when given, differs from
 // the binary's in major or minor version. An unparsable version counts as
-// skew.
+// skew, except a binary built from a branch head (Homebrew's
+// "HEAD-<commit>" from brew install --HEAD, or Go's "(devel)"), which has
+// no release version to compare.
 func Skewed(plugin, binary string) bool {
-	if plugin == "" {
+	if plugin == "" || headBuild(binary) {
 		return false
 	}
 	pm, ok1 := majorMinor(plugin)
 	bm, ok2 := majorMinor(binary)
 	return !ok1 || !ok2 || pm != bm
+}
+
+// headBuild reports a version string of a build from a branch head.
+func headBuild(v string) bool {
+	v = strings.TrimSpace(v)
+	return strings.HasPrefix(v, "HEAD-") || v == "HEAD" || v == "(devel)"
 }
 
 // majorMinor returns "<major>.<minor>" of a version such as v0.1.2-dev.

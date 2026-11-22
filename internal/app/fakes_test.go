@@ -17,6 +17,8 @@ const (
 	sessC          = "local_00000000-0000-4000-8000-00000000000c"
 	orgX           = "00000000-0000-4000-8000-0000000000f1"
 	orgY           = "00000000-0000-4000-8000-0000000000f2"
+	acctP          = "00000000-0000-4000-8000-0000000000e1"
+	acctQ          = "00000000-0000-4000-8000-0000000000e2"
 	testBundle     = "com.example.paritydesk-test"
 	testBundlePath = "/Volumes/Test/Apps/Example.app"
 )
@@ -29,7 +31,7 @@ var testSig = compat.Signals{
 	AppStarted:      `\[boot\] ready v=[0-9.]+`,
 	FocusedSession:  `\[focus\] id={session}`,
 	BridgeConnected: `\[bridge\] peer up`,
-	ActiveOrg:       `\[acct\] org=(?P<org>[^ ]+) active`,
+	ActiveOrg:       `\[acct\] account=(?P<account>[^ ]+) org=(?P<org>[^ ]+) active`,
 }
 
 // call is one recorded command.

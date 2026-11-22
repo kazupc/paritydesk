@@ -33,13 +33,16 @@ var ErrCrashInjected = errors.New("orchestrator: crash injected")
 // Waits and polls of the orchestrator's own loops. Every wait goes
 // through Deps.Clock, so tests run them instantly with clock.Fake.
 const (
-	busyPoll           = 2 * time.Second
-	quiescePoll        = 500 * time.Millisecond
-	quiesceTimeout     = 30 * time.Second
-	updateTimeout      = 10 * time.Minute
-	verifyPoll         = time.Second
-	verifyStable       = 20 * time.Second
-	verifyTimeout      = 120 * time.Second
+	busyPoll       = 2 * time.Second
+	quiescePoll    = 500 * time.Millisecond
+	quiesceTimeout = 30 * time.Second
+	updateTimeout  = 10 * time.Minute
+	verifyPoll     = time.Second
+	verifyStable   = 20 * time.Second
+	verifyTimeout  = 120 * time.Second
+	// verifyRecordWindow is how long after a run a standalone verify may
+	// still record drift; later differences may be the user's own edits.
+	verifyRecordWindow = 15 * time.Minute
 	verifyLogTail      = 4 << 20
 	minFreeBytes       = 500 << 20
 	freeSpaceFactor    = 3
@@ -60,6 +63,25 @@ func (o *Orchestrator) progress(p Phase, status, msg string) {
 	if o.d.UI != nil {
 		o.d.UI.Progress(Event{Phase: p, Status: status, Message: msg})
 	}
+}
+
+// EventAliases is the Event.Data key listing the profile aliases a
+// message names, so a support bundle can pseudonymize them even after the
+// profile left the config.
+const EventAliases = "aliases"
+
+// progressNaming is progress for a message that names profile aliases.
+func (o *Orchestrator) progressNaming(p Phase, status, msg string, aliases ...ids.Alias) {
+	if o.d.UI == nil {
+		return
+	}
+	names := make([]string, 0, len(aliases))
+	for _, a := range aliases {
+		if a != "" {
+			names = append(names, string(a))
+		}
+	}
+	o.d.UI.Progress(Event{Phase: p, Status: status, Message: msg, Data: map[string]any{EventAliases: names}})
 }
 
 // interactive reports whether questions may be asked. The detached job
@@ -318,6 +340,13 @@ func parseSize(s string) int64 {
 // sameItems reports whether two snapshots hold the same item hashes and
 // order.
 func sameItems(a, b *model.RowSnapshot) bool {
+	return sameRead(a, b, true)
+}
+
+// sameRead reports whether two snapshots hold the same item hashes, and,
+// when withOrder is set, the same order. Rows whose merge does not carry
+// RowSnapshot.Order (rows.CarriesOrder) are compared without it.
+func sameRead(a, b *model.RowSnapshot, withOrder bool) bool {
 	ai, bi := itemsOf(a), itemsOf(b)
 	if len(ai) != len(bi) {
 		return false
@@ -327,6 +356,9 @@ func sameItems(a, b *model.RowSnapshot) bool {
 		if !ok || o.Hash != it.Hash {
 			return false
 		}
+	}
+	if !withOrder {
+		return true
 	}
 	var ao, bo []string
 	if a != nil {
@@ -488,8 +520,17 @@ func expandedLSKeys(m *compat.Manifest, rows []model.RowID, rep model.Replica) [
 			out = append(out, spec.Expand(rep).LSKeys...)
 		}
 	}
+	if len(out) == 0 {
+		// plan.Validate enforces the list only when it is non-empty: a
+		// run whose rows name no Local Storage item allows none.
+		return []string{nothingAllowed}
+	}
 	return out
 }
+
+// nothingAllowed is an allow-list entry that matches no real name, so an
+// otherwise empty allow list still refuses everything.
+const nothingAllowed = ".paritydesk-nothing-is-allowed"
 
 // latestGeneration returns the highest generation number in state.
 func latestGeneration(r *state.Root) uint64 {

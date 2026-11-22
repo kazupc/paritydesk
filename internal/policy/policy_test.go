@@ -17,19 +17,22 @@ import (
 )
 
 // TestNoNetworkInDependencies enforces zero network (D22): no package in
-// the module's dependency graph is net, net/http or crypto/tls.
+// the module's dependency graph, with or without its tests, is net,
+// net/http or crypto/tls.
 func TestNoNetworkInDependencies(t *testing.T) {
 	root := repoRoot(t)
-	cmd := exec.Command("go", "list", "-e", "-deps", "./...")
-	cmd.Dir = root
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("go list: %v", err)
-	}
 	banned := map[string]bool{"net": true, "net/http": true, "crypto/tls": true}
-	for _, pkg := range strings.Fields(string(out)) {
-		if banned[pkg] {
-			t.Errorf("%s is in the dependency graph", pkg)
+	for _, args := range [][]string{{"list", "-e", "-deps", "./..."}, {"list", "-e", "-deps", "-test", "./..."}} {
+		cmd := exec.Command("go", args...)
+		cmd.Dir = root
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("go %s: %v", strings.Join(args, " "), err)
+		}
+		for _, pkg := range strings.Fields(string(out)) {
+			if banned[pkg] {
+				t.Errorf("%s is in the dependency graph (go %s)", pkg, strings.Join(args, " "))
+			}
 		}
 	}
 }

@@ -204,9 +204,11 @@ func (l fileLog) Busy(ctx context.Context, from int64, sig compat.Signals) ([]id
 }
 
 // ActiveOrg returns the org named by the last ActiveOrg line in the last
-// 8 MiB. found is false when no line matched or the last one names no
-// valid UUID.
-func (l fileLog) ActiveOrg(ctx context.Context, sig compat.Signals) (ids.OrgID, bool, error) {
+// 8 MiB, when that line names account. main.log is shared by every
+// account, so found is false when no line matched, the last one names
+// another account or no valid UUID, or the pattern has no account group
+// to check.
+func (l fileLog) ActiveOrg(ctx context.Context, sig compat.Signals, account ids.AccountID) (ids.OrgID, bool, error) {
 	if sig.ActiveOrg == "" {
 		return "", false, ErrSignalUnknown
 	}
@@ -218,14 +220,21 @@ func (l fileLog) ActiveOrg(ctx context.Context, sig compat.Signals) (ids.OrgID, 
 	if group < 0 {
 		return "", false, fmt.Errorf("app: active org: %w: pattern has no org group", ErrSignalUnknown)
 	}
-	last, seen := "", false
+	acctGroup := re.SubexpIndex("account")
+	last, lastAcct, seen := "", "", false
 	_, err = l.scan(ctx, 0, true, func(line []byte) {
 		if m := re.FindSubmatch(line); m != nil {
 			last, seen = string(m[group]), true
+			if acctGroup >= 0 {
+				lastAcct = string(m[acctGroup])
+			}
 		}
 	})
 	if err != nil || !seen {
 		return "", false, err
+	}
+	if acctGroup < 0 || account == "" || lastAcct != string(account) {
+		return "", false, nil
 	}
 	org, err := ids.ParseOrg(last)
 	if err != nil {

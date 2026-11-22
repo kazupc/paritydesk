@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"flag"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -429,7 +430,7 @@ func runProfileList(ctx context.Context, e *env, _ *flag.FlagSet, _ []string) er
 	}, err)
 }
 
-func runProfileAdopt(ctx context.Context, e *env, _ *flag.FlagSet, args []string) error {
+func runProfileAdopt(ctx context.Context, e *env, fs *flag.FlagSet, args []string) error {
 	alias, err := parseAlias(args[0])
 	if err != nil {
 		return err
@@ -437,11 +438,15 @@ func runProfileAdopt(ctx context.Context, e *env, _ *flag.FlagSet, args []string
 	if err := ids.ValidateFolder(args[1]); err != nil {
 		return usageErrorf("%q is not a parked folder name (Claude-<name>)", args[1])
 	}
+	managed, err := managedChoice(ctx, e, fs, alias)
+	if err != nil {
+		return err
+	}
 	svc, err := e.service(ctx, e.newUI(false, false))
 	if err != nil {
 		return err
 	}
-	if err := svc.ProfileAdopt(ctx, alias, args[1]); err != nil {
+	if err := svc.ProfileAdopt(ctx, alias, args[1], managed); err != nil {
 		return err
 	}
 	return e.emit(okView{OK: true, Alias: alias}, func(p *render.Printer) {
@@ -454,11 +459,15 @@ func runProfileAdd(ctx context.Context, e *env, fs *flag.FlagSet, args []string)
 	if err != nil {
 		return err
 	}
+	managed, err := managedChoice(ctx, e, fs, alias)
+	if err != nil {
+		return err
+	}
 	svc, err := e.service(ctx, e.newUI(false, false))
 	if err != nil {
 		return err
 	}
-	if err := svc.ProfileAdd(ctx, alias, getBool(fs, "managed")); err != nil {
+	if err := svc.ProfileAdd(ctx, alias, managed); err != nil {
 		return err
 	}
 	return e.emit(okView{OK: true, Alias: alias}, func(p *render.Printer) {
@@ -509,9 +518,20 @@ func runProfileRemove(ctx context.Context, e *env, _ *flag.FlagSet, args []strin
 type doctorView struct {
 	Checks     []orchestrator.Check `json:"checks"`
 	HookBinary string               `json:"hook_binary,omitempty"`
+	// Bundle is the file name (without its directory) of the support
+	// archive written with --bundle.
+	Bundle string `json:"bundle,omitempty"`
 }
 
 func runDoctor(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
+	bundlePath, bundleLogs := getString(fs, flagBundle), getInt(fs, flagBundleLogs)
+	if bundlePath != "" {
+		abs, err := e.checkBundleTarget(bundlePath, bundleLogs)
+		if err != nil {
+			return err
+		}
+		bundlePath = abs
+	}
 	svc, err := e.service(ctx, e.newUI(false, false))
 	if err != nil {
 		return err
@@ -533,6 +553,12 @@ func runDoctor(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error 
 		return err
 	}
 	v.HookBinary = red.Path(hookBinary)
+	if bundlePath != "" {
+		if err := e.writeBundle(bundlePath, bundleLogs, v); err != nil {
+			return err
+		}
+		v.Bundle = render.Sanitize(filepath.Base(bundlePath), 120)
+	}
 	return e.emit(v, func(p *render.Printer) {
 		rows := make([][]string, len(v.Checks))
 		for i, c := range v.Checks {
@@ -542,6 +568,9 @@ func runDoctor(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error 
 		if v.HookBinary != "" {
 			p.Line(i18n.T(i18n.DoctorHookBinary, "%s"), v.HookBinary)
 		}
+		if v.Bundle != "" {
+			p.Line(i18n.T(i18n.DoctorBundleDone, "%s"), v.Bundle)
+		}
 	}, nil)
 }
 
@@ -550,6 +579,23 @@ type initView struct {
 	OK         bool      `json:"ok"`
 	Alias      ids.Alias `json:"alias"`
 	HookBinary string    `json:"hook_binary,omitempty"`
+}
+
+// managedChoice resolves --managed and --unmanaged. With neither, a
+// terminal asks; without a terminal one of them is required, because the
+// answer decides whether preset secrets may cross to other accounts
+// (sync.secrets = "same-boundary").
+func managedChoice(ctx context.Context, e *env, fs *flag.FlagSet, alias ids.Alias) (bool, error) {
+	managed, unmanaged := getBool(fs, "managed"), getBool(fs, "unmanaged")
+	switch {
+	case managed && unmanaged:
+		return false, usageErrorf("--managed and --unmanaged exclude each other")
+	case managed || unmanaged:
+		return managed, nil
+	case !e.interactive():
+		return false, usageErrorf("--managed or --unmanaged is required when there is no terminal to ask")
+	}
+	return e.newUI(false, false).ask(ctx, i18n.T(i18n.AskManaged, string(alias)))
 }
 
 func runInit(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
@@ -574,11 +620,15 @@ func runInit(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 	if render.Sanitize(label, config.MaxLabelRunes) != label {
 		return usageErrorf("--label: at most %d printable characters", config.MaxLabelRunes)
 	}
+	managed, err := managedChoice(ctx, e, fs, alias)
+	if err != nil {
+		return err
+	}
 	svc, err := e.service(ctx, e.newUI(false, false))
 	if err != nil {
 		return err
 	}
-	if err := svc.Init(ctx, orchestrator.InitOptions{Alias: alias, Label: label, Managed: getBool(fs, "managed")}); err != nil {
+	if err := svc.Init(ctx, orchestrator.InitOptions{Alias: alias, Label: label, Managed: managed}); err != nil {
 		return err
 	}
 	v := initView{OK: true, Alias: alias}

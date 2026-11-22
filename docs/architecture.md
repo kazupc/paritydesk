@@ -6,7 +6,9 @@ comments cite: decisions (D), invariants (I), goals (G), review findings
 (S). The design notes that first defined these ids are not part of the
 repository; each entry below is a short, self-contained summary of what
 the id means for the code. Spike results live in
-[ADR 0003](adr/0003-online-reconcile.md); the binding contracts of v0.1
+[ADR 0003](adr/0003-online-reconcile.md); the on-disk shapes observed on
+app 6.x and the decisions taken from them are in
+[ADR 0004](adr/0004-data-shape-survey.md); the binding contracts of v0.1
 are in the [implementation plan](dev/implementation-plan.md).
 
 ## Map
@@ -78,6 +80,7 @@ the folder swap (P8), parking the leaving folder (P9), one state commit
 | Id | Risk and how the code answers it |
 |---|---|
 | C1 | A base that no longer matches its folder could look like mass deletion: invalid bases mean a union without deletions plus confirmation, and the deletion breaker. |
+| C2 | A stale server value could be harvested as a user edit: a contested value on a side whose base is invalid is read as absent, never as an edit. |
 | C5 | A link from untrusted text could be opened: session links are rebuilt from validated ids only. |
 | H2 | The app's worktree cleanup could delete unsynced worktrees: worktree registrations are carried and a loss guard checks `git status`. |
 | H7 | Terminal control characters could hide plan lines: every rendered string is sanitized and the destructive counts are always the last line. |

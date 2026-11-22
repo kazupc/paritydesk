@@ -3,6 +3,8 @@ usage: paritydesk doctor [flags]
 Check the installation, folders and app compatibility
 
 flags:
+  --bundle string              write a redacted support archive (tar.gz) to this new file
+  --bundle-logs int            newest run logs to put in the archive (default 5)
   --grant-automation           ask macOS for Automation permission now
 
 global flags:

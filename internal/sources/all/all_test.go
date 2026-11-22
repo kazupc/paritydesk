@@ -331,3 +331,46 @@ func TestPlanCompose(t *testing.T) {
 		}
 	}
 }
+
+// TestOtherAccountsUntouched: each folder also holds another account's
+// session directory, with an id that collides with one of the replica's.
+// No adapter reads it, and syncing every row leaves it byte-identical.
+func TestOtherAccountsUntouched(t *testing.T) {
+	e := newEnv(t)
+	rs, rd := testkit.Replica(1), testkit.Replica(2)
+	src := e.root.AddFolder(t, testkit.Rich("Claude-s", 1))
+	dst := e.root.AddFolder(t, testkit.Rich("Claude", 2))
+	decoys := map[string]map[string]string{}
+	for _, f := range []struct {
+		folder string
+		n      int
+	}{{src, 1}, {dst, 2}} {
+		dir := filepath.Join(f.folder, sources.SessionRel(testkit.DecoyReplica(f.n), ""))
+		decoys[dir] = testkit.TreeOf(t, dir)
+		if len(decoys[dir]) == 0 {
+			t.Fatal("fixture lacks a decoy directory")
+		}
+	}
+	reg := all.Registry()
+	var edits []plan.Edit
+	for _, row := range model.AllRows {
+		desired, res := syncRow(t, e, reg[row], src, dst, rs, rd)
+		b, _ := json.Marshal(desired)
+		if strings.Contains(string(b), "decoy") || strings.Contains(string(b), testkit.FakeSession(71)) {
+			t.Errorf("%s: a decoy record was read", row)
+		}
+		for _, ed := range res.Edits {
+			if strings.HasPrefix(ed.Loc.File, sources.SessionsRoot+"/") && !strings.HasPrefix(ed.Loc.File, sources.SessionRel(rd, "")) {
+				t.Errorf("%s: edit outside the replica's directory: %s", row, ed.Loc.File)
+			}
+		}
+		edits = append(edits, res.Edits...)
+	}
+	testkit.Apply(t, dst, edits)
+	for dir, before := range decoys {
+		after := testkit.TreeOf(t, dir)
+		if !equalTrees(before, after) {
+			t.Errorf("decoy directory %s changed", filepath.Base(dir))
+		}
+	}
+}

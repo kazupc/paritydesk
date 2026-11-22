@@ -55,8 +55,10 @@ type Policy struct {
 	// the environments row and consumed by the sessions row (rows 7, 8).
 	EnvRemap map[string]string
 	// Fields are the row's manifest field lists by role ("per_field",
-	// "account_bound", "run_state", "max_time", "parent"), copied from
+	// "account_bound", "grant", "run_state", "max_time", "parent",
+	// "worktree" and the others named in engine.go), copied from
 	// compat.RowSpec.Fields. Modules never hard-code on-disk field names.
+	// A record field that no role lists comes from the winning record.
 	Fields map[string][]string
 }
 
@@ -91,6 +93,12 @@ type Output struct {
 	Conflicts []model.Conflict
 	// EnvRemap is set by the environments row.
 	EnvRemap map[string]string
+	// Known lists every item key the row's inputs held: both sides, both
+	// bases, canonical and both overlays, tombstones included. The
+	// sessions row sets it so PostMerge can tell a removed session from
+	// one this merge never saw (another org's or another account's
+	// session in the same folder, or a remote session_ id).
+	Known map[string]bool
 	// NeedsConfirmation is true when a side merged as a union because its
 	// base was invalid.
 	NeedsConfirmation bool
@@ -107,9 +115,9 @@ func Registry() map[model.RowID]Module {
 	mods := []Module{
 		environmentsModule{},
 		sessionsModule{},
-		keyedModule{row: model.RowTasks},
+		tasksModule{},
 		waitingInputModule{},
-		keyedModule{row: model.RowWorktrees},
+		worktreesModule{},
 		orderModule{row: model.RowGroupOrder},
 		sidebarModule{},
 		orderModule{row: model.RowPinnedOrder},

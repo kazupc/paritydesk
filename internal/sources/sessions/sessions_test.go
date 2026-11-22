@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/model"
@@ -273,7 +274,7 @@ func TestWritingRecordQuarantinesTmp(t *testing.T) {
 	}
 }
 
-func TestListSessionsBusyFromRunState(t *testing.T) {
+func TestListSessionsBusyFromBusyFields(t *testing.T) {
 	m := testkit.Manifest(t)
 	folder := testkit.NewDataRoot(t).AddFolder(t, testkit.FolderSpec{Name: "Claude", Replica: rep, Sessions: []testkit.Session{
 		{N: 1, Title: "idle", CLISessionID: "cli-1", Worktree: "/tmp/wt/a", Archived: true,
@@ -283,7 +284,7 @@ func TestListSessionsBusyFromRunState(t *testing.T) {
 		{N: 4, Extra: map[string]any{"queuedMessages": []string{}}},
 	}})
 	spec := testkit.Spec(t, m, model.RowSessions, rep)
-	spec.Fields = map[string][]string{sources.RoleRunState: {"interruptedByQuitAt", "runStatus", "queuedMessages"}}
+	spec.Fields = map[string][]string{sources.RoleBusy: {"interruptedByQuitAt", "runStatus", "queuedMessages"}}
 	infos, err := sources.ListSessions(context.Background(), folder, rep, spec)
 	if err != nil {
 		t.Fatal(err)
@@ -357,5 +358,207 @@ func TestWaitingInputSecretlessCopyAndSkip(t *testing.T) {
 	res := ops(t, sessions.WaitingInput{}, c, &srcRC, read(t, sessions.WaitingInput{}, c), des)
 	if len(res.Edits) != 1 || len(res.Skipped) != 1 || res.Skipped[0].Key != "a.json" {
 		t.Fatalf("edits %d skipped %+v", len(res.Edits), res.Skipped)
+	}
+}
+
+// TestTombstoneContentForms reads each tombstone form: a bare number (the
+// form app 6.28899.2 writes) is the time even when the mtime differs; the
+// older object form is still read; anything else falls back to the mtime.
+func TestTombstoneContentForms(t *testing.T) {
+	m := testkit.Manifest(t)
+	mtime := time.UnixMilli(1600000000000)
+	tests := []struct {
+		name, content string
+		want          int64
+	}{
+		{"bare number", "1700000000123", 1700000000123},
+		{"bare number with newline", "1700000000123\n", 1700000000123},
+		{"legacy object", `{"deletedAt":1700000000456}`, 1700000000456},
+		{"zero", "0", mtime.UnixMilli()},
+		{"string", `"1700000000123"`, mtime.UnixMilli()},
+		{"malformed", "17000x", mtime.UnixMilli()},
+		{"empty", "", mtime.UnixMilli()},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			folder := testkit.NewDataRoot(t).AddFolder(t, testkit.FolderSpec{Name: "Claude", Replica: rep})
+			p := filepath.Join(sessDir(folder), "deleted_"+testkit.FakeUUID(5))
+			if err := os.WriteFile(p, []byte(tc.content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chtimes(p, mtime, mtime); err != nil {
+				t.Fatal(err)
+			}
+			s := read(t, sessions.Sessions{}, rc(t, m, folder, model.RowSessions))
+			if got := s.Tombstones[testkit.FakeSession(5)].At; got != tc.want {
+				t.Fatalf("tombstone time %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestTombstoneWrittenAsBareNumber: a new tombstone is written as a bare
+// JSON number of epoch ms; the source's bytes are copied only when they
+// already have that form.
+func TestTombstoneWrittenAsBareNumber(t *testing.T) {
+	m := testkit.Manifest(t)
+	for _, tc := range []struct {
+		name, source string // "" means the source has no such file
+		want         string
+	}{
+		{"no source file", "", "777"},
+		{"source bare number copied", "777", "777"},
+		{"source object form rewritten", `{"deletedAt":777}`, "777"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := testkit.NewDataRoot(t)
+			dst := root.AddFolder(t, testkit.FolderSpec{Name: "Claude", Replica: rep, Sessions: []testkit.Session{{N: 1}}})
+			src := root.AddFolder(t, testkit.FolderSpec{Name: "Claude-s", Replica: rep})
+			if tc.source != "" {
+				if err := os.WriteFile(filepath.Join(sessDir(src), "deleted_"+testkit.FakeUUID(1)), []byte(tc.source), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			c := rc(t, m, dst, model.RowSessions)
+			srcRC := rc(t, m, src, model.RowSessions)
+			cur := read(t, sessions.Sessions{}, c)
+			des := cur.Clone()
+			delete(des.Items, testkit.FakeSession(1))
+			des.Tombstones = map[string]model.Tombstone{testkit.FakeSession(1): {Key: testkit.FakeSession(1), At: 777}}
+			res := ops(t, sessions.Sessions{}, c, &srcRC, cur, des)
+			testkit.Apply(t, dst, res.Edits)
+			b, err := os.ReadFile(filepath.Join(sessDir(dst), "deleted_"+testkit.FakeUUID(1)))
+			if err != nil || string(b) != tc.want {
+				t.Fatalf("tombstone content %q, want %q (%v)", b, tc.want, err)
+			}
+			if got := read(t, sessions.Sessions{}, c).Tombstones[testkit.FakeSession(1)].At; got != 777 {
+				t.Fatalf("read back %d", got)
+			}
+		})
+	}
+}
+
+func TestWaitingInputMustBeADirectory(t *testing.T) {
+	m := testkit.Manifest(t)
+	folder := testkit.NewDataRoot(t).AddFolder(t, testkit.FolderSpec{Name: "Claude", Replica: rep})
+	if s := read(t, sessions.WaitingInput{}, rc(t, m, folder, model.RowWaitingInput)); len(s.Items) != 0 {
+		t.Fatalf("empty directory gave %v", s.Keys())
+	}
+	dir := filepath.Join(sessDir(folder), "waiting-input")
+	if err := os.Remove(dir); err != nil {
+		t.Fatal(err)
+	}
+	if s := read(t, sessions.WaitingInput{}, rc(t, m, folder, model.RowWaitingInput)); len(s.Items) != 0 {
+		t.Fatalf("missing directory gave %v", s.Keys())
+	}
+	if err := os.WriteFile(dir, []byte(testkit.Canary), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := sessions.WaitingInput{}.Read(context.Background(), rc(t, m, folder, model.RowWaitingInput))
+	if err == nil || !strings.Contains(err.Error(), "not a directory") || strings.Contains(err.Error(), testkit.Canary) ||
+		strings.Contains(err.Error(), folder) {
+		t.Fatalf("err %v", err)
+	}
+}
+
+// TestTasksRealShapes reads the observed backlog and scheduled-task files
+// with the manifest's own field lists and creates missing files in the
+// same shape.
+func TestTasksRealShapes(t *testing.T) {
+	m := testkit.Manifest(t)
+	root := testkit.NewDataRoot(t)
+	spec := testkit.Rich("Claude-s", 1)
+	spec.Replica = rep
+	src := root.AddFolder(t, spec)
+	dst := root.AddFolder(t, testkit.FolderSpec{Name: "Claude", Replica: rep})
+	srcRC := rc(t, m, src, model.RowTasks)
+	s := read(t, sessions.Tasks{}, srcRC)
+	if it := s.Items["backlog/t1"]; it.Stamp.AppTime != 11 {
+		t.Fatalf("backlog stamp %d, want filedAt 11", it.Stamp.AppTime)
+	}
+	c := rc(t, m, dst, model.RowTasks)
+	res := ops(t, sessions.Tasks{}, c, &srcRC, read(t, sessions.Tasks{}, c), s)
+	testkit.Apply(t, dst, res.Edits)
+	b, err := os.ReadFile(filepath.Join(sessDir(dst), "backlog", "tasks.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var backlog struct {
+		Version *int              `json:"version"`
+		Items   []json.RawMessage `json:"items"`
+	}
+	if json.Unmarshal(b, &backlog) != nil || backlog.Version == nil || *backlog.Version != 1 || len(backlog.Items) != 2 {
+		t.Fatalf("created backlog %s", b)
+	}
+	sb, _ := os.ReadFile(filepath.Join(sessDir(dst), "scheduled-tasks.json"))
+	if !strings.Contains(string(sb), `"recordedSkips":{}`) {
+		t.Fatalf("created scheduled tasks %s", sb)
+	}
+	for _, p := range m.Probes {
+		if p.Row != model.RowTasks {
+			continue
+		}
+		res, err := compat.RunProbes(context.Background(), &compat.Manifest{Probes: []compat.Probe{p}}, compat.ProbeEnv{Folder: dst, Replica: rep})
+		if err != nil || !res[0].OK {
+			t.Errorf("probe %s on a created file: %+v %v", p.ID, res, err)
+		}
+	}
+	if got := read(t, sessions.Tasks{}, c); !sources.SameItems(got, s, true) {
+		t.Fatalf("read back %v", got.Order)
+	}
+}
+
+// TestOtherAccountsNeverRead: a folder that also holds other accounts'
+// session directories (with an id that collides with one of the
+// replica's) gives the replica's records only, and edits never reach the
+// other directories.
+func TestOtherAccountsNeverRead(t *testing.T) {
+	m := testkit.Manifest(t)
+	root := testkit.NewDataRoot(t)
+	spec := testkit.Rich("Claude", 1)
+	spec.Replica = rep
+	folder := root.AddFolder(t, spec)
+	decoy := testkit.DecoyReplica(1)
+	decoyDir := filepath.Join(folder, sources.SessionRel(decoy, ""))
+	before := testkit.TreeOf(t, decoyDir)
+	if len(before) < 3 {
+		t.Fatalf("decoy fixture %v", before)
+	}
+	c := rc(t, m, folder, model.RowSessions)
+	s := read(t, sessions.Sessions{}, c)
+	if _, ok := s.Items[testkit.FakeSession(71)]; ok {
+		t.Fatal("a decoy record was read")
+	}
+	if _, ok := s.Tombstones[testkit.FakeSession(2)]; ok {
+		t.Fatal("a decoy tombstone was read")
+	}
+	if strings.Contains(string(s.Items[testkit.FakeSession(1)].Value), "decoy") {
+		t.Fatal("the decoy copy of a shared id was read")
+	}
+	infos, err := sources.ListSessions(context.Background(), folder, rep, c.Spec)
+	if err != nil || len(infos) != len(s.Items) {
+		t.Fatalf("list sessions %d, %v", len(infos), err)
+	}
+	des := s.Clone()
+	for k := range des.Items {
+		delete(des.Items, k)
+		break
+	}
+	des.Tombstones = nil
+	res := ops(t, sessions.Sessions{}, c, nil, s, des)
+	for _, e := range res.Edits {
+		if !strings.HasPrefix(e.Loc.File, sources.SessionRel(rep, "")) {
+			t.Fatalf("edit outside the replica's directory: %s", e.Loc.File)
+		}
+	}
+	testkit.Apply(t, folder, res.Edits)
+	if after := testkit.TreeOf(t, decoyDir); len(after) != len(before) {
+		t.Fatal("decoy directory changed")
+	} else {
+		for k, v := range before {
+			if after[k] != v {
+				t.Fatalf("decoy file %s changed", k)
+			}
+		}
 	}
 }

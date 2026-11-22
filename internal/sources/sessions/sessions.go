@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/kazupc/paritydesk/internal/compat"
@@ -20,8 +21,11 @@ import (
 
 // Defaults used when the manifest's field lists are empty.
 var (
-	defaultActivity      = "lastActivityAt"
-	defaultTombstoneTime = []string{"deletedAt"}
+	defaultActivity = "lastActivityAt"
+	// legacyTombstoneTime is the member read from a tombstone holding an
+	// object instead of a bare number. App 6.28899.2 writes a bare number
+	// (ADR 0004); the object form is still read, never written.
+	legacyTombstoneTime = []string{"deletedAt"}
 )
 
 // IndexVersion is the only archived-sessions.idx version paritydesk reads
@@ -82,7 +86,7 @@ func tombstoneFields(spec compat.RowSpec) []string {
 	if f := spec.Fields[sources.RoleTombstoneTime]; len(f) > 0 {
 		return f
 	}
-	return defaultTombstoneTime
+	return legacyTombstoneTime
 }
 
 // Read implements sources.Adapter. Items are the local_<uuid>.json
@@ -90,7 +94,9 @@ func tombstoneFields(spec compat.RowSpec) []string {
 // local_<uuid>.json.tmp is a candidate version: it replaces the record
 // when it parses and is at least as recent (the app promotes it at
 // startup); a malformed candidate is ignored. Tombstones come from
-// deleted_<uuid> files, timed by their content or else their mtime.
+// deleted_<uuid> files, timed by their content (a bare JSON number of
+// epoch ms) or else their mtime. Only the replica's own session directory
+// is listed; other accounts' directories next to it are never read.
 func (Sessions) Read(ctx context.Context, rc sources.ReadContext) (*model.RowSnapshot, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -171,8 +177,10 @@ func readCandidate(rc sources.ReadContext, key, name, act string) (model.Item, b
 	return it, err == nil
 }
 
-// tombstoneTime reads a tombstone's time from its content (a number, or
-// an object member named by fields), else from its mtime.
+// tombstoneTime reads a tombstone's time from its content: a bare JSON
+// number of epoch ms (the form the app writes), or, for an older object
+// form, the largest member named by fields. Anything else (empty,
+// malformed, zero or negative) falls back to the file's mtime.
 func tombstoneTime(rc sources.ReadContext, name string, fields []string) (int64, error) {
 	rel := sources.SessionRel(rc.Replica, name)
 	data, _, err := sources.ReadFile(rc.Folder, rel)
@@ -392,19 +400,31 @@ func (o *sessionOps) writeTombstone(k string, t model.Tombstone) error {
 	return nil
 }
 
-// tombstoneContent copies the source's tombstone bytes when it has the
-// file, else writes {"<time field>": At}.
+// tombstoneContent copies the source's tombstone bytes when they are a
+// bare number, else writes At as a bare JSON number of epoch ms, the form
+// the app writes. A zero At (time unknown) uses NowMillis.
 func (o *sessionOps) tombstoneContent(name string, t model.Tombstone) ([]byte, error) {
 	if src := o.oc.Source; src != nil {
 		data, present, err := sources.ReadFile(src.Folder, sources.SessionRel(src.Replica, name))
 		if err != nil {
 			return nil, err
 		}
-		if present {
+		if present && bareMillis(data) {
 			return data, nil
 		}
 	}
-	return jsonx.Marshal(map[string]int64{tombstoneFields(o.oc.Spec)[0]: t.At})
+	at := t.At
+	if at <= 0 {
+		at = o.oc.NowMillis
+	}
+	return []byte(strconv.FormatInt(at, 10)), nil
+}
+
+// bareMillis reports whether data is a single positive JSON integer.
+func bareMillis(data []byte) bool {
+	s := strings.TrimSpace(string(data))
+	n, err := strconv.ParseInt(s, 10, 64)
+	return err == nil && n > 0
 }
 
 // archiveIndex is the idx file's shape.

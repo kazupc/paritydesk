@@ -1,9 +1,11 @@
 package presets
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/jsonx"
@@ -25,6 +27,12 @@ const (
 	PlaceDefaults = "placeDefaults"
 )
 
+// StartedVersion is the persisted version of
+// persisted.ccd-started-environments on app 6.28899.2 (the manifest's
+// started-environments-version probe), used only when paritydesk creates
+// the item.
+const StartedVersion = 1
+
 // Default limits (the app's own), used when the manifest gives none.
 const (
 	defaultMaxPresets = 200
@@ -34,11 +42,16 @@ const (
 // defaultSecret are the dotted paths of env-var objects inside a preset.
 var defaultSecret = []string{"settings.env", "env"}
 
+// NoteCopiesDisagree is the skip note of a preset change that was not
+// written because the Local Storage copy and the file mirror disagree.
+const NoteCopiesDisagree = "Local Storage and ccd-session-presets.json disagree; presets left unchanged"
+
 // Paths inside the decoded values.
 var (
-	presetsPath = jsonx.Path{"state", "presets"}
-	placePath   = jsonx.Path{"state", "placeDefaults"}
-	startedPath = jsonx.Path{"state", "bySessionId"}
+	presetsPath  = jsonx.Path{"state", "presets"}
+	mirroredPath = jsonx.Path{"state", "fileMirrored"}
+	placePath    = jsonx.Path{"state", "placeDefaults"}
+	startedPath  = jsonx.Path{"state", "bySessionId"}
 )
 
 // Environments is the adapter for row model.RowEnvironments.
@@ -60,9 +73,19 @@ func keys(spec compat.RowSpec) (string, string, error) {
 	return spec.LSKeys[0], spec.LSKeys[1], nil
 }
 
-// Read implements sources.Adapter. Presets come from Local Storage (the
-// truth), or from the file's byAccount entry when Local Storage lacks
-// them. Env-var values are replaced by "sha256:<hex>".
+// Read implements sources.Adapter. ccd-session-presets.json
+// byAccount[<acct>] mirrors the Local Storage presets item when the item's
+// state.fileMirrored is true (app 6.28899.2). Then presets are read from
+// the file when it holds the account's presets array, and a Local Storage
+// copy that differs is listed in Stale (per preset key) and never
+// harvested. When fileMirrored is not true, or the file has no entry, the
+// Local Storage copy is used, and a differing file copy is listed in
+// Stale. Ops never writes presets while the copies disagree, so neither
+// copy is overwritten by the other (the app's read order has not been
+// observed on a real Mac). Env-var values are replaced by "sha256:<hex>".
+// placeDefaults and the started-environments map exist in Local Storage
+// only. The per-org presets item (persisted.ccd-session-presets.<acct>.
+// <org>) is never read.
 func (Environments) Read(ctx context.Context, rc sources.ReadContext) (*model.RowSnapshot, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -76,12 +99,41 @@ func (Environments) Read(ctx context.Context, rc sources.ReadContext) (*model.Ro
 	if err != nil {
 		return nil, err
 	}
-	arr, label, err := presetArray(rc, pdoc)
+	fdoc, err := sources.LoadFile(rc.Folder, FileName)
 	if err != nil {
 		return nil, err
 	}
-	if err := addPresets(snap, arr, label, rc.Spec); err != nil {
+	fileArr, inFile, err := fdoc.Get(filePath(rc.Replica))
+	if err != nil {
 		return nil, err
+	}
+	lsArr, inLS, err := pdoc.Get(presetsPath)
+	if err != nil {
+		return nil, err
+	}
+	mirrored, _, err := pdoc.Get(mirroredPath)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case inFile && (!inLS || string(mirrored) == "true"):
+		if err := addPresets(snap, fileArr, FileName, rc.Spec); err != nil {
+			return nil, err
+		}
+		if inLS {
+			if err := markStale(snap, lsArr, pdoc.Name(), rc.Spec); err != nil {
+				return nil, err
+			}
+		}
+	case inLS:
+		if err := addPresets(snap, lsArr, pdoc.Name(), rc.Spec); err != nil {
+			return nil, err
+		}
+		if inFile {
+			if err := markStale(snap, fileArr, FileName, rc.Spec); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if err := addPlaceDefaults(snap, pdoc); err != nil {
 		return nil, err
@@ -93,17 +145,30 @@ func (Environments) Read(ctx context.Context, rc sources.ReadContext) (*model.Ro
 	return snap, addStarted(snap, sdoc)
 }
 
-// presetArray returns the presets array from LS, else from the file.
-func presetArray(rc sources.ReadContext, pdoc sources.Doc) (json.RawMessage, string, error) {
-	if v, found, err := pdoc.Get(presetsPath); err != nil || found {
-		return v, pdoc.Name(), err
+// markStale lists in snap.Stale every preset key on which the other
+// copy's array disagrees with the harvested items (a differing value, or a
+// key only one copy has), sorted.
+func markStale(snap *model.RowSnapshot, otherArr json.RawMessage, label string, spec compat.RowSpec) error {
+	ls := sources.NewSnapshot(model.RowEnvironments)
+	if err := addPresets(ls, otherArr, label, spec); err != nil {
+		return err
 	}
-	fdoc, err := sources.LoadFile(rc.Folder, FileName)
-	if err != nil {
-		return nil, "", err
+	stale := map[string]bool{}
+	for k, it := range snap.Items {
+		if o, ok := ls.Items[k]; !ok || o.Hash != it.Hash {
+			stale[k] = true
+		}
 	}
-	v, _, err := fdoc.Get(filePath(rc.Replica))
-	return v, FileName, err
+	for k := range ls.Items {
+		if _, ok := snap.Items[k]; !ok {
+			stale[k] = true
+		}
+	}
+	for k := range stale {
+		snap.Stale = append(snap.Stale, k)
+	}
+	sort.Strings(snap.Stale)
+	return nil
 }
 
 func filePath(r model.Replica) jsonx.Path {
@@ -193,7 +258,9 @@ type ops struct {
 
 // Ops implements sources.Adapter. The presets array is rewritten at
 // ["state","presets"] in Local Storage and at
-// ["byAccount",<acct>,"presets"] in the file (mode 0600), together.
+// ["byAccount",<acct>,"presets"] in the file (mode 0600), together, so
+// the two copies never disagree after a write; other members of either
+// copy (builtIns, fileMirrored, seeding flags) are left alone.
 // Unchanged presets keep the target's bytes; changed presets with secrets
 // are copied from the source's raw bytes after a hash check, and when the
 // source moved on the target's preset is kept and reported skipped.
@@ -228,6 +295,19 @@ func (o *ops) presets(pk string) error {
 	if err != nil {
 		return err
 	}
+	if changed {
+		disagree, err := o.copiesDisagree(pdoc)
+		if err != nil {
+			return err
+		}
+		if disagree {
+			// Writing would replace one copy with the other's values.
+			for _, k := range changedPresets(o.cur, o.des) {
+				o.res.Skipped = append(o.res.Skipped, sources.Skip(model.RowEnvironments, k, NoteCopiesDisagree))
+			}
+			changed, arr = false, nil
+		}
+	}
 	place, placeHas := o.des.Items[PlaceDefaults]
 	placeChanged := itemChanged(o.cur, o.des, PlaceDefaults)
 	if !changed && !placeChanged {
@@ -258,6 +338,46 @@ func (o *ops) presets(pk string) error {
 		return o.file(arr)
 	}
 	return nil
+}
+
+// copiesDisagree reports whether the target's Local Storage presets array
+// and its file mirror entry both exist and hold different presets.
+func (o *ops) copiesDisagree(pdoc sources.Doc) (bool, error) {
+	lsArr, inLS, err := pdoc.Get(presetsPath)
+	if err != nil || !inLS {
+		return false, err
+	}
+	fdoc, err := sources.LoadFile(o.oc.Folder, FileName)
+	if err != nil {
+		return false, err
+	}
+	fileArr, inFile, err := fdoc.Get(filePath(o.oc.Replica))
+	if err != nil || !inFile {
+		return false, err
+	}
+	a := sources.NewSnapshot(model.RowEnvironments)
+	if err := addPresets(a, fileArr, FileName, o.oc.Spec); err != nil {
+		return false, err
+	}
+	if err := markStale(a, lsArr, pdoc.Name(), o.oc.Spec); err != nil {
+		return false, err
+	}
+	return len(a.Stale) > 0, nil
+}
+
+// changedPresets lists the preset keys whose desired item differs from
+// the current one, sorted.
+func changedPresets(cur, des *model.RowSnapshot) []string {
+	var out []string
+	for _, s := range []*model.RowSnapshot{cur, des} {
+		for _, k := range sources.ItemsWithPrefix(s, PresetPrefix, nil) {
+			if itemChanged(cur, des, k) && !contains(out, k) {
+				out = append(out, k)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (o *ops) newPresetsItem(lb *sources.Builder, arr json.RawMessage, place json.RawMessage, placeHas bool) error {
@@ -316,7 +436,7 @@ func (o *ops) presetBytes(pdoc sources.Doc) (json.RawMessage, bool, error) {
 			return nil, false, err
 		}
 		if b != nil {
-			elems = append(elems, b)
+			elems = append(elems, compact(b))
 		}
 	}
 	arr := sources.JoinArray(elems)
@@ -404,7 +524,7 @@ func (o *ops) started(sk string) error {
 		for _, k := range sources.ItemsWithPrefix(o.des, StartedPrefix, nil) {
 			m[k[len(StartedPrefix):]] = o.des.Items[k].Value
 		}
-		v, err := jsonx.Marshal(map[string]any{"state": map[string]any{"bySessionId": m}, "version": 0})
+		v, err := jsonx.Marshal(map[string]any{"state": map[string]any{"bySessionId": m}, "version": StartedVersion})
 		if err != nil {
 			return fmt.Errorf("presets: encode: %w", err)
 		}
@@ -440,6 +560,16 @@ func contains(s []string, k string) bool {
 		}
 	}
 	return false
+}
+
+// compact drops insignificant whitespace (the file copy is indented);
+// string contents, secret values included, stay byte-identical.
+func compact(b json.RawMessage) json.RawMessage {
+	var buf bytes.Buffer
+	if json.Compact(&buf, b) != nil {
+		return b
+	}
+	return buf.Bytes()
 }
 
 func equalJSON(a, b json.RawMessage) (bool, error) {

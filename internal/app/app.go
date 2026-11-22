@@ -136,9 +136,10 @@ type MainLog interface {
 	// empty.
 	Busy(ctx context.Context, from int64, sig compat.Signals) ([]ids.SessionID, error)
 	// ActiveOrg returns the org named by the last ActiveOrg line (bounded
-	// tail scan), validated as a UUID; found is false when none was seen.
+	// tail scan), validated as a UUID, when that line names account; found
+	// is false when none was seen or the last line is another account's.
 	// ErrSignalUnknown when the pattern is empty.
-	ActiveOrg(ctx context.Context, sig compat.Signals) (org ids.OrgID, found bool, err error)
+	ActiveOrg(ctx context.Context, sig compat.Signals, account ids.AccountID) (org ids.OrgID, found bool, err error)
 }
 
 // GitStatus runs a read-only `git -C <dir> status --porcelain`.

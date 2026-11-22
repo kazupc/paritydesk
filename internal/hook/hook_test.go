@@ -224,6 +224,10 @@ func TestSkewed(t *testing.T) {
 		{"x.y.z", "0.1.0", true},
 		{"0.1x.0", "0.1.0", true},
 		{"0.1.0", "garbage", true},
+		// brew install --HEAD and go build from a checkout have no release
+		// version, so they are never skewed.
+		{"0.1.0", "HEAD-1a2b3c4", false},
+		{"0.2.0", "(devel)", false},
 	}
 	for _, tc := range tests {
 		if got := Skewed(tc.plugin, tc.binary); got != tc.want {

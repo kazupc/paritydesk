@@ -256,7 +256,7 @@ func realHookDeps(_ context.Context, e *env, pluginVersion string) (hook.Deps, e
 	if err != nil {
 		return hook.Deps{}, err
 	}
-	d := hook.Deps{State: st, PluginVersion: pluginVersion, BinaryVersion: Version}
+	d := hook.Deps{State: st, PluginVersion: pluginVersion, BinaryVersion: versionString()}
 	plat, err := app.NewDarwin(app.DarwinConfig{Home: home, BundleID: cfg.App.BundleID})
 	if err != nil {
 		return d, nil // silent: InsideApp stays nil

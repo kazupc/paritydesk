@@ -97,7 +97,7 @@ func (o *Orchestrator) buildPlan(ctx context.Context, in planInput) (*planned, e
 	pl := &planned{Rows: in.Rows, Work: map[model.RowID]*rowWork{}}
 	outs := map[model.RowID]*rows.Output{}
 	var envRemap map[string]string
-	acks := o.permissionAcks(ctx, in.T)
+	acks := o.permissionAcks(ctx, in.Manifest, in.T)
 	for _, r := range in.Rows {
 		if err := ctx.Err(); err != nil {
 			return nil, pderr.Wrap(pderr.Declined, "interrupted", err)
@@ -125,16 +125,37 @@ func (o *Orchestrator) buildPlan(ctx context.Context, in planInput) (*planned, e
 	return pl, nil
 }
 
-func (o *Orchestrator) permissionAcks(ctx context.Context, t sideRef) map[string]bool {
+// permissionAcks returns the entering folder's acknowledgements keyed by
+// permission mode: prefs are read by name (Deps.PermissionAcks) and mapped
+// to modes through the manifest's permission_acks table.
+func (o *Orchestrator) permissionAcks(ctx context.Context, m *compat.Manifest, t sideRef) map[string]bool {
 	if o.d.PermissionAcks == nil {
 		return nil
 	}
-	acks, err := o.d.PermissionAcks(ctx, t.Folder, t.Replica)
+	prefs, err := o.d.PermissionAcks(ctx, t.Folder, t.Replica)
 	if err != nil {
 		o.progress(P2Preview, "warn", "permission acknowledgements of the entering folder could not be read")
 		return nil
 	}
-	return acks
+	var table map[string][]string
+	if m != nil {
+		table = m.PermissionAcks
+	}
+	return modeAcks(prefs, table)
+}
+
+// modeAcks maps preference-keyed acknowledgements to permission modes: a
+// mode is acknowledged when any preference the table lists for it is true.
+func modeAcks(prefs map[string]bool, table map[string][]string) map[string]bool {
+	out := map[string]bool{}
+	for mode, names := range table {
+		for _, n := range names {
+			if prefs[n] {
+				out[mode] = true
+			}
+		}
+	}
+	return out
 }
 
 // mergeRow reads one row on both sides and merges it.
@@ -153,7 +174,7 @@ func (o *Orchestrator) mergeRow(ctx context.Context, in planInput, r model.RowID
 	}
 	for _, snap := range []*model.RowSnapshot{sSnap, tSnap} {
 		if snap != nil && len(snap.Stale) > 0 {
-			o.progress(P2Preview, "warn", fmt.Sprintf("%s: %d stale Local Storage value(s) ignored; the config mirror wins", r, len(snap.Stale)))
+			o.progress(P2Preview, "warn", staleWarning(r, len(snap.Stale)))
 		}
 	}
 	w := &rowWork{
@@ -210,7 +231,7 @@ func (o *Orchestrator) side(r *state.Root, s sideRef, k state.BaseKey, snap *mod
 	if ref, ok := r.Bases[k.String()]; ok && s.BaseValid {
 		base, err := o.d.State.GetSnapshot(ref)
 		if err != nil {
-			o.progress(P2Preview, "warn", fmt.Sprintf("%s: the base of %s is unreadable and is treated as invalid", k.Row, s.Alias))
+			o.progressNaming(P2Preview, "warn", fmt.Sprintf("%s: the base of %s is unreadable and is treated as invalid", k.Row, s.Alias), s.Alias)
 		} else {
 			sd.Base, sd.BaseValid = base, true
 		}
@@ -353,3 +374,13 @@ func (o *Orchestrator) emptyPlan(runID string, s, t sideRef, skipped map[model.R
 
 // expiry returns when a confirmation asked now stops being valid.
 func (o *Orchestrator) expiry() time.Time { return o.now().Add(ConfirmedPlanTTL) }
+
+// staleWarning describes values on which a row's two stored copies
+// disagree. For presets neither copy wins: the presets are not written
+// while the copies disagree.
+func staleWarning(r model.RowID, n int) string {
+	if r == model.RowEnvironments {
+		return fmt.Sprintf("%s: %d preset(s) differ between Local Storage and ccd-session-presets.json; presets are not written until they agree", r, n)
+	}
+	return fmt.Sprintf("%s: %d stale Local Storage value(s) ignored; the config mirror wins", r, n)
+}

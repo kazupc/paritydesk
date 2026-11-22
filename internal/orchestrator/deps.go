@@ -63,7 +63,7 @@ type AppControl interface {
 	WaitTurnEnded(ctx context.Context, from int64, sig compat.Signals, session ids.SessionID, timeout time.Duration) error
 	BusySessions(ctx context.Context, from int64, sig compat.Signals) ([]ids.SessionID, error)
 	WaitUpdateInstalled(ctx context.Context, bundleID string, timeout time.Duration) error
-	ActiveOrg(ctx context.Context, sig compat.Signals) (ids.OrgID, bool, error)
+	ActiveOrg(ctx context.Context, sig compat.Signals, account ids.AccountID) (ids.OrgID, bool, error)
 	Launch(ctx context.Context, bundleID string) error
 	OpenSession(ctx context.Context, id ids.SessionID) error
 	ProbeAutomation(ctx context.Context, bundleID string) error
@@ -91,8 +91,10 @@ type SessionDirectory interface {
 }
 
 // WorktreeGuard computes the worktree loss guard's input (worktrees.Guard).
+// fields are the sessions row's manifest fields.worktree_path.
 type WorktreeGuard interface {
-	LostRegistrations(leavingSessions, desiredSessions *model.RowSnapshot) ([]string, error)
+	LostRegistrations(leavingSessions, desiredSessions *model.RowSnapshot, fields []string) ([]string, error)
+	LostEntries(current, desired *model.RowSnapshot, pathFields []string) ([]string, error)
 }
 
 // Applier executes plans (apply.Applier).

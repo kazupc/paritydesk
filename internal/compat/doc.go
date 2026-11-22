@@ -8,6 +8,13 @@
 // folder; known-bad versions; main.log signal patterns; and footprints of
 // other account-switching tools.
 //
-// Probes check names and shapes only, never values. paritydesk never reads
-// or hashes the app bundle's code at runtime.
+// Probes check names, shapes and persisted versions only, never other
+// values. paritydesk never reads or hashes the app bundle's code at
+// runtime.
+//
+// The classification also bounds writes: file ops are allowed only below
+// the synced globs (expanded for the entering replica), so an entry no
+// list names is never touched, and ls_never_touched adds Local Storage
+// items that are never written. ADR 0004 records the survey behind the
+// 6.x manifest.
 package compat

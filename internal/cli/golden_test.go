@@ -88,9 +88,9 @@ var jsonCases = []struct {
 	setup func(h *harness)
 	code  int
 }{
-	{name: "init", args: []string{"init", "--alias", "work", "--label", "Work"}},
+	{name: "init", args: []string{"init", "--alias", "work", "--label", "Work", "--unmanaged"}},
 	{name: "profile_list", args: []string{"profile", "list"}},
-	{name: "profile_adopt", args: []string{"profile", "adopt", "home", "Claude-home"}},
+	{name: "profile_adopt", args: []string{"profile", "adopt", "home", "Claude-home", "--unmanaged"}},
 	{name: "profile_add", args: []string{"profile", "add", "client", "--managed"}},
 	{name: "profile_rename", args: []string{"profile", "rename", "home", "personal"}},
 	{name: "profile_remove", args: []string{"profile", "remove", "home"}},

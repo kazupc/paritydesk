@@ -383,7 +383,7 @@ func TestPendingAddBlocksProfileCommands(t *testing.T) {
 	ctx := context.Background()
 	cmds := map[string]func(o *Orchestrator) error{
 		"init":   func(o *Orchestrator) error { return o.Init(ctx, InitOptions{Alias: "c2"}) },
-		"adopt":  func(o *Orchestrator) error { return o.ProfileAdopt(ctx, "c2", "Claude-a") },
+		"adopt":  func(o *Orchestrator) error { return o.ProfileAdopt(ctx, "c2", "Claude-a", false) },
 		"rename": func(o *Orchestrator) error { return o.ProfileRename(ctx, "a", "a2") },
 		"remove": func(o *Orchestrator) error { return o.ProfileRemove(ctx, "b") },
 		"add":    func(o *Orchestrator) error { return o.ProfileAdd(ctx, "d", false) },
@@ -557,5 +557,43 @@ func TestExpandExcludes(t *testing.T) {
 	want := []string{"/Users/someone/clients/**", "/Users/someone", "/abs/**", "local_x", "~other/x"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("got %q", got)
+	}
+}
+
+// TestRollbackWaitsForQuiescence: a rollback restores only when no process
+// uses the target folder. A held LOCK, a write holder or a copy of the app
+// started with --user-data-dir on the folder (all reported by the
+// quiescence check) make it refuse with exit 41 and restore nothing.
+func TestRollbackWaitsForQuiescence(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t)
+	afterSwitch(t, e)
+	e.ui.interactive = true
+	if e.app.inUse == nil {
+		e.app.inUse = map[string]bool{}
+	}
+	// Generation 0 belongs to b, which is in Claude/ now.
+	e.app.inUse[filepath.Join(e.root, ids.DefaultFolder)] = true
+	launches := e.app.launches
+	_, err := e.orch().Rollback(ctx, 0, false)
+	if pderr.CodeOf(err) != pderr.AppDidNotQuit {
+		t.Fatalf("err = %v", err)
+	}
+	if e.gens.restores != 0 {
+		t.Error("restored while the folder was in use")
+	}
+	if root := e.st.root(t); root.Run != nil {
+		t.Errorf("run left open: %+v", root.Run)
+	}
+	if e.app.quits > 0 && e.app.launches == launches {
+		t.Error("Claude was quit for the rollback and not relaunched")
+	}
+	// Once the folder is free, the rollback restores.
+	e.app.inUse = nil
+	if _, err := e.orch().Rollback(ctx, 0, false); err != nil {
+		t.Fatalf("rollback when quiet: %v", err)
+	}
+	if e.gens.restores == 0 {
+		t.Error("nothing restored when quiet")
 	}
 }

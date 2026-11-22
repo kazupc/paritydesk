@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"runtime/debug"
 	"sort"
 	"strings"
 
@@ -18,8 +17,14 @@ import (
 	"github.com/kazupc/paritydesk/internal/render"
 )
 
-// Version is set at build time with -ldflags "-X .../cli.Version=v0.1.0".
-var Version = "0.1.0-dev"
+// Version, Commit and Date are set at build time with -ldflags, for
+// example "-X github.com/kazupc/paritydesk/internal/cli.Version=0.1.0"
+// (see .goreleaser.yaml). Commit and Date stay empty in a plain go build.
+var (
+	Version = "0.1.0-dev"
+	Commit  = ""
+	Date    = ""
+)
 
 // globalFlags are accepted by every command, before or after its name.
 type globalFlags struct {
@@ -316,6 +321,13 @@ func switchFlags(fs *flag.FlagSet) {
 	fs.Bool(orchestrator.FlagFromRunner, false, "internal: this process is the detached job")
 }
 
+// managedFlags registers --managed and --unmanaged. Without either, a
+// terminal asks and a run without one refuses (see managedChoice).
+func managedFlags(fs *flag.FlagSet) {
+	fs.Bool("managed", false, "the account is managed by an employer or client")
+	fs.Bool("unmanaged", false, "the account is not managed by an employer or client")
+}
+
 // flagJSONProgress selects NDJSON progress events on stderr.
 const flagJSONProgress = "json-progress"
 
@@ -327,14 +339,12 @@ func root() *command {
 		leaf("init", "", "Set up paritydesk for the account in the app now", 0, 0, func(fs *flag.FlagSet) {
 			fs.String("alias", "", "alias for the account in Claude now (asked when missing)")
 			fs.String("label", "", "display label for the profile")
-			fs.Bool("managed", false, "the account is managed by an employer or client")
+			managedFlags(fs)
 		}, runInit),
 		group("profile", "<list|adopt|add|rename|remove>", "Manage profiles", false,
 			leaf("list", "", "List profiles", 0, 0, nil, runProfileList),
-			leaf("adopt", "<alias> <folder>", "Register a parked folder after checking its identity", 2, 2, nil, runProfileAdopt),
-			leaf("add", "<alias>", "Add an account without signing out of any other", 1, 1, func(fs *flag.FlagSet) {
-				fs.Bool("managed", false, "the account is managed by an employer or client")
-			}, runProfileAdd),
+			leaf("adopt", "<alias> <folder>", "Register a parked folder after checking its identity", 2, 2, managedFlags, runProfileAdopt),
+			leaf("add", "<alias>", "Add an account without signing out of any other", 1, 1, managedFlags, runProfileAdd),
 			leaf("rename", "<alias> <new-alias>", "Rename a profile", 2, 2, nil, runProfileRename),
 			leaf("remove", "<alias>", "Unregister a profile; its folder is kept", 1, 1, nil, runProfileRemove),
 		),
@@ -369,6 +379,8 @@ func root() *command {
 		),
 		leaf("doctor", "", "Check the installation, folders and app compatibility", 0, 0, func(fs *flag.FlagSet) {
 			fs.Bool("grant-automation", false, "ask macOS for Automation permission now")
+			fs.String(flagBundle, "", "write a redacted support archive (tar.gz) to this new file")
+			fs.Int(flagBundleLogs, defaultBundleLogs, "newest run logs to put in the archive")
 		}, runDoctor),
 		leaf("log", "", "Show the log of a run", 0, 0, func(fs *flag.FlagSet) {
 			fs.String("run", "", "run id (default: the last run)")
@@ -390,6 +402,9 @@ func root() *command {
 					fs.String("plugin-version", "", "version of the calling plugin (silent on version skew)")
 				}, run: runHookSessionStart},
 		),
+		leaf("completion", "<bash|zsh|fish>", "Print a shell completion script", 1, 1, nil, runCompletion),
+		&command{name: aliasesCommand, short: "Internal: list profile aliases for completion", hidden: true, lenient: true,
+			run: runAliases},
 		&command{name: "help", args: "[<command>...]", short: "Show help for a command", maxArgs: -1, run: runHelp},
 		&command{name: "version", short: "Print the version", run: runVersion},
 	)
@@ -428,14 +443,13 @@ func runHelp(_ context.Context, e *env, _ *flag.FlagSet, args []string) error {
 }
 
 func runVersion(_ context.Context, e *env, _ *flag.FlagSet, _ []string) error {
-	v := Version
-	if bi, ok := debug.ReadBuildInfo(); ok && Version == "0.1.0-dev" && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
-		v = bi.Main.Version
-	}
+	v := versionString()
 	if e.g.JSON {
 		return e.printer().JSON(struct {
 			Version string `json:"version"`
-		}{v})
+			Commit  string `json:"commit,omitempty"`
+			Date    string `json:"date,omitempty"`
+		}{v, Commit, Date})
 	}
 	_, err := fmt.Fprintln(e.stdout, "paritydesk", v)
 	return err

@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -730,4 +731,81 @@ func FuzzCheckTable(f *testing.F) {
 			}
 		}
 	})
+}
+
+// TestSnapshotWithTwoJournals covers a directory holding two journal files,
+// as left by an unclean exit or a memtable flush in progress. goleveldb's
+// read-only recovery fails on it with io.EOF; OpenSnapshot then opens its
+// private clone read-write. The original stays untouched.
+func TestSnapshotWithTwoJournals(t *testing.T) {
+	e := newEnv(t, opt.SnappyCompression)
+	logs, err := filepath.Glob(filepath.Join(e.dir, "*.log"))
+	if err != nil || len(logs) == 0 {
+		t.Fatalf("no journal in the test database: %v %v", logs, err)
+	}
+	maxNum := 0
+	for _, l := range logs {
+		var n int
+		if _, err := fmt.Sscanf(filepath.Base(l), "%06d.log", &n); err == nil && n > maxNum {
+			maxNum = n
+		}
+	}
+	extra := filepath.Join(e.dir, fmt.Sprintf("%06d.log", maxNum+10))
+	if err := os.WriteFile(extra, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The read-only path alone fails on this layout (on a throwaway copy).
+	probe := filepath.Join(t.TempDir(), "probe")
+	copyDir(t, e.dir, probe)
+	if err := os.Remove(filepath.Join(probe, "LOCK")); err != nil {
+		t.Fatal(err)
+	}
+	if db, err := leveldb.OpenFile(probe, snapshotOptions()); err == nil {
+		db.Close()
+		t.Log("read-only open succeeded; the goleveldb journal bug may be fixed")
+	}
+	before := hashTree(t, e.dir)
+	r, err := e.o.OpenSnapshot(context.Background(), e.dir)
+	if err != nil {
+		t.Fatalf("snapshot with two journals: %v", err)
+	}
+	for _, it := range items {
+		raw, found, err := r.Get(lsKey(t, it.name))
+		if err != nil || !found {
+			t.Fatalf("%s: found=%v err=%v", it.name, found, err)
+		}
+		if got, err := localstorage.DecodeText(raw); err != nil || got != it.value {
+			t.Fatalf("%s: got %q, %v", it.name, got, err)
+		}
+	}
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	assertSameTree(t, e.dir, before)
+	assertTempRootEmpty(t, e.root)
+	assertCallsConfined(t, e)
+}
+
+// copyDir copies the regular files of src into a new directory dst.
+func copyDir(t *testing.T, src, dst string) {
+	t.Helper()
+	if err := os.MkdirAll(dst, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	es, err := os.ReadDir(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, de := range es {
+		if !de.Type().IsRegular() {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(src, de.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dst, de.Name()), b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 }

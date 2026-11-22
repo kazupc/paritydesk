@@ -235,8 +235,8 @@ func (p *Platform) WaitUpdateInstalled(ctx context.Context, bundleID string, tim
 }
 
 // ActiveOrg delegates to Log.ActiveOrg.
-func (p *Platform) ActiveOrg(ctx context.Context, sig compat.Signals) (ids.OrgID, bool, error) {
-	return p.Log.ActiveOrg(ctx, sig)
+func (p *Platform) ActiveOrg(ctx context.Context, sig compat.Signals, account ids.AccountID) (ids.OrgID, bool, error) {
+	return p.Log.ActiveOrg(ctx, sig, account)
 }
 
 // The methods below expose the Platform's parts as one interface for the

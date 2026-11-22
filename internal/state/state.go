@@ -171,6 +171,10 @@ type Root struct {
 	// PendingAdd is set between a profile add and the new account's first
 	// sign-in.
 	PendingAdd *PendingAdd `json:"pending_add,omitempty"`
+	// LastAppVersion is the Claude version the last committed switch or
+	// sync ran against. An older installed version is a downgrade, which
+	// is refused (exit 30).
+	LastAppVersion string `json:"last_app_version,omitempty"`
 }
 
 // VerifyRecord is the stored outcome of a verify.

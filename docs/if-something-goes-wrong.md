@@ -52,6 +52,13 @@ switch started from the plugin) to finish, then check
 Nothing was changed. A switch quits Claude, which would interrupt the
 listed sessions. Wait until they finish, then run the command again.
 
+paritydesk can list busy sessions only when the compatibility manifest
+has a confirmed `turn_started` log pattern. The manifest for Claude 6.x
+has none yet, so v0.1 does not exit 12 and `paritydesk doctor` reports
+busy detection as unavailable. Until then only Claude's own quit dialog
+protects a working session: answer "Cancel" there and paritydesk exits 10
+without changing anything.
+
 <a id="update-pending"></a>
 ## Exit 13: a Claude update is staged (PD-E13)
 
@@ -67,6 +74,12 @@ Nothing was changed. Two tools that swap data folders corrupt each
 other's view. `paritydesk doctor` names what it found. Stop using one of
 them; paritydesk can adopt the other tool's parked folders by identity
 with `paritydesk profile adopt`.
+
+The compatibility manifest for Claude 6.x lists no other tool's
+footprints yet, so v0.1 does not detect other tools and does not exit
+14. `paritydesk init` still lists parked `Claude-*` folders that hold an
+account no profile registers, and suggests `paritydesk profile adopt`
+for them.
 
 <a id="automation"></a>
 ## Exit 15: Automation permission is missing (PD-E15)
@@ -114,24 +127,30 @@ worktree, or run the switch again with `--accept-worktree-risk`.
 ## Exit 30: this Claude version cannot be handled safely (PD-E30)
 
 Nothing was changed. The installed Claude version is known to be
-incompatible, or the files paritydesk relies on have a shape it does not
-recognize. `paritydesk doctor` lists the failing checks. Wait for a
-paritydesk release that supports the version.
+incompatible, the files paritydesk relies on have a shape it does not
+recognize, or the installed Claude is older than the version the last
+switch ran against (a downgrade: the newer app may have migrated the
+data folders). `paritydesk doctor` lists the reasons. Wait for a
+paritydesk release that supports the version, or reinstall the newer
+Claude.
 
 <a id="swap-only"></a>
 ## Exit 31: switched without syncing (PD-E31)
 
 The switch completed, but nothing was synced, because syncing could not
-be done safely (for example an unknown Local Storage format, or an
-account that uses the app's own multi-account support). Your data in each
-folder is intact. `paritydesk doctor` explains why.
+be done safely (for example an unknown Local Storage format, Chromium's
+SQLite Local Storage backend, or an account that uses the app's own
+multi-account support). Your data in each folder is intact. `paritydesk
+doctor` decides the mode from the same inputs and lists the reasons.
 
 <a id="degraded"></a>
 ## Exit 32: some rows were skipped (PD-E32)
 
 Everything else was synced. Some data was left alone, for example per
 organization data when the active organization could not be determined.
-`paritydesk doctor` lists what was skipped and why.
+`paritydesk doctor` lists the failed probes, the rows a run would skip,
+the reasons, and the active organization (masked) or that it is
+unknown.
 
 <a id="apply-rolled-back"></a>
 ## Exit 40: applying the plan failed and was rolled back (PD-E40)
@@ -158,6 +177,12 @@ paritydesk had written (for example a sidebar order synced from the
 server). The difference is recorded, so it is not mistaken for your own
 edit on the next switch. `paritydesk verify` shows which rows drifted.
 
+Only the check that a run makes after its own launch, or the first
+`paritydesk verify` within 15 minutes of that run, records drift. A later
+`paritydesk verify` only reports differences and records nothing, because
+by then a difference may be your own edit. Your edit is then carried as
+usual on the next switch.
+
 <a id="needs-sign-in"></a>
 ## Exit 51: the active account needs a sign-in (PD-E51)
 
@@ -170,4 +195,22 @@ the message names the profile.
 
 Something unexpected happened. Run `paritydesk status` before trying
 again; if a run was interrupted it says so. Please report the problem
-with `paritydesk log` and `paritydesk doctor` output (both are redacted).
+with a support archive (see below), or with `paritydesk log` and
+`paritydesk doctor` output (both are redacted).
+
+## Reporting a problem: the support archive
+
+`paritydesk doctor --bundle <file>` runs doctor and also writes a
+support archive (a `.tar.gz` file, mode 0600) for a bug report. It never
+overwrites a file, never writes through a symbolic link, never writes
+inside a Claude data folder, and is refused in read-only mode.
+`--bundle-logs <n>` sets how many of the newest run logs it holds (5 by
+default, at most 50; 0 for none).
+
+The archive is designed to hold only redacted text that paritydesk
+produced itself: no file from a Claude data folder, no line of Claude's
+`main.log`, no session titles, no full ids and no paths under your home
+directory.
+[PRIVACY.md](../PRIVACY.md#the-support-archive) lists every file in it
+and every redaction rule. Open it (`tar -xzf <file>`) and read it before
+you attach it to an issue.

@@ -37,6 +37,9 @@ var lsKeyFragments = []string{
 	"cookie",
 	"password",
 	"secret",
+	// The app's own backup of the sidebar store (ADR 0004). Writing it
+	// could make the app restore a state paritydesk did not plan.
+	"dframe-store.backup",
 }
 
 // Paths returns a copy of the fixed path globs.

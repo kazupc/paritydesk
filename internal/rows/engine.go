@@ -16,15 +16,19 @@ import (
 const (
 	RolePerField     = "per_field"     // fields merged one by one (D8)
 	RoleAccountBound = "account_bound" // fields kept from the target (D10)
+	RoleGrant        = "grant"         // sessions: security grants, never carried between accounts
 	RoleRunState     = "run_state"     // fields never carried (D8, H11)
 	RoleMaxTime      = "max_time"      // fields that take the maximum
-	RoleParent       = "parent"        // fields naming a family parent key
+	RoleParent       = "parent"        // dotted paths naming a family parent key
+	RoleWorktree     = "worktree"      // sessions: fields that move together as one worktree
 	RolePermission   = "permission"    // sessions: the permission-mode field (D8)
 	RoleEnvRef       = "env_ref"       // sessions: fields holding environment ids
 	RoleProjectPath  = "project_path"  // sessions: field matched by sync.exclude globs
 	RoleName         = "name"          // environments: preset name for the fallback match
 	RoleSecret       = "secret"        // dotted paths of env-var maps whose values are secret
 	RoleKnownKinds   = "known_kinds"   // waiting-input: kinds merged with deletions
+	RoleSessionRef   = "session_ref"   // tasks: field naming the originating session (sync.exclude ids)
+	RoleWorktreePath = "worktree_path" // worktrees: the entry's directory
 )
 
 // Constant notes for changes and conflicts (never untrusted text).
@@ -40,6 +44,7 @@ const (
 	noteSecret      = "secret kept: not carried across a managed edge"
 	noteCollision   = "preset name matches several presets; kept both"
 	noteStartedGone = "started environment of a removed session"
+	noteParentKept  = "kept: parent of a kept session"
 	reasonCanonical = "canonical"
 )
 
@@ -165,14 +170,36 @@ func (v sideView) version(k string, strict bool) merge.Version {
 		out.Base = nil
 	}
 	// Only a side with a valid base may treat a contested value as
-	// unchanged: forcing BaseValid on an invalid side would take this one
-	// key out of the union merge, so a deletion from the other side could
-	// win (an invalid base never deletes, C1).
-	if c, ok := v.contested[k]; ok && v.valid && out.Item != nil && (out.Item.Hash == c.ServerHash || out.Item.Hash == c.IntendedHash) {
+	// unchanged here: forcing BaseValid on an invalid side would take this
+	// one key out of the union merge, so a deletion from the other side
+	// could win (an invalid base never deletes, C1). hideContested handles
+	// the invalid side.
+	if v.valid && v.isContested(k, out.Item) {
 		b := *out.Item
 		out.Base, out.BaseValid = &b, true
 	}
 	return out
+}
+
+// isContested reports whether it matches a contested hash of key k.
+func (v sideView) isContested(k string, it *model.Item) bool {
+	c, ok := v.contested[k]
+	return ok && it != nil && (it.Hash == c.ServerHash || it.Hash == c.IntendedHash)
+}
+
+// hideContested reads a contested value on a side with an invalid base as
+// absent, so a stale server value is never harvested as a user edit (C2).
+// An absent item on an invalid side is never a removal. When the other
+// side removed the key against its valid base, the value is kept instead:
+// the union keeps it against the removal (C1).
+func (v sideView) hideContested(k string, own, other merge.Version) merge.Version {
+	if v.valid || !v.isContested(k, own.Item) {
+		return own
+	}
+	if other.Item == nil && other.Changed() {
+		return own
+	}
+	return merge.Version{Epoch: own.Epoch}
 }
 
 func (v sideView) current(k string) *model.Item {
@@ -202,7 +229,9 @@ type merger struct {
 	canon      *model.RowSnapshot
 	lo, eo     *model.RowSnapshot
 	hints      map[string]model.ChangeKind
-	conflicts  []model.Conflict
+	// notes override the note of a hinted change.
+	notes     map[string]string
+	conflicts []model.Conflict
 }
 
 func emptySnapshot(row model.RowID) *model.RowSnapshot {
@@ -245,6 +274,7 @@ func newMerger(in Input, spec keyedSpec) *merger {
 		eoIn:       cloneOrEmpty(in.EnteringOverlay, spec.row),
 		union:      !in.Leaving.BaseValid || !in.Entering.BaseValid,
 		hints:      map[string]model.ChangeKind{},
+		notes:      map[string]string{},
 	}
 	m.canon = cloneOrEmpty(in.Canonical, spec.row)
 	m.lo = cloneOrEmpty(in.LeavingOverlay, spec.row)
@@ -325,8 +355,9 @@ func (m *merger) isExcluded(k string, v merge.Version) bool {
 }
 
 func (m *merger) mergeKey(k string) error {
-	lv := m.l.version(k, m.spec.strictTombstones)
-	ev := m.e.version(k, m.spec.strictTombstones)
+	lv0 := m.l.version(k, m.spec.strictTombstones)
+	ev0 := m.e.version(k, m.spec.strictTombstones)
+	lv, ev := m.l.hideContested(k, lv0, ev0), m.e.hideContested(k, ev0, lv0)
 	lc, ec := lv.Changed(), ev.Changed()
 	lExcl, eExcl := m.isExcluded(k, lv), m.isExcluded(k, ev)
 	lx := lc && m.pol.LeavingExports && !lExcl
@@ -683,7 +714,11 @@ func (m *merger) changes(d *model.RowSnapshot) []model.Change {
 		if kind == "" {
 			continue
 		}
-		out = append(out, model.Change{Row: m.spec.row, Kind: kind, Key: k, Note: noteFor(kind)})
+		note := noteFor(kind)
+		if n, ok := m.notes[k]; ok && kind == m.hints[k] {
+			note = n
+		}
+		out = append(out, model.Change{Row: m.spec.row, Kind: kind, Key: k, Note: note})
 	}
 	return out
 }

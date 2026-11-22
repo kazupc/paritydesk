@@ -168,27 +168,41 @@ func TestActiveOrg(t *testing.T) {
 	ctx := t.Context()
 	l := newTestLog(t)
 	lg := l.log()
-	if _, _, err := lg.ActiveOrg(ctx, compat.Signals{}); !errors.Is(err, ErrSignalUnknown) {
+	if _, _, err := lg.ActiveOrg(ctx, compat.Signals{}, acctP); !errors.Is(err, ErrSignalUnknown) {
 		t.Fatalf("got %v", err)
 	}
-	if _, _, err := lg.ActiveOrg(ctx, compat.Signals{ActiveOrg: `org=`}); !errors.Is(err, ErrSignalUnknown) {
+	if _, _, err := lg.ActiveOrg(ctx, compat.Signals{ActiveOrg: `org=`}, acctP); !errors.Is(err, ErrSignalUnknown) {
 		t.Fatalf("no group: %v", err)
 	}
-	if _, found, err := lg.ActiveOrg(ctx, testSig); err != nil || found {
+	if _, found, err := lg.ActiveOrg(ctx, testSig, acctP); err != nil || found {
 		t.Fatalf("empty log: %v %v", found, err)
 	}
-	l.append(stamp("[acct] org="+orgX+" active"), stamp("[bridge] peer up"))
-	org, found, err := lg.ActiveOrg(ctx, testSig)
+	l.append(stamp("[acct] account="+acctP+" org="+orgX+" active"), stamp("[bridge] peer up"))
+	org, found, err := lg.ActiveOrg(ctx, testSig, acctP)
 	if err != nil || !found || org != orgX {
 		t.Fatalf("step 1: %q %v %v", org, found, err)
 	}
-	l.append(stamp("[acct] org=" + orgY + " active"))
-	org, found, err = lg.ActiveOrg(ctx, testSig)
+	l.append(stamp("[acct] account=" + acctP + " org=" + orgY + " active"))
+	org, found, err = lg.ActiveOrg(ctx, testSig, acctP)
 	if err != nil || !found || org != orgY {
 		t.Fatalf("step 2: %q %v %v", org, found, err)
 	}
-	l.append(stamp("[acct] org=NOT-A-UUID active"))
-	if org, found, err = lg.ActiveOrg(ctx, testSig); err != nil || found {
+	// main.log is shared: the last line is another account's, so the
+	// active folder's org is unknown (not that account's org).
+	l.append(stamp("[acct] account=" + acctQ + " org=" + orgX + " active"))
+	if org, found, err = lg.ActiveOrg(ctx, testSig, acctP); err != nil || found {
+		t.Fatalf("another account's line: %q %v %v", org, found, err)
+	}
+	if org, found, err = lg.ActiveOrg(ctx, testSig, acctQ); err != nil || !found || org != orgX {
+		t.Fatalf("its own account: %q %v %v", org, found, err)
+	}
+	// A pattern without an account group cannot be tied to an account.
+	noAcct := compat.Signals{ActiveOrg: `\[acct\] account=[^ ]+ org=(?P<org>[^ ]+) active`}
+	if _, found, err = lg.ActiveOrg(ctx, noAcct, acctQ); err != nil || found {
+		t.Fatalf("no account group: %v %v", found, err)
+	}
+	l.append(stamp("[acct] account=" + acctP + " org=NOT-A-UUID active"))
+	if org, found, err = lg.ActiveOrg(ctx, testSig, acctP); err != nil || found {
 		t.Fatalf("invalid last org: %q %v %v", org, found, err)
 	}
 }

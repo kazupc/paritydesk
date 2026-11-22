@@ -460,10 +460,10 @@ func TestNewDarwinWiresParts(t *testing.T) {
 	if err := os.MkdirAll(logDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(logDir, "main.log"), []byte(stamp("[acct] org="+orgX+" active")), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(logDir, "main.log"), []byte(stamp("[acct] account="+acctP+" org="+orgX+" active")), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	org, found, err := p.ActiveOrg(t.Context(), testSig)
+	org, found, err := p.ActiveOrg(t.Context(), testSig, acctP)
 	if err != nil || !found || org != orgX {
 		t.Fatalf("active org: %q %v %v", org, found, err)
 	}

@@ -73,6 +73,28 @@ func TestContestedNeverDeletesFromInvalidBase(t *testing.T) {
 	}
 }
 
+// TestContestedNotHarvestedFromInvalidBase checks C2 on a side with an
+// invalid base: a value that matches a contested hash is not harvested
+// over canonical when the other side did not remove the key.
+func TestContestedNotHarvestedFromInvalidBase(t *testing.T) {
+	row := model.RowAppPrefs
+	light := mk(t, "theme", `"light"`, 0)
+	dark := mk(t, "theme", `"dark"`, 0)
+	in := input(row, snap(row, dark), nil, snap(row, light), snap(row, light), snap(row, light), openPolicy())
+	in.Leaving.BaseValid = false
+	in.Leaving.Contested = map[string]model.Contested{"theme": {Row: row, Key: "theme", ServerHash: dark.Hash, IntendedHash: "x"}}
+	out := mustMerge(t, row, in)
+	if got := out.Canonical.Items["theme"].Hash; got != light.Hash {
+		t.Fatalf("canonical theme = %s, want the light value", got)
+	}
+	if got := out.Desired.Items["theme"].Hash; got != light.Hash {
+		t.Fatalf("desired theme = %s, want the light value", got)
+	}
+	if len(out.Conflicts) != 0 {
+		t.Fatalf("conflicts = %+v", out.Conflicts)
+	}
+}
+
 func TestToolWrittenAndZeroTimeNeverWin(t *testing.T) {
 	row := model.RowWindowState
 	tests := []struct {
@@ -430,5 +452,40 @@ func TestLaterRemovalBeatsOlderEdit(t *testing.T) {
 	}
 	if len(out.Conflicts) != 1 || out.Conflicts[0].LoserHash != edit.Hash {
 		t.Fatalf("conflicts = %+v", out.Conflicts)
+	}
+}
+
+// TestPostMergeLeavesUnknownStarted: the started-environments map is one
+// Local Storage item for the whole folder, so it also holds entries of
+// other orgs' local sessions and of remote session_ ids. PostMerge
+// removes only entries of local sessions the sessions row knew and
+// removed; it leaves the others alone.
+func TestPostMergeLeavesUnknownStarted(t *testing.T) {
+	row := model.RowEnvironments
+	s1, s2 := rec(t, 1, "", 1), rec(t, 2, "", 1)
+	base := snap(model.RowSessions, s1, s2)
+	// The leaving side deleted session 2; session 50 belongs to another
+	// org and the sessions row never saw it.
+	left := withTombs(snap(model.RowSessions, s1), model.Tombstone{Key: s2.Key, At: 5})
+	sesIn := input(model.RowSessions, left, base, base, base, base, manifestPolicy(t))
+	ses := mustMerge(t, model.RowSessions, sesIn)
+	remote := mk(t, startedPrefix+"session_01ABCDEF", fmt.Sprintf("%q", fakeUUID(9)), 0)
+	all := []model.Item{started(t, 1, 9), started(t, 2, 9), started(t, 50, 9), remote}
+	env := &Output{Desired: snap(row, all...), Canonical: snap(row, all...),
+		LeavingOverlay: snap(row), EnteringOverlay: snap(row)}
+	if err := PostMerge(map[model.RowID]*Output{row: env, model.RowSessions: &ses}); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{startedPrefix + fakeSession(1), startedPrefix + fakeSession(50), remote.Key} {
+		if _, ok := env.Desired.Items[k]; !ok {
+			t.Errorf("%s removed from Desired", k)
+		}
+		if hasChange(*env, model.ChangeDeleted, k) {
+			t.Errorf("%s reported deleted", k)
+		}
+	}
+	gone := startedPrefix + fakeSession(2)
+	if _, ok := env.Desired.Items[gone]; ok || !hasChange(*env, model.ChangeDeleted, gone) {
+		t.Fatalf("started entry of the removed session kept: %+v", env.Changes)
 	}
 }

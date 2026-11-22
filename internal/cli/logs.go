@@ -245,6 +245,9 @@ type logLine struct {
 	From      ids.Alias          `json:"from,omitempty"`
 	To        ids.Alias          `json:"to,omitempty"`
 	Mode      string             `json:"mode,omitempty"`
+	// Aliases are the profile aliases the message names, so a support
+	// bundle can replace them even after the profile is removed.
+	Aliases []string `json:"aliases,omitempty"`
 }
 
 // writeRunLog writes <log dir>/<run id>.jsonl (0600, directory 0700) from
@@ -268,7 +271,7 @@ func runLogLines(res *orchestrator.Result, events []loggedEvent, r redact.Redact
 	enc := json.NewEncoder(&b)
 	for _, ev := range events {
 		_ = enc.Encode(logLine{V: 1, Time: ev.At.UTC(), Phase: ev.Event.Phase, Status: ev.Event.Status,
-			Message: r.String(ev.Event.Message), ElapsedNS: int64(ev.Event.Elapsed)})
+			Message: r.String(ev.Event.Message), ElapsedNS: int64(ev.Event.Elapsed), Aliases: eventAliases(ev.Event)})
 	}
 	code := res.Code
 	_ = enc.Encode(logLine{V: 1, Time: now.UTC(), Run: res.RunID, Code: &code, From: res.From, To: res.To, Mode: string(res.Mode)})
@@ -293,4 +296,16 @@ func writeLogFile(path string, data []byte) error {
 		return fmt.Errorf("run log: %w", err)
 	}
 	return nil
+}
+
+// eventAliases returns the valid aliases an event says its message names.
+func eventAliases(ev orchestrator.Event) []string {
+	names, _ := ev.Data[orchestrator.EventAliases].([]string)
+	var out []string
+	for _, n := range names {
+		if _, err := ids.ParseAlias(n); err == nil {
+			out = append(out, n)
+		}
+	}
+	return out
 }

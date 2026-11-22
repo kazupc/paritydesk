@@ -120,9 +120,11 @@ type SessionInfo struct {
 	Title        string // untrusted; sanitize before rendering
 	Archived     bool
 	Worktree     string // absolute path, if the session uses a worktree
-	// Busy is true when the record's run-state fields (manifest
-	// fields.run_state of the sessions row) say a turn is running or a
-	// message is queued. The orchestrator combines it with
+	// Busy is true when one of the record's busy fields (manifest
+	// fields.busy of the sessions row) says a turn is running or a message
+	// is queued. Transient run-state fields (fields.run_state) are not
+	// busy signals: an error mark or a pending reminder does not mean a
+	// turn is running. The orchestrator combines Busy with
 	// AppControl.BusySessions (main.log) for the P0 and P3 busy checks.
 	Busy bool
 }
@@ -136,20 +138,22 @@ const (
 	FieldArchived     = "isArchived"
 )
 
-// WorktreeFields are the record fields that may hold a session's worktree
-// path, either as a string or as an object with a "path" member.
-var WorktreeFields = []string{"worktreePath", "worktree"}
+// DefaultWorktreePathFields are the record fields that hold a session's
+// worktree path when the manifest's fields.worktree_path is empty.
+var DefaultWorktreePathFields = []string{"worktreePath"}
 
 // Field-list roles of compat.RowSpec.Fields.
 const (
 	RolePerField      = "per_field"
 	RoleAccountBound  = "account_bound"
 	RoleRunState      = "run_state"
+	RoleBusy          = "busy" // sessions: fields whose value says a turn is running
 	RoleMaxTime       = "max_time"
 	RoleParent        = "parent"
 	RoleSecret        = "secret"         // dotted paths of secret members (environments)
 	RoleTombstoneTime = "tombstone_time" // members of a tombstone file holding its time
 	RoleAllow         = "allow"          // app-prefs allow-list set by the orchestrator
+	RoleWorktreePath  = "worktree_path"  // sessions: fields holding the worktree's absolute path
 )
 
 // Session file name parts.
@@ -164,6 +168,8 @@ const (
 // ListSessions reads every session record of a replica without writing.
 // spec is the sessions row's manifest spec (field lists). Used to resolve
 // the invoking session for the relaunch link and to list busy sessions.
+// Only the replica's own session directory is read; other accounts'
+// directories in the same folder are never opened.
 func ListSessions(ctx context.Context, folder string, r model.Replica, spec compat.RowSpec) ([]SessionInfo, error) {
 	recs, err := ReadRecordFiles(ctx, folder, r)
 	if err != nil {
@@ -171,7 +177,7 @@ func ListSessions(ctx context.Context, folder string, r model.Replica, spec comp
 	}
 	out := make([]SessionInfo, 0, len(recs))
 	for _, rec := range recs {
-		info, err := sessionInfo(rec, spec.Fields[RoleRunState])
+		info, err := sessionInfo(rec, spec.Fields[RoleBusy], spec.Fields[RoleWorktreePath])
 		if err != nil {
 			return nil, err
 		}
@@ -191,7 +197,7 @@ func ResolveByCLISession(ctx context.Context, folder string, r model.Replica, cl
 		return "", err
 	}
 	for _, rec := range recs {
-		info, err := sessionInfo(rec, nil)
+		info, err := sessionInfo(rec, nil, nil)
 		if err != nil {
 			return "", err
 		}
@@ -312,7 +318,7 @@ func SessionRel(r model.Replica, name string) string {
 	return SessionsRoot + "/" + string(r.Account) + "/" + string(r.Org) + "/" + name
 }
 
-func sessionInfo(rec RecordFile, runState []string) (SessionInfo, error) {
+func sessionInfo(rec RecordFile, busyFields, worktreeFields []string) (SessionInfo, error) {
 	obj, err := DecodeObject(rec.Data, rec.Rel)
 	if err != nil {
 		return SessionInfo{}, err
@@ -321,8 +327,8 @@ func sessionInfo(rec RecordFile, runState []string) (SessionInfo, error) {
 	info.Title, _ = StringMember(obj, FieldTitle)
 	info.CLISessionID, _ = StringMember(obj, FieldCLISessionID)
 	info.Archived = BoolMember(obj, FieldArchived)
-	info.Worktree = RecordWorktree(obj)
-	for _, f := range runState {
+	info.Worktree = RecordWorktree(obj, worktreeFields)
+	for _, f := range busyFields {
 		if raw, ok := obj[f]; ok && busyValue(raw) {
 			info.Busy = true
 		}
@@ -330,14 +336,13 @@ func sessionInfo(rec RecordFile, runState []string) (SessionInfo, error) {
 	return info, nil
 }
 
-// busyStates are run-state string values that mean a turn is running or a
-// message is queued.
+// busyStates are busy-field string values that mean a turn is running or
+// a message is queued.
 var busyStates = map[string]bool{"running": true, "working": true, "busy": true, "queued": true, "streaming": true, "pending": true}
 
-// busyValue reports whether a run-state field's value says busy: true, a
+// busyValue reports whether a busy field's value says busy: true, a
 // non-empty array or object (for example queued messages), or a busy
-// status string. Numbers are times (for example an interrupted mark) and
-// never mean busy.
+// status string. Numbers are times and never mean busy.
 func busyValue(raw json.RawMessage) bool {
 	var v any
 	if json.Unmarshal(raw, &v) != nil {
@@ -357,21 +362,27 @@ func busyValue(raw json.RawMessage) bool {
 }
 
 // RecordWorktree returns the worktree path a decoded record names, or "".
-func RecordWorktree(obj map[string]json.RawMessage) string {
-	for _, f := range WorktreeFields {
+// fields are the record fields that may hold it (manifest
+// fields.worktree_path; DefaultWorktreePathFields when empty), either as a
+// string or as an object with a "path" member. Only absolute paths count.
+func RecordWorktree(obj map[string]json.RawMessage, fields []string) string {
+	if len(fields) == 0 {
+		fields = DefaultWorktreePathFields
+	}
+	for _, f := range fields {
 		raw, ok := obj[f]
 		if !ok {
 			continue
 		}
 		var s string
-		if json.Unmarshal(raw, &s) == nil && s != "" {
-			return s
+		if json.Unmarshal(raw, &s) == nil && filepath.IsAbs(s) {
+			return filepath.Clean(s)
 		}
 		var o struct {
 			Path string `json:"path"`
 		}
-		if json.Unmarshal(raw, &o) == nil && o.Path != "" {
-			return o.Path
+		if json.Unmarshal(raw, &o) == nil && filepath.IsAbs(o.Path) {
+			return filepath.Clean(o.Path)
 		}
 	}
 	return ""

@@ -127,3 +127,17 @@ func TestRunLogRedactsMessages(t *testing.T) {
 		t.Fatalf("lines: %d", n)
 	}
 }
+
+// TestRunLogRecordsMessageAliases: an event that names profile aliases
+// records them, so a support bundle can replace them later; invalid
+// values are dropped.
+func TestRunLogRecordsMessageAliases(t *testing.T) {
+	ev := []loggedEvent{{Event: orchestrator.Event{Phase: orchestrator.P10Commit, Status: "ok",
+		Message: "removed client-x; its folder was left as it is",
+		Data:    map[string]any{orchestrator.EventAliases: []string{"client-x", "Not An Alias"}}}}}
+	res := &orchestrator.Result{RunID: "run-0003", From: "a", To: "b", Code: pderr.OK}
+	got := string(runLogLines(res, ev, redact.Redactor{Home: "/Users/someone"}, fixedTime))
+	if !strings.Contains(got, `"aliases":["client-x"]`) || strings.Contains(got, "Not An Alias") {
+		t.Fatalf("aliases not recorded: %s", got)
+	}
+}

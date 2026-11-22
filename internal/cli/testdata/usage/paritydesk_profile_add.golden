@@ -4,6 +4,7 @@ Add an account without signing out of any other
 
 flags:
   --managed                    the account is managed by an employer or client
+  --unmanaged                  the account is not managed by an employer or client
 
 global flags:
   --app-support-dir string     paritydesk support directory

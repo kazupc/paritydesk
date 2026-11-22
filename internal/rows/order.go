@@ -15,6 +15,18 @@ const orderKey = "order"
 // sectionPrefix marks sidebar-view section items.
 const sectionPrefix = "section:"
 
+// CarriesOrder reports whether the row's merge output carries
+// RowSnapshot.Order. Only group-order, pinned-order and sidebar-view do.
+// Other adapters may fill Order on Read, but their merges drop it, so a
+// caller comparing a re-read with Desired must not compare Order there.
+func CarriesOrder(row model.RowID) bool {
+	switch row {
+	case model.RowGroupOrder, model.RowPinnedOrder, model.RowSidebarView:
+		return true
+	}
+	return false
+}
+
 // orderModule merges group-order and pinned-order: one "order" item whose
 // value is a JSON array of strings, merged as an OrderedList when both
 // sides changed it. RowSnapshot.Order mirrors the merged array.

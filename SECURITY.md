@@ -9,8 +9,10 @@ Security tab). Do not open a public issue for a security problem.
 Include the paritydesk version (`paritydesk version`), the macOS version,
 the Claude desktop app version, and the steps to reproduce. Never include
 tokens, account or organization ids, session contents, or a copy of a
-Claude data folder: paritydesk never needs them, and `paritydesk doctor`
-output is redacted for this purpose.
+Claude data folder: paritydesk never needs them. `paritydesk doctor`
+output and the support archive of `paritydesk doctor --bundle <file>` are
+redacted for this purpose ([PRIVACY.md](PRIVACY.md#the-support-archive)
+lists what the archive holds); read the archive before you send it.
 
 You can expect an acknowledgement within a week. Fixes are released as
 patch versions and credited in the CHANGELOG unless you prefer otherwise.
@@ -37,3 +39,16 @@ it through Anthropic's own disclosure program, not here.
 - Text from app data (session titles, group names, paths) is sanitized
   before it reaches a terminal, and the SessionStart hook never prints
   untrusted text.
+- The shell integrations (SwiftBar, Raycast, the `pd` function) find the
+  binary only at the path `paritydesk init` records or at the fixed
+  Homebrew locations, never on `PATH`. They accept only a valid profile
+  alias, use no `eval`, and run nothing but `paritydesk` and the system
+  tools `head` and `plutil`.
+
+## Release integrity
+
+paritydesk has no Apple Developer ID, so releases are not notarized.
+Release archives come with a `SHA256SUMS` file, and the Homebrew tap
+builds from the tagged source instead of installing a downloaded binary.
+[docs/install.md](docs/install.md) explains how to check a download.
+Never disable Gatekeeper to run paritydesk.

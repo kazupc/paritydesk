@@ -9,6 +9,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
+	"github.com/kazupc/paritydesk/internal/rows"
 	"github.com/kazupc/paritydesk/internal/sources"
 	"github.com/kazupc/paritydesk/internal/state"
 )
@@ -55,7 +56,7 @@ func (r *run) commitP10(ctx context.Context) error {
 		w := r.p5.Work[row]
 		tk := w.TKey.String()
 		snap, ok := reread[row]
-		if !ok || !sameItems(snap, w.Out.Desired) {
+		if !ok || !sameRead(snap, w.Out.Desired, rows.CarriesOrder(row)) {
 			dropBase(root, tk)
 			if reread != nil {
 				r.warn(P10Commit, fmt.Sprintf("%s: the entering folder does not read back as planned; its base is invalid", row))
@@ -88,6 +89,9 @@ func (r *run) commitP10(ctx context.Context) error {
 		}
 	}
 	r.recordProfiles()
+	if r.bundle.Version != "" {
+		root.LastAppVersion = r.bundle.Version
+	}
 	if r.gen != 0 {
 		root.Generations = append(root.Generations, state.GenerationRef{N: r.gen, RunID: r.res.RunID, Target: r.T.Profile.Alias, At: r.o.now()})
 	}
@@ -201,13 +205,13 @@ func (r *run) verifyP12(ctx context.Context) error {
 		return nil
 	}
 	if r.interactive {
-		r.o.progress(P12Verify, "ok", "run paritydesk verify to confirm the values after launch")
+		r.o.progress(P12Verify, "ok", "run paritydesk verify within 15 minutes to confirm the values after launch")
 		return nil
 	}
 	defer r.phase(P12Verify, "verifying")()
 	_, err := r.o.verifyCore(ctx, verifyIn{
 		root: r.root, alias: r.T.Profile.Alias, replica: r.T.Replica, manifest: r.manifest, sig: r.sig,
-		from: r.launchAt, session: r.invoking, runID: r.res.RunID, rows: r.p5.Rows,
+		from: r.launchAt, session: r.invoking, runID: r.res.RunID, rows: r.p5.Rows, record: true,
 	})
 	return err
 }

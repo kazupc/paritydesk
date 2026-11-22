@@ -3,7 +3,9 @@ package sessions
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -26,16 +28,31 @@ func NewWaitingInput() sources.Adapter { return WaitingInput{} }
 // Row implements sources.Adapter.
 func (WaitingInput) Row() model.RowID { return model.RowWaitingInput }
 
-// Read implements sources.Adapter. Items are the files under
-// waiting-input/ by relative path; values are {"kind", "sha256"} where
-// kind is the first subdirectory, or the extension for top-level files.
+// Read implements sources.Adapter. waiting-input is a directory (observed
+// empty on app 6.28899.2); a missing one is empty and anything else at
+// that name is an error. Items are the files under it by relative path;
+// values are {"kind", "sha256"} where kind is the first subdirectory, or
+// the extension for top-level files.
 func (WaitingInput) Read(ctx context.Context, rc sources.ReadContext) (*model.RowSnapshot, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	snap := sources.NewSnapshot(model.RowWaitingInput)
 	root := filepath.Join(sources.SessionsDir(rc.Folder, rc.Replica), waitingDir)
-	err := filepath.WalkDir(root, func(p string, e fs.DirEntry, err error) error {
+	fi, err := os.Lstat(root)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return snap, nil
+	case err != nil:
+		var pe *fs.PathError
+		if errors.As(err, &pe) {
+			err = pe.Err
+		}
+		return nil, fmt.Errorf("sessions: stat %s: %w", waitingDir, err)
+	case !fi.IsDir():
+		return nil, fmt.Errorf("sessions: %s is not a directory", sources.SessionRel(rc.Replica, waitingDir))
+	}
+	err = filepath.WalkDir(root, func(p string, e fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}

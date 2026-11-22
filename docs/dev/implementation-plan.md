@@ -324,7 +324,7 @@ adapter; `Secret` is then true.
 
 | Row | Item key | Value | Stamp.AppTime | Order / Tombstones |
 |---|---|---|---|---|
-| sessions | session id `local_<uuid>` | the record object as stored (raw JSON) | `lastActivityAt` | Tombstones: key = session id, `At` = tombstone time (content if it carries one, else file mtime in ms) |
+| sessions | session id `local_<uuid>` | the record object as stored (raw JSON) | `lastActivityAt` | Tombstones: key = session id, `At` = tombstone time (the file's bare epoch-ms number on app 6.x, else file mtime in ms; see [ADR 0004](../adr/0004-data-shape-survey.md)) |
 | tasks | `backlog/<id>`, `scheduled/<id>` | the item object | max of known run-time fields | — |
 | waiting-input | file name relative to `waiting-input/` | `{"sha256": "<hex>", "kind": "<subdir or extension>"}` | file mtime ms | — |
 | environments | `preset/<id>`; `started/<session id>`; `placeDefaults` | preset object with env-var values hashed; environment id string; object | preset's own update time if present | — |
@@ -334,7 +334,7 @@ adapter; `Secret` is then true.
 | app-prefs | preference name (allow-list only) | value | — | — |
 | window-state | `window-state.json` | `{"sha256": "<hex>"}` | file mtime ms | — |
 | mcp-servers | server name | server object with `env` values hashed | — | — |
-| worktrees | absolute worktree path | entry object | — | — |
+| worktrees | worktree name (the key in `git-worktrees.json` on app 6.x, ADR 0004) | entry object | — | — |
 
 Rules every side relies on:
 
@@ -507,15 +507,19 @@ kind, then `recover`, then assert I1–I5). WI-9 and WI-10 (section 1) follow.
 
 ## 11. Open questions
 
-1. The main.log patterns for a turn start and for the active org are not
-   yet confirmed on a real Mac. Until they are, the manifest leaves them
-   empty: busy detection uses session records plus the app's own veto (with
-   the late-quit watch), and the org falls back to the single org directory.
+1. The main.log pattern for a turn start is not yet known. The manifest
+   leaves it empty, and the session records have no field that means a
+   turn is running (the `busy` role is empty, ADR 0004). Busy detection
+   then relies on the app's own quit veto (with the late-quit watch). The
+   `active_org` pattern was taken from observed lines (ADR 0004); release
+   checklist step 5 confirms it with an account in two organizations.
 2. Whether plugin skills expand `${CLAUDE_SESSION_ID}`. The skill quotes it
    and an empty value means no reopen and no turn wait; the job then relies
    on the busy wait and the veto.
-3. Where a tombstone's time comes from (file content or mtime); WI-3
-   settles it from the observed file shape, documented in the manifest.
+3. Where a tombstone's time comes from (file content or mtime). Settled
+   by [ADR 0004](../adr/0004-data-shape-survey.md): on app 6.x a tombstone
+   file holds a bare epoch-ms number; anything else falls back to the
+   file's mtime.
 4. RENAME_SWAP on FileVault and firmlinked volumes (S7); the journaled
    two-rename fallback ships either way.
 5. What the app's worktree sweep does with directories registered only in

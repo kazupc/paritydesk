@@ -4,6 +4,7 @@ Switch the Claude desktop app between accounts and keep everything else in step.
 
 commands:
   backups      Prune or purge backup generations
+  completion   Print a shell completion script
   config       Show, locate or validate the config file
   doctor       Check the installation, folders and app compatibility
   generations  List or show backup generations

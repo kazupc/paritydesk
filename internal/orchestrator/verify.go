@@ -29,6 +29,11 @@ type verifyIn struct {
 	from     int64
 	session  ids.SessionID
 	runID    string
+	// record: drift is stored as contested entries and the bases move to
+	// what was observed. Only P12 of a run, or the first standalone verify
+	// shortly after a run's launch, records. Any other verify only
+	// reports, so the user's own later edits are never taken for drift.
+	record bool
 	// rows limits the comparison to these rows (nil: every enabled row).
 	rows []model.RowID
 }
@@ -67,10 +72,26 @@ func (o *Orchestrator) Verify(ctx context.Context) (*VerifyResult, error) {
 	if n, err := d.App.LogSize(); err == nil && n > verifyLogTail {
 		from = n - verifyLogTail
 	}
-	return o.verifyCore(ctx, verifyIn{
+	in := verifyIn{
 		root: root, alias: root.Active, replica: root.Profiles[root.Active].Replica,
 		manifest: m, sig: m.Signals, from: from,
-	})
+	}
+	if last, ok := lastRunInto(root, root.Active); ok {
+		in.runID = last.RunID
+		in.record = o.now().Sub(last.At) <= verifyRecordWindow &&
+			(root.LastVerify == nil || root.LastVerify.RunID != last.RunID)
+	}
+	return o.verifyCore(ctx, in)
+}
+
+// lastRunInto returns the newest generation whose run entered alias.
+func lastRunInto(root *state.Root, alias ids.Alias) (state.GenerationRef, bool) {
+	for i := len(root.Generations) - 1; i >= 0; i-- {
+		if g := root.Generations[i]; g.Target == alias {
+			return g, true
+		}
+	}
+	return state.GenerationRef{}, false
 }
 
 // verifyCore is P12 under the caller's lock.
@@ -97,9 +118,11 @@ func (o *Orchestrator) verifyCore(ctx context.Context, in verifyIn) (*VerifyResu
 	}
 	o.readSignals(ctx, in, res)
 	identityOK := o.activeIdentityIs(ctx, in.replica.Account)
-	in.root.LastVerify = &state.VerifyRecord{RunID: in.runID, At: o.now(), Drift: res.Drift,
-		SignIn: res.SignInNeeded, Focused: res.SessionFocused}
-	if !d.ReadOnly && ctx.Err() == nil {
+	if in.record {
+		in.root.LastVerify = &state.VerifyRecord{RunID: in.runID, At: o.now(), Drift: res.Drift,
+			SignIn: res.SignInNeeded, Focused: res.SessionFocused}
+	}
+	if in.record && !d.ReadOnly && ctx.Err() == nil {
 		if err := o.commit(in.root); err != nil {
 			return res, err
 		}
@@ -109,8 +132,11 @@ func (o *Orchestrator) verifyCore(ctx context.Context, in verifyIn) (*VerifyResu
 		return res, pderr.New(pderr.IdentityMismatch, "verify", "the active folder does not hold "+string(in.alias)+"'s account")
 	case res.SignInNeeded:
 		return res, pderr.New(pderr.NeedsSignIn, "verify", "sign in with "+string(in.alias)+"'s account only; every other account stays signed in")
-	case len(res.Drift) > 0:
+	case len(res.Drift) > 0 && in.record:
 		return res, pderr.New(pderr.VerifyDrift, "verify", "some values differ from what was written; the drift is recorded")
+	case len(res.Drift) > 0:
+		return res, pderr.New(pderr.VerifyDrift, "verify",
+			"some values differ from the last run's bases; nothing was recorded, because a later difference may be your own edit")
 	}
 	return res, nil
 }
@@ -150,8 +176,9 @@ func mtime(p string) time.Time {
 	return fi.ModTime()
 }
 
-// compareMirror compares every mirrored row with its base; drift stores
-// per-item contested entries and sets the base to what was observed.
+// compareMirror compares every mirrored row with its base. When in.record
+// is set, drift stores per-item contested entries and sets the base to
+// what was observed; otherwise it is only reported.
 func (o *Orchestrator) compareMirror(in verifyIn, mirror []byte, res *VerifyResult) error {
 	d := o.d
 	rs := in.rows
@@ -185,6 +212,9 @@ func (o *Orchestrator) compareMirror(in verifyIn, mirror []byte, res *VerifyResu
 			continue
 		}
 		res.Drift = append(res.Drift, r)
+		if !in.record {
+			continue
+		}
 		if in.root.Contested == nil {
 			in.root.Contested = map[string]model.Contested{}
 		}

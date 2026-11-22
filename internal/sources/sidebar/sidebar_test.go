@@ -80,11 +80,12 @@ func TestAgreeingCopiesStampFromEnvelope(t *testing.T) {
 func TestMirrorWinsOverDifferingLS(t *testing.T) {
 	m := testkit.Manifest(t)
 	spec := testkit.Rich("Claude", 1)
+	spec.SidebarView["viewMode"] = "list"
 	spec.LS = map[string]string{
 		"LSS-persisted.code-projects-order." + acct(rep1): envelope(t, []string{"/tmp/stale"}, "t", 5),
 		"LSS-persisted.dframe-local-slice":                envelope(t, map[string]any{"pinnedOrder": []string{}}, "t", 5),
 		"LSS-persisted.dframe-code-sections": envelope(t, map[string]any{scope(rep1): map[string]any{
-			"groupBy": "stale", "sections": spec.SidebarView["sections"]}}, "t", 5),
+			"migratedFrom": "other", "viewMode": "stale", "prefsSeeded": true, "sections": spec.SidebarView["sections"]}}, "t", 5),
 	}
 	folder := testkit.NewDataRoot(t).AddFolder(t, spec)
 	tests := []struct {
@@ -95,7 +96,7 @@ func TestMirrorWinsOverDifferingLS(t *testing.T) {
 	}{
 		{sidebar.GroupOrder{}, []string{sidebar.OrderItem}, sidebar.OrderItem, spec.GroupOrder},
 		{sidebar.PinnedOrder{}, []string{sidebar.OrderItem}, sidebar.OrderItem, spec.PinnedOrder},
-		{sidebar.SidebarView{}, []string{"field:groupBy"}, "field:groupBy", spec.SidebarView["groupBy"]},
+		{sidebar.SidebarView{}, []string{"field:viewMode"}, "field:viewMode", spec.SidebarView["viewMode"]},
 	}
 	for _, tc := range tests {
 		t.Run(string(tc.a.Row()), func(t *testing.T) {
@@ -288,7 +289,9 @@ func TestSidebarViewSubPathsAndScopeKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	allowed := map[string]bool{"groupBy": true, "sections": true}
+	// migratedFrom differs between the two fixtures but is the app's own
+	// migration marker: it is never edited.
+	allowed := map[string]bool{"sections": true}
 	for _, e := range res.Edits {
 		p := e.Path
 		switch {
@@ -392,5 +395,62 @@ func TestMalformedMirrorNamesFileOnly(t *testing.T) {
 	_, err := sidebar.GroupOrder{}.Read(context.Background(), rc(t, m, folder, rep1, model.RowGroupOrder))
 	if err == nil || !strings.Contains(err.Error(), sources.DesktopConfigFile) || strings.Contains(err.Error(), testkit.Canary) {
 		t.Fatalf("error %v", err)
+	}
+}
+
+// TestStoreBackupNeverWritten: the app keeps dframe-store.backup.v1 next
+// to dframe-store. Edits of the rows that write dframe-store never name
+// the backup, and it stays byte-identical after apply.
+func TestStoreBackupNeverWritten(t *testing.T) {
+	m := testkit.Manifest(t)
+	root := testkit.NewDataRoot(t)
+	src := root.AddFolder(t, testkit.Rich("Claude-s", 1))
+	dst := root.AddFolder(t, testkit.Rich("Claude", 2))
+	before, ok := testkit.ReadLS(t, dst)[testkit.StoreBackupKey]
+	if !ok {
+		t.Fatal("fixture lacks the backup item")
+	}
+	var edits []plan.Edit
+	wroteStore := false
+	for _, a := range adapters {
+		srcRC := rc(t, m, src, rep1, a.Row())
+		c := rc(t, m, dst, rep2, a.Row())
+		res, err := a.Ops(context.Background(), sources.OpsContext{ReadContext: c, NowMillis: now, Source: &srcRC},
+			read(t, a, c), read(t, a, srcRC))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range res.Edits {
+			if strings.HasPrefix(e.Loc.LSKey, "dframe-store.") {
+				t.Fatalf("%s edits %s", a.Row(), e.Loc.LSKey)
+			}
+			wroteStore = wroteStore || e.Loc.LSKey == "dframe-store"
+		}
+		edits = append(edits, res.Edits...)
+	}
+	if !wroteStore {
+		t.Fatal("no row wrote dframe-store; the test proves nothing")
+	}
+	testkit.Apply(t, dst, edits)
+	if after := testkit.ReadLS(t, dst)[testkit.StoreBackupKey]; after != before {
+		t.Fatal("the backup item changed")
+	}
+}
+
+// TestStoreVersionFromManifest: dframe-store is version 1 on app
+// 6.28899.2 and the manifest says so; a store with another version is
+// refused for writing.
+func TestStoreVersionFromManifest(t *testing.T) {
+	m := testkit.Manifest(t)
+	spec := testkit.Rich("Claude", 1)
+	spec.LS = map[string]string{"dframe-store": `{"version":2,"shared":1,"state":{"pinnedOrder":[]}}`}
+	folder := testkit.NewDataRoot(t).AddFolder(t, spec)
+	c := rc(t, m, folder, rep1, model.RowPinnedOrder)
+	if c.Spec.PersistVersion != 1 {
+		t.Fatalf("persist_version %d", c.Spec.PersistVersion)
+	}
+	cur := read(t, sidebar.PinnedOrder{}, c)
+	if _, err := (sidebar.PinnedOrder{}).Ops(context.Background(), sources.OpsContext{ReadContext: c, NowMillis: now}, cur, change(t, cur, sidebar.OrderItem, []string{})); err == nil {
+		t.Fatal("a store of another version was written")
 	}
 }

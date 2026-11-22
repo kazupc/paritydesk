@@ -74,11 +74,8 @@ func applyOverrides(dir string, byName map[string]*Manifest, order *[]string) er
 		if err != nil {
 			return err
 		}
-		if base, ok := embeddedByName[m.Name]; ok {
-			if missing := removedEntries(base.Classification.NeverTouched, m.Classification.NeverTouched); len(missing) > 0 {
-				return fmt.Errorf("compat: override %s removes never_touched entries of manifest %q: %s",
-					e.Name(), m.Name, strings.Join(missing, ", "))
-			}
+		if err := checkOverride(e.Name(), m, embeddedByName); err != nil {
+			return err
 		}
 		if _, ok := byName[m.Name]; !ok {
 			*order = append(*order, m.Name)
@@ -86,6 +83,50 @@ func applyOverrides(dir string, byName map[string]*Manifest, order *[]string) er
 		byName[m.Name] = m
 	}
 	return nil
+}
+
+// checkOverride refuses an override that weakens any embedded manifest
+// it could replace: one of the same name, or one whose version range
+// overlaps the override's (an override of another name with a lower
+// min_version would otherwise be selected instead). Such an override may
+// add never_touched, never_until_classified and ls_never_touched entries
+// but not remove them, and its synced globs must all be synced globs of
+// those embedded manifests.
+func checkOverride(file string, m *Manifest, embedded map[string]*Manifest) error {
+	names := make([]string, 0, len(embedded))
+	for n := range embedded {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		base := embedded[n]
+		if n != m.Name && !rangesOverlap(base, m) {
+			continue
+		}
+		for _, l := range []struct {
+			key        string
+			base, next []string
+		}{
+			{"never_touched", base.Classification.NeverTouched, m.Classification.NeverTouched},
+			{"never_until_classified", base.Classification.NeverUntilClassified, m.Classification.NeverUntilClassified},
+			{"ls_never_touched", base.Classification.LSNeverTouched, m.Classification.LSNeverTouched},
+		} {
+			if missing := removedEntries(l.base, l.next); len(missing) > 0 {
+				return fmt.Errorf("compat: override %s removes %s entries of manifest %q: %s",
+					file, l.key, base.Name, strings.Join(missing, ", "))
+			}
+		}
+		if extra := removedEntries(m.Classification.Synced, base.Classification.Synced); len(extra) > 0 {
+			return fmt.Errorf("compat: override %s widens synced beyond manifest %q: %s",
+				file, base.Name, strings.Join(extra, ", "))
+		}
+	}
+	return nil
+}
+
+// rangesOverlap reports whether two manifests' version ranges overlap.
+func rangesOverlap(a, b *Manifest) bool {
+	return compareVersions(a.MinVersion, b.MaxVersion) <= 0 && compareVersions(b.MinVersion, a.MaxVersion) <= 0
 }
 
 func readOverride(p, name string) (*Manifest, error) {
@@ -136,7 +177,7 @@ func Decode(data []byte, label string) (*Manifest, error) {
 var (
 	writePaths = map[WritePath]bool{PathOff: true, PathOffVerify: true, PathOn: true, PathCap: true, PathNone: true}
 	probeKinds = map[ProbeKind]bool{ProbeFile: true, ProbeDir: true, ProbeJSONShape: true, ProbeLSKey: true,
-		ProbeLSShape: true, ProbePersistVersion: true, ProbeIdxVersion: true}
+		ProbeLSShape: true, ProbePersistVersion: true, ProbeIdxVersion: true, ProbeJSONVersion: true}
 	jsonTypes = map[string]bool{"": true, "object": true, "array": true, "string": true, "number": true, "bool": true}
 	prefTags  = map[string]bool{TagUIState: true, TagOther: true, TagSecurity: true, TagInternalState: true}
 )
@@ -177,6 +218,11 @@ func (m *Manifest) validate() error {
 			return fmt.Errorf("glob %q is malformed", g)
 		}
 	}
+	for _, g := range m.Classification.LSNeverTouched {
+		if _, err := path.Match(g, ""); err != nil || g == "" {
+			return fmt.Errorf("ls_never_touched glob %q is malformed", g)
+		}
+	}
 	return m.Signals.validate()
 }
 
@@ -215,6 +261,8 @@ func (m *Manifest) validateProbes() (map[string]bool, error) {
 			return nil, fmt.Errorf("probe %s: unknown type", p.ID)
 		case p.Target == "":
 			return nil, fmt.Errorf("probe %s: empty target", p.ID)
+		case p.Kind == ProbeJSONVersion && (len(p.Path) == 0 || p.Version <= 0):
+			return nil, fmt.Errorf("probe %s: json-version needs a path and a positive version", p.ID)
 		}
 		if p.Kind != ProbeLSKey && p.Kind != ProbeLSShape && p.Kind != ProbePersistVersion && !relativeClean(p.Target) {
 			return nil, fmt.Errorf("probe %s: target must be a clean relative path", p.ID)
@@ -301,6 +349,11 @@ func parseVersion(v string) ([]int, error) {
 	}
 	return out, nil
 }
+
+// CompareVersions compares two app versions numerically per component
+// (missing components are 0): -1, 0 or 1. Malformed versions compare as
+// strings after every valid one.
+func CompareVersions(a, b string) int { return compareVersions(a, b) }
 
 // compareVersions compares numerically per component (missing components
 // are 0). Malformed versions compare as strings after every valid one.

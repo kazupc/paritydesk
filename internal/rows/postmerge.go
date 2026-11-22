@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 )
 
@@ -13,12 +14,27 @@ import (
 // both overlays) whose session is absent or tombstoned in the sessions
 // row's Desired, and reports each removal as a change. Rows missing from
 // outs are left alone.
+//
+// The started-environments map is one Local Storage item for the whole
+// data folder, while the sessions row reads only the replica's own
+// account and org directory. So an entry is removed only when its id is
+// a well-formed local session id (ids.ParseSession) that the sessions
+// row knew (in its inputs or tombstones). Entries of other orgs, other
+// accounts and remote session_ ids are left as the environments merge
+// decided.
 func PostMerge(outs map[model.RowID]*Output) error {
 	env, ses := outs[model.RowEnvironments], outs[model.RowSessions]
 	if env == nil || ses == nil || ses.Desired == nil {
 		return nil
 	}
+	known := knownKeys(ses.Desired, ses.Canonical, ses.LeavingOverlay, ses.EnteringOverlay)
+	for k := range ses.Known {
+		known[k] = true
+	}
 	alive := func(id string) bool {
+		if _, err := ids.ParseSession(id); err != nil || !known[id] {
+			return true
+		}
 		_, ok := ses.Desired.Items[id]
 		return ok
 	}

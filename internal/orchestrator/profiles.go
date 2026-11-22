@@ -102,7 +102,7 @@ func (o *Orchestrator) Init(ctx context.Context, opts InitOptions) error {
 	if err := o.validateNewAlias(s.root, opts.Alias); err != nil {
 		return err
 	}
-	f, _, err := o.scanFolder(ctx, ids.DefaultFolder)
+	f, all, err := o.scanFolder(ctx, ids.DefaultFolder)
 	if err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func (o *Orchestrator) Init(ctx context.Context, opts InitOptions) error {
 		return pderr.New(pderr.Usage, "init", "the active account is already registered as "+string(a))
 	}
 	cfg := o.d.Config
-	o.progress(P0Preflight, "start", fmt.Sprintf("config: add profile %s (account %s)", opts.Alias, ids.Mask(string(f.Identity.Account))))
+	o.progressNaming(P0Preflight, "start", fmt.Sprintf("config: add profile %s (account %s)", opts.Alias, ids.Mask(string(f.Identity.Account))), opts.Alias)
 	cfg.Profiles = append(cfg.Profiles, config.Profile{Alias: opts.Alias, Label: opts.Label, ManagedByOrg: opts.Managed})
 	if err := o.saveConfig(); err != nil {
 		return err
@@ -124,8 +124,25 @@ func (o *Orchestrator) Init(ctx context.Context, opts InitOptions) error {
 		return err
 	}
 	o.initChecks(ctx, s.root)
+	o.legacyFolders(s.root, all)
 	o.progress(P0Preflight, "ok", chromeNote)
 	return nil
+}
+
+// legacyFolders points at parked folders that hold a signed-in account no
+// profile registers (left by an earlier switch script, for example): they
+// are registered with profile adopt, not profile add.
+func (o *Orchestrator) legacyFolders(root *state.Root, folders []profile.Folder) {
+	for _, f := range folders {
+		if f.Name == ids.DefaultFolder || !strings.HasPrefix(f.Name, ids.DefaultFolder+"-") || f.Identity == nil {
+			continue
+		}
+		if aliasOf(root, f.Identity.Account) != "" {
+			continue
+		}
+		o.progress(P0Preflight, "warn", fmt.Sprintf("%s holds a signed-in account that no profile registers; "+
+			"register it with paritydesk profile adopt <alias> %s instead of profile add", f.Name, f.Name))
+	}
 }
 
 // initChecks reports other tools and asks for Automation (interactive).
@@ -149,7 +166,8 @@ func (o *Orchestrator) initChecks(ctx context.Context, root *state.Root) {
 }
 
 // ProfileAdopt registers a parked folder after checking its identity.
-func (o *Orchestrator) ProfileAdopt(ctx context.Context, alias ids.Alias, folder string) error {
+// managed sets the profile's managed_by_org.
+func (o *Orchestrator) ProfileAdopt(ctx context.Context, alias ids.Alias, folder string, managed bool) error {
 	s, err := o.lockedSession(ctx, "profile adopt")
 	if err != nil {
 		return err
@@ -174,7 +192,7 @@ func (o *Orchestrator) ProfileAdopt(ctx context.Context, alias ids.Alias, folder
 	if a := aliasOf(s.root, f.Identity.Account); a != "" {
 		return pderr.New(pderr.IdentityMismatch, "profile adopt", folder+" holds the account of profile "+string(a))
 	}
-	p := config.Profile{Alias: alias}
+	p := config.Profile{Alias: alias, ManagedByOrg: managed}
 	if folder != ids.DefaultParkedFolder(alias) {
 		p.Folder = folder
 	}
@@ -259,7 +277,7 @@ func (r *run) addAccount(ctx context.Context, managed bool) error {
 	if err := d.App.Launch(cctx, d.Config.App.BundleID); err != nil {
 		r.o.progress(P11Launch, "warn", "Claude could not be launched; open it manually to sign in")
 	}
-	r.o.progress(P11Launch, "ok", "sign in to the new account in Claude, then run paritydesk recover to register it as "+string(r.T.Profile.Alias))
+	r.o.progressNaming(P11Launch, "ok", "sign in to the new account in Claude, then run paritydesk recover to register it as "+string(r.T.Profile.Alias), r.T.Profile.Alias)
 	r.o.progress(P11Launch, "ok", chromeNote)
 	return nil
 }
@@ -436,6 +454,6 @@ func (o *Orchestrator) ProfileRemove(ctx context.Context, alias ids.Alias) error
 	if err := o.d.State.GC(s.root); err != nil {
 		o.progress(P10Commit, "warn", "unreferenced state objects could not be removed")
 	}
-	o.progress(P10Commit, "ok", "removed "+string(alias)+"; its folder was left as it is")
+	o.progressNaming(P10Commit, "ok", "removed "+string(alias)+"; its folder was left as it is", alias)
 	return nil
 }

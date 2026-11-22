@@ -32,6 +32,8 @@ func TestMatchPath(t *testing.T) {
 func TestMatchLSKey(t *testing.T) {
 	for name, deny := range map[string]bool{
 		"dframe-store":            false,
+		"dframe-store.backup.v1":  true,
+		"DFRAME-STORE.BACKUP.v2":  true,
 		"code-projects-order.x":   false,
 		"LSS-persisted.something": false,
 		"oauthState":              true,

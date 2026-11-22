@@ -58,6 +58,8 @@ func runProbe(p Probe, env ProbeEnv) (bool, string) {
 		return probeJSONShape(env.Folder, target, jp, p.Type)
 	case ProbeIdxVersion:
 		return probeIdx(env.Folder, target, p.Version)
+	case ProbeJSONVersion:
+		return probeJSONVersion(env.Folder, target, jp, p.Version)
 	case ProbeLSKey, ProbeLSShape, ProbePersistVersion:
 		return probeLS(p.Kind, env, target, jp, p.Type, p.Version)
 	}
@@ -246,6 +248,37 @@ func probeIdx(folder, target string, version int) (bool, string) {
 		return false, detailMalformed
 	}
 	if idx.V == nil || *idx.V != version {
+		return false, detailVersion
+	}
+	return true, detailOK
+}
+
+// probeJSONVersion checks that the number at jp in a file equals version.
+// An absent file passes; a present file without the member, or with
+// another value, fails. Only the member is reported, never its value.
+func probeJSONVersion(folder, target string, jp jsonx.Path, version int) (bool, string) {
+	b, present, bad := readProbeFile(filepath.Join(folder, filepath.FromSlash(target)))
+	if bad != "" {
+		return false, bad
+	}
+	if !present {
+		return true, detailAbsent
+	}
+	if jsonx.Validate(b) != nil {
+		return false, detailMalformed
+	}
+	raw, err := jsonx.Get(b, jp)
+	switch {
+	case errors.Is(err, jsonx.ErrNotFound):
+		return false, detailNoVersion
+	case err != nil:
+		return false, detailWrongType
+	}
+	var n json.Number
+	if !hasType(raw, "number") || json.Unmarshal(raw, &n) != nil {
+		return false, detailWrongType
+	}
+	if v, err := n.Int64(); err != nil || v != int64(version) {
 		return false, detailVersion
 	}
 	return true, detailOK

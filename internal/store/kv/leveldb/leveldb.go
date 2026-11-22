@@ -28,6 +28,15 @@ func snapshotOptions() *opt.Options {
 	return &opt.Options{ReadOnly: true, ErrorIfMissing: true, Strict: opt.NoStrict}
 }
 
+// cloneRecoveryOptions opens a private clone read-write and leniently. It
+// is used only on a clone, never on an original: goleveldb's read-only
+// journal recovery fails with io.EOF when the directory holds two or more
+// journal files (its reader reset returns the previous journal's EOF),
+// which happens after an unclean exit or during a memtable flush.
+func cloneRecoveryOptions() *opt.Options {
+	return &opt.Options{ErrorIfMissing: true, Strict: opt.NoStrict}
+}
+
 // writableOptions opens the original strictly and never creates a database.
 func writableOptions() *opt.Options {
 	return &opt.Options{ErrorIfMissing: true, Strict: opt.StrictAll, NoSync: false}
@@ -67,7 +76,10 @@ func New(tempRoot string, fs fsx.Ops) (*Opener, error) {
 
 // OpenSnapshot implements kv.Opener. It clones dir (without LOCK) into a
 // fresh directory under TempRoot and opens the clone read-only; the clone
-// is removed on Close. The original directory is never opened.
+// is removed on Close. If the read-only open fails, the clone (never the
+// original) is opened read-write once, which replays its journals the
+// way the app would on its next start. The original directory is never
+// opened.
 func (o *Opener) OpenSnapshot(ctx context.Context, dir string) (kv.Reader, error) {
 	name, err := o.clone(ctx, dir)
 	if err != nil {
@@ -75,7 +87,11 @@ func (o *Opener) OpenSnapshot(ctx context.Context, dir string) (kv.Reader, error
 	}
 	db, err := leveldb.OpenFile(o.clonePath(name), snapshotOptions())
 	if err != nil {
-		return nil, errors.Join(fmt.Errorf("leveldb: open snapshot: %w", err), o.removeTemp(name))
+		var rwErr error
+		db, rwErr = leveldb.OpenFile(o.clonePath(name), cloneRecoveryOptions())
+		if rwErr != nil {
+			return nil, errors.Join(fmt.Errorf("leveldb: open snapshot: %w", err), fmt.Errorf("leveldb: open snapshot clone for recovery: %w", rwErr), o.removeTemp(name))
+		}
 	}
 	return &store{db: db, cleanup: func() error { return o.removeTemp(name) }}, nil
 }

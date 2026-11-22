@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"errors"
+	"path"
 	"sort"
 	"strings"
 
@@ -49,9 +50,12 @@ type RowSpec struct {
 	PersistVersion int            `toml:"persist_version"`
 	Limits         map[string]int `toml:"limits"`
 	// Fields lists record field names with special handling (D8, D10),
-	// keyed by role: "per_field", "account_bound", "run_state", "max_time",
-	// "parent" (fork and routine family links). The orchestrator copies
-	// them into rows.Policy.Fields; no other package hard-codes field names.
+	// keyed by role: "per_field", "account_bound", "grant", "run_state",
+	// "busy", "max_time", "parent" (fork and routine family links),
+	// "worktree" and others (see ADR 0004). A role value may be a dotted
+	// path into nested objects where the role says so. The orchestrator
+	// copies them into rows.Policy.Fields; no other package hard-codes field
+	// names.
 	Fields map[string][]string `toml:"fields"`
 	Probes []string            `toml:"probes"`
 }
@@ -92,6 +96,7 @@ const (
 	ProbeLSShape        ProbeKind = "ls-shape"        // an LS value's JSON path has a type
 	ProbePersistVersion ProbeKind = "persist-version" // a persisted store's version matches
 	ProbeIdxVersion     ProbeKind = "idx-version"     // archived-sessions.idx has v == 1
+	ProbeJSONVersion    ProbeKind = "json-version"    // a file's numeric member at path equals version
 )
 
 // Probe is one shape check.
@@ -136,13 +141,23 @@ type Footprint struct {
 	PathsUnderHome []string `toml:"paths_under_home"` // e.g. config dirs
 }
 
-// Classification lists top-level data-folder entries by class.
+// Classification lists top-level data-folder entries by class. Entries
+// that no list names are treated as never touched: plan validation allows
+// file writes only below Synced (see ADR 0004).
 type Classification struct {
 	NeverTouched         []string `toml:"never_touched"`
 	NeverUntilClassified []string `toml:"never_until_classified"`
 	Cache                []string `toml:"cache"`
-	Synced               []string `toml:"synced"`
-	Other                []string `toml:"other"`
+	// Synced globs may hold {acct} and {org}; they are expanded for the
+	// entering replica before plan validation, so writes stay inside that
+	// replica's own session directory.
+	Synced []string `toml:"synced"`
+	Other  []string `toml:"other"`
+	// LSNeverTouched are Local Storage item name globs (path.Match syntax,
+	// case-insensitive) that paritydesk never writes, on top of the fixed
+	// fragments in package denylist. An override may add entries but never
+	// remove one.
+	LSNeverTouched []string `toml:"ls_never_touched"`
 }
 
 // Manifest is one compat/<range>.toml.
@@ -167,6 +182,12 @@ type Manifest struct {
 	// may be listed in sync.app_prefs; "security" and "internal_state" are
 	// rejected by config.Validate. Keys absent from the map are rejected.
 	PrefTags map[string]string `toml:"pref_tags"`
+	// PermissionAcks maps a session permission mode to the app preference
+	// names that acknowledge it for an account. A mode is carried to a
+	// session record new to the target only when one of them is true in
+	// the target folder, or when the target's own records already use the
+	// mode (D8).
+	PermissionAcks map[string][]string `toml:"permission_acks"`
 }
 
 // Preference tags.
@@ -176,6 +197,26 @@ const (
 	TagSecurity      = "security"
 	TagInternalState = "internal_state"
 )
+
+// SyncedFor returns the synced globs with {acct} and {org} filled in for
+// rep. Plan validation allows file writes only below these globs.
+func (m *Manifest) SyncedFor(rep model.Replica) []string {
+	r := strings.NewReplacer("{acct}", string(rep.Account), "{org}", string(rep.Org))
+	return mapStrings(m.Classification.Synced, r.Replace)
+}
+
+// Classified reports whether a top-level entry name of a data folder is
+// named by any classification list (by the first segment of each glob,
+// matched with path.Match or literally).
+func (m *Manifest) Classified(name string) bool {
+	for _, g := range m.allClassGlobs() {
+		first, _, _ := strings.Cut(g, "/")
+		if ok, _ := path.Match(first, name); ok || first == name {
+			return true
+		}
+	}
+	return false
+}
 
 // Row returns the spec of a row.
 func (m *Manifest) Row(r model.RowID) (RowSpec, bool) {

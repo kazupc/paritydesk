@@ -1,9 +1,11 @@
 # Privacy
 
-paritydesk runs only on your Mac. It opens **no network connection** of
-any kind: no package in its dependency graph can (a test enforces that
-`net`, `net/http` and `crypto/tls` are absent), and it has no telemetry,
-update check or crash reporting. You can confirm this while a switch runs
+paritydesk runs only on your Mac. It is designed to open **no network
+connection** of any kind: it does not import `net`, `net/http` or
+`crypto/tls` (a test checks its whole dependency graph for them), and it
+has no telemetry, update check or crash reporting. A CI run with the
+network denied is designed to catch socket use in the tests. It starts
+only local helper programs (`git`, `open`, `osascript`, `launchctl`). You can confirm this while a switch runs
 with `nettop -p $(pgrep paritydesk)` or a firewall such as LuLu.
 
 paritydesk never reads, copies or moves credentials: no OAuth tokens, no
@@ -52,6 +54,13 @@ only after taking a backup:
 | Worktree registrations | `git-worktrees.json` |
 | Local Storage | `Local Storage/leveldb/`: read through a temporary copy; written only for the item names listed in the compatibility manifest, while Claude is quit |
 
+Session files are read only in the directory of the folder's own account
+and organization. Directories of other accounts in the same data folder
+are never read or written. The Local Storage items that the app uses as
+its own backup of the sidebar store (`dframe-store.backup.*`) are never
+written; that rule is part of the fixed deny list, so no manifest
+override can remove it.
+
 ### The one read of `config.json`
 
 Each data folder's `config.json` holds Claude's credentials next to the
@@ -75,10 +84,12 @@ every other entry the compatibility manifest marks as never touched.
 
 ## Other things paritydesk looks at
 
-- `~/Library/Logs/Claude/main.log`: bounded scans for a few fixed line
-  patterns (quit vetoed, a turn ended, a session focused, Claude in
-  Chrome connected, a sign-in needed). Lines are matched, never copied
-  into paritydesk's own logs.
+- `~/Library/Logs/Claude/main.log`: bounded scans for the fixed line
+  patterns of the compatibility manifest (on app 6.x: the app started,
+  the active organization, quit vetoed, a turn ended, a session focused,
+  an unclean exit, Claude in Chrome connected). A pattern the manifest
+  leaves empty is not scanned. Lines are matched, never copied into
+  paritydesk's own logs; only validated ids are taken from a match.
 - The Claude app bundle wherever it is installed: its `Info.plist` and
   the executable's size and modification time, to notice updates, and the
   updater's staged-update state.
@@ -108,3 +119,68 @@ four characters. Logs, `doctor` output and the error documents of
 `~/<hash>`. Commands whose purpose is to show a path (`config path`,
 `config show`, `uninstall`) print it in full. Nothing leaves your Mac
 unless you attach it to an issue yourself.
+
+## The support archive
+
+`paritydesk doctor --bundle <file>` writes a support archive for bug
+reports. It is a gzip-compressed tar file created with mode 0600. It is
+never written over an existing file, through a symbolic link, inside a
+Claude data folder, or in read-only mode. It stays on your Mac until you
+attach it somewhere yourself.
+
+To build it, paritydesk reads only its own files: the config file, the
+newest run logs in `~/Library/Logs/paritydesk/` (5 by default,
+`--bundle-logs` sets 0 to 50) and the `compat.d/` override files (for
+their names and sha256 only), plus the checks that `paritydesk doctor`
+prints anyway. Those checks look at Claude's data folders and `main.log`,
+so `doctor.json` reflects them: the app version and mode, probe results,
+folder identities masked to four characters, marker state, the number of
+unclassified entries in the active folder (their names are left out of
+the archive), and whether `main.log` showed a Claude in Chrome
+connection. No file content from a data folder or from `main.log` is
+included.
+
+The archive holds exactly these files, under `paritydesk-support/`:
+
+| File | Contents |
+|---|---|
+| `README.txt` | A fixed text that lists the files and the redaction rules. |
+| `version.json` | paritydesk's version, commit and build date; the Go version, the OS and the CPU architecture. |
+| `doctor.json` | The doctor checks (id, status, detail) and the recorded binary path, redacted again. |
+| `config.json` | paritydesk's config with personal values replaced (see below), or a note that it is missing or unreadable. |
+| `manifests.json` | The compatibility manifests in use (name, version range, tested and known-bad versions) and the name and sha256 of each `compat.d/*.toml` file. |
+| `logs/<n>-<run>.jsonl` | Each run log, field by field: time, phase, status, elapsed time, run id, exit code, mode, the two profiles and the message. Any other field is dropped. |
+
+Every text value goes through these rules, in this order, on top of the
+redaction that logs and doctor output already have:
+
+1. Terminal control characters are removed.
+2. Email-like strings become `<email>`.
+3. Text in double quotes or backticks (where session titles and other
+   names would appear) becomes `"<text>"`.
+4. Paths under your home directory become `~/<hash>` (the first eight hex
+   digits of a sha256); other users' home directories are hashed too.
+5. UUIDs are masked to their first four characters.
+6. Runs of 16 or more hex digits become `<id>`.
+7. Any other word that contains a slash becomes `<path:hash>`, except
+   system locations under `/opt/homebrew/`, `/usr/`, `/bin/`, `/sbin/`,
+   `/System/` and `/Library/`.
+8. Parked folder names (`Claude-<name>`) become `Claude-profile-<n>`, or
+   `Claude-<folder>` when no profile uses them.
+9. Profile aliases become `profile-<n>` in the order of the config file;
+   an alias that is not in the config becomes `profile-?`. Run logs
+   record which aliases a message names, so the alias of a removed or
+   renamed profile is replaced too. Logs written before that record
+   existed are covered only where the alias is one of the run's two
+   profiles.
+
+In `config.json`, labels become `<label>`, each `sync.exclude` entry
+becomes `<exclude-<n>>`, each `sync.secrets_allow` entry becomes
+`<secret-name-<n>>`, a custom `app.data_root` is redacted by the rules
+above, and the `sync.export` and `sync.import` tables are keyed by
+`profile-<n>`.
+
+Hashes are short and not salted, so a short, guessable path could be
+recovered by guessing. Open the archive with `tar -xzf <file>` and read
+it before you attach it to an issue; remove anything you do not want to
+share.

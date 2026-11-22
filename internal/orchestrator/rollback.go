@@ -79,6 +79,9 @@ func (o *Orchestrator) Rollback(ctx context.Context, n uint64, propagate bool) (
 	if err := o.stopForRollback(ctx, root, b); err != nil {
 		return nil, err
 	}
+	if err := o.quietForRollback(ctx, root, b, o.rollbackFolder(root, target)); err != nil {
+		return nil, err
+	}
 	cctx, cancel := uncancel(ctx)
 	defer cancel()
 	data := map[string]string{"n": strconv.FormatUint(n, 10), "propagate": strconv.FormatBool(propagate)}
@@ -172,6 +175,47 @@ func (o *Orchestrator) stopForRollback(ctx context.Context, root *state.Root, b 
 	return o.done(root, P3Quit, state.IntentQuit)
 }
 
+// rollbackFolder is the folder that holds profile a now.
+func (o *Orchestrator) rollbackFolder(root *state.Root, a ids.Alias) string {
+	if a == root.Active {
+		return o.claudePath()
+	}
+	return o.folderPath(parkedName(o.d, a))
+}
+
+// quietForRollback waits, as P4 does, until no process uses folder: no
+// app process, updater, held LevelDB LOCK or write holder (which also
+// covers a copy started with --user-data-dir on the folder). When it
+// stays busy, the run is closed, Claude is relaunched if paritydesk quit
+// it, and nothing is restored.
+func (o *Orchestrator) quietForRollback(ctx context.Context, root *state.Root, b app.BundleIdentity, folder string) error {
+	d := o.d
+	in := o.quiescenceInput(b.Path, folder)
+	deadline := o.now().Add(quiesceTimeout)
+	for {
+		rep, err := d.App.CheckQuiescence(ctx, in)
+		if err == nil && rep.Quiet {
+			return nil
+		}
+		if err != nil || !o.now().Before(deadline) {
+			break
+		}
+		if err := d.Clock.Sleep(ctx, quiescePoll); err != nil {
+			break
+		}
+	}
+	quit := root.Run.QuitByUs
+	root.Run = nil
+	if err := o.commit(root); err != nil {
+		return err
+	}
+	if quit {
+		o.relaunch(context.WithoutCancel(ctx), root, "relaunched Claude")
+	}
+	return pderr.New(pderr.AppDidNotQuit, "rollback",
+		"a process still uses the data folder; quit Claude (and any copy started with --user-data-dir), then run the rollback again; nothing was restored")
+}
+
 // finishRollback re-runs the conditional restore (idempotent), records
 // the epoch event and sets the profile's bases per propagate. The caller
 // closes the run.
@@ -181,10 +225,7 @@ func (o *Orchestrator) finishRollback(ctx context.Context, root *state.Root, m *
 	if err != nil {
 		return gen.RestoreReport{}, pderr.Wrap(pderr.Internal, "rollback", err)
 	}
-	folder := o.claudePath()
-	if a != root.Active {
-		folder = o.folderPath(parkedName(d, a))
-	}
+	folder := o.rollbackFolder(root, a)
 	in := gen.RestoreInput{N: n, Folder: folder, TmpDir: o.tmpDir(runID)}
 	if hasLSEntries(man) {
 		w, err := d.KV.OpenWritable(ctx, sources.LevelDBPath(folder))

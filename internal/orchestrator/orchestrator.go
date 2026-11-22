@@ -163,7 +163,7 @@ type Service interface {
 	Status(ctx context.Context, short bool) (*Status, error)
 	Doctor(ctx context.Context, opts DoctorOptions) ([]Check, error)
 	Init(ctx context.Context, opts InitOptions) error
-	ProfileAdopt(ctx context.Context, alias ids.Alias, folder string) error
+	ProfileAdopt(ctx context.Context, alias ids.Alias, folder string, managed bool) error
 	ProfileAdd(ctx context.Context, alias ids.Alias, managed bool) error
 	ProfileRename(ctx context.Context, from, to ids.Alias) error
 	ProfileRemove(ctx context.Context, alias ids.Alias) error

@@ -14,9 +14,11 @@ import (
 // FileName is the worktree registry inside a data folder.
 const FileName = "git-worktrees.json"
 
-// member is the registry's member keyed by worktree path. Other members
-// (GC state such as untrackedDirGc and pendingTombstones) stay per folder
-// and are never edited.
+// member is the registry's member holding the entries, keyed by worktree
+// name on app 6.x (schemaVersion 2; each entry carries name, path and
+// branches). Other members (schemaVersion, originPins, originUrls, GC
+// state such as untrackedDirGc and pendingTombstones) stay per folder and
+// are never edited.
 const member = "worktrees"
 
 // Worktrees is the adapter for row model.RowWorktrees.
@@ -30,9 +32,10 @@ func New() sources.Adapter { return Worktrees{} }
 // Row implements sources.Adapter.
 func (Worktrees) Row() model.RowID { return model.RowWorktrees }
 
-// Read implements sources.Adapter. Items are keyed by absolute worktree
-// path; the value is the registration entry. Both the object form
-// {"<path>": entry} and the array form [{"path": ..., ...}] are read.
+// Read implements sources.Adapter. Items are keyed by the member names of
+// the object form ({"<name>": entry}, the form observed on app 6.x) or by
+// the "path" member of the array form [{"path": ..., ...}]; the value is
+// the registration entry.
 func (Worktrees) Read(ctx context.Context, rc sources.ReadContext) (*model.RowSnapshot, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -172,8 +175,10 @@ func setArray(b *sources.Builder, current, desired *model.RowSnapshot, res sourc
 }
 
 // Referenced returns the worktree paths that the session records in s
-// reference (s is a sessions-row snapshot).
-func Referenced(sessions *model.RowSnapshot) ([]string, error) {
+// reference (s is a sessions-row snapshot). fields are the sessions row's
+// manifest fields.worktree_path (sources.DefaultWorktreePathFields when
+// empty).
+func Referenced(sessions *model.RowSnapshot, fields []string) ([]string, error) {
 	if sessions == nil {
 		return nil, nil
 	}
@@ -183,7 +188,7 @@ func Referenced(sessions *model.RowSnapshot) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		if p := sources.RecordWorktree(obj); p != "" {
+		if p := sources.RecordWorktree(obj, fields); p != "" {
 			seen[p] = true
 		}
 	}
@@ -197,13 +202,14 @@ func Referenced(sessions *model.RowSnapshot) ([]string, error) {
 
 // LostRegistrations returns the worktree paths referenced by the leaving
 // replica's sessions that the entering replica will not reference after
-// apply. The orchestrator runs a read-only git status on each.
-func LostRegistrations(leavingSessions, desiredSessions *model.RowSnapshot) ([]string, error) {
-	leaving, err := Referenced(leavingSessions)
+// apply. The orchestrator runs a read-only git status on each that still
+// exists.
+func LostRegistrations(leavingSessions, desiredSessions *model.RowSnapshot, fields []string) ([]string, error) {
+	leaving, err := Referenced(leavingSessions, fields)
 	if err != nil {
 		return nil, err
 	}
-	keep, err := Referenced(desiredSessions)
+	keep, err := Referenced(desiredSessions, fields)
 	if err != nil {
 		return nil, err
 	}
@@ -220,10 +226,68 @@ func LostRegistrations(leavingSessions, desiredSessions *model.RowSnapshot) ([]s
 	return out, nil
 }
 
-// Guard exposes LostRegistrations behind a method for the orchestrator.
+// LostEntries returns the directories that the entering replica's
+// registry (current, a worktrees-row snapshot) registers and that no
+// entry of desired will register after apply, compared by directory, not
+// by name: entries the merge deletes, and entries replaced by one with
+// another directory. pathFields name the entry's directory member ("path"
+// when empty); an entry without one is keyed by its directory (the array
+// form).
+func LostEntries(current, desired *model.RowSnapshot, pathFields []string) ([]string, error) {
+	if current == nil {
+		return nil, nil
+	}
+	if len(pathFields) == 0 {
+		pathFields = []string{"path"}
+	}
+	dirOf := func(it model.Item) (string, error) {
+		obj, err := sources.DecodeObject(it.Value, "worktree "+it.Key)
+		if err != nil {
+			return "", err
+		}
+		for _, f := range pathFields {
+			if p, ok := sources.StringMember(obj, f); ok && p != "" {
+				return p, nil
+			}
+		}
+		return it.Key, nil
+	}
+	kept := map[string]bool{}
+	if desired != nil {
+		for _, k := range desired.Keys() {
+			p, err := dirOf(desired.Items[k])
+			if err != nil {
+				return nil, err
+			}
+			kept[p] = true
+		}
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, k := range current.Keys() {
+		p, err := dirOf(current.Items[k])
+		if err != nil {
+			return nil, err
+		}
+		if !kept[p] && !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// Guard exposes the package functions behind methods for the
+// orchestrator.
 type Guard struct{}
 
 // LostRegistrations calls the package function.
-func (Guard) LostRegistrations(leavingSessions, desiredSessions *model.RowSnapshot) ([]string, error) {
-	return LostRegistrations(leavingSessions, desiredSessions)
+func (Guard) LostRegistrations(leavingSessions, desiredSessions *model.RowSnapshot, fields []string) ([]string, error) {
+	return LostRegistrations(leavingSessions, desiredSessions, fields)
+}
+
+// LostEntries calls the package function.
+func (Guard) LostEntries(current, desired *model.RowSnapshot, pathFields []string) ([]string, error) {
+	return LostEntries(current, desired, pathFields)
 }

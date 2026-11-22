@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -318,8 +319,9 @@ func TestValidationRefusals(t *testing.T) {
 	})
 	t.Run("worktree risk 23", func(t *testing.T) {
 		e := newEnv(t)
-		e.wt.lost = []string{"/tmp/wt1"}
-		e.app.dirty["/tmp/wt1"] = true
+		wt := t.TempDir()
+		e.wt.lost = []string{wt}
+		e.app.dirty[wt] = true
 		_, err := e.orch().Switch(context.Background(), yes("b"))
 		if codeOf(t, err) != pderr.WorktreeRisk {
 			t.Fatalf("err = %v", err)
@@ -328,6 +330,31 @@ func TestValidationRefusals(t *testing.T) {
 			t.Errorf("risks = %+v", w)
 		}
 		e.checkInvariants("worktree")
+	})
+	t.Run("worktree path that does not exist is no risk", func(t *testing.T) {
+		e := newEnv(t)
+		gone := filepath.Join(t.TempDir(), "removed-worktree")
+		kept := t.TempDir()
+		e.wt.lost = []string{gone, kept}
+		e.app.dirty[gone] = true
+		if _, err := e.orch().Switch(context.Background(), yes("b")); err != nil {
+			t.Fatalf("err = %v", err)
+		}
+		if w := e.valid.last.Worktrees; len(w) != 1 || w[0].Path != kept || w[0].Dirty {
+			t.Errorf("risks = %+v", w)
+		}
+	})
+	t.Run("worktree on a volume that is not mounted stays guarded", func(t *testing.T) {
+		e := newEnv(t)
+		// Neither the worktree nor its parent exists, as on an external
+		// volume that is not mounted at switch time.
+		unmounted := filepath.Join(t.TempDir(), "Volumes", "Ext", "repo", ".wt", "x")
+		e.wt.lost = []string{unmounted}
+		e.app.dirty[unmounted] = true
+		_, err := e.orch().Switch(context.Background(), yes("b"))
+		if codeOf(t, err) != pderr.WorktreeRisk {
+			t.Fatalf("err = %v", err)
+		}
 	})
 	t.Run("validate input", func(t *testing.T) {
 		e := newEnv(t)
@@ -339,6 +366,9 @@ func TestValidationRefusals(t *testing.T) {
 		in := e.valid.last
 		if in.Limits.AllowDeletions != 4 || in.Before[model.CatSessions] != 1 || !slices.Contains(in.DenyPaths, "identity.json") {
 			t.Errorf("validate input = %+v", in)
+		}
+		if !slices.Equal(in.AllowPaths, []string{"rows/**"}) {
+			t.Errorf("allow paths = %v", in.AllowPaths)
 		}
 	})
 }

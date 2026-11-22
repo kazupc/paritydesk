@@ -66,6 +66,8 @@ type fakeService struct {
 	// result overrides the result of Switch, Preview and Sync.
 	result *orchestrator.Result
 	ui     orchestrator.UI
+	// doctorChecks, when set, replaces the checks Doctor returns.
+	doctorChecks []orchestrator.Check
 	// confirm, when set, makes Switch ask the UI first.
 	confirm *orchestrator.Confirmation
 }
@@ -183,6 +185,9 @@ func (f *fakeService) Doctor(_ context.Context, o orchestrator.DoctorOptions) ([
 	if err := f.record("doctor"); err != nil {
 		return nil, err
 	}
+	if f.doctorChecks != nil {
+		return f.doctorChecks, nil
+	}
 	return []orchestrator.Check{
 		{ID: "app", Status: "ok", Detail: "Claude 6.28899.2 (tested)"},
 		{ID: "automation", Status: "warn", Detail: "not granted yet\x1b[2J"},
@@ -194,7 +199,10 @@ func (f *fakeService) Init(_ context.Context, o orchestrator.InitOptions) error 
 	return f.record("init")
 }
 
-func (f *fakeService) ProfileAdopt(_ context.Context, a ids.Alias, folder string) error {
+func (f *fakeService) ProfileAdopt(_ context.Context, a ids.Alias, folder string, managed bool) error {
+	if managed {
+		return f.record("profile-adopt", string(a), folder, "managed")
+	}
 	return f.record("profile-adopt", string(a), folder)
 }
 

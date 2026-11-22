@@ -265,6 +265,11 @@ func checkInvariants(t *rapid.T, in Input, out Output) {
 	checkOverlayKept(t, in.Entering, in.EnteringOverlay, out.EnteringOverlay)
 	for k, c := range in.Leaving.Contested {
 		if it, ok := in.Leaving.Snapshot.Items[k]; ok && it.Hash == c.ServerHash && !changedOn(in.Entering, k) && canonKnows(in.Canonical, k) {
+			// While a base is invalid the union keeps the entering copy
+			// (C1); that copy may hold the same value.
+			if e, ok := in.Entering.Snapshot.Items[k]; ok && invalid && in.Policy.EnteringImports && e.Hash == canonHash(out.Canonical, k) {
+				continue
+			}
 			if canonHash(in.Canonical, k) != canonHash(out.Canonical, k) {
 				t.Fatalf("contested server value of %s harvested as an edit", k)
 			}
@@ -296,13 +301,16 @@ func canonHash(s *model.RowSnapshot, k string) string {
 	return s.Items[k].Hash
 }
 
-// changedOn mirrors the engine's change rule for generic rows.
+// changedOn mirrors the engine's change rule for generic rows. A contested
+// value is never a change; on a side with an invalid base the engine still
+// keeps it when the other side removed the key (C1), which this check
+// does not need to model.
 func changedOn(s Side, k string) bool {
 	if s.Snapshot == nil {
 		return false
 	}
 	it, has := s.Snapshot.Items[k]
-	if c, ok := s.Contested[k]; ok && s.BaseValid && has && (it.Hash == c.ServerHash || it.Hash == c.IntendedHash) {
+	if c, ok := s.Contested[k]; ok && has && (it.Hash == c.ServerHash || it.Hash == c.IntendedHash) {
 		return false
 	}
 	if !s.BaseValid || s.Base == nil {
@@ -444,7 +452,8 @@ func TestPropSessionsTombstoneRule(t *testing.T) {
 
 // TestPropSessionsMissingRestoredAndFamilies: sessions missing without a
 // tombstone are restored, and no record in Desired loses a parent that
-// any input still holds.
+// any input still holds, unless that parent's deletion is newer than its
+// last activity (D9: the newer change wins).
 func TestPropSessionsMissingRestoredAndFamilies(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
 		row := model.RowSessions
@@ -457,6 +466,11 @@ func TestPropSessionsMissingRestoredAndFamilies(t *testing.T) {
 			}
 			all = append(all, rec(t, i, body, int64(rapid.IntRange(1, 20).Draw(t, fmt.Sprintf("act-%d", i)))))
 		}
+		act := map[string]int64{}
+		for _, it := range all {
+			act[it.Key] = it.Stamp.AppTime
+		}
+		tombAt := map[string]int64{}
 		pick := func(label string) *model.RowSnapshot {
 			s := snap(row)
 			for _, it := range all {
@@ -472,8 +486,10 @@ func TestPropSessionsMissingRestoredAndFamilies(t *testing.T) {
 		for _, it := range all {
 			_, inL := lCur.Items[it.Key]
 			if !inL && rapid.Bool().Draw(t, "tomb"+it.Key) {
-				withTombs(lCur, model.Tombstone{Key: it.Key, At: int64(rapid.IntRange(0, 25).Draw(t, "at"+it.Key))})
+				at := int64(rapid.IntRange(0, 25).Draw(t, "at"+it.Key))
+				withTombs(lCur, model.Tombstone{Key: it.Key, At: at})
 				tombed[it.Key] = true
+				tombAt[it.Key] = at
 			}
 		}
 		in := input(row, lCur, base, eCur, base, base, sessPolicy())
@@ -489,7 +505,7 @@ func TestPropSessionsMissingRestoredAndFamilies(t *testing.T) {
 		}
 		for k, it := range out.Desired.Items {
 			if p, ok := getString(it.Value, "parentSessionId"); ok {
-				if _, ok := out.Desired.Items[p]; !ok {
+				if _, ok := out.Desired.Items[p]; !ok && !(tombed[p] && tombAt[p] > act[p]) {
 					t.Fatalf("orphan fork %s: parent %s missing", k, p)
 				}
 			}

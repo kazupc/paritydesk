@@ -2,9 +2,11 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -13,7 +15,10 @@ import (
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/profile"
+	"github.com/kazupc/paritydesk/internal/redact"
+	"github.com/kazupc/paritydesk/internal/sources"
 	"github.com/kazupc/paritydesk/internal/state"
+	"github.com/kazupc/paritydesk/internal/store/kv"
 )
 
 // staleJobAge is how old a runner plist without a result must be before
@@ -203,7 +208,7 @@ func (o *Orchestrator) Doctor(ctx context.Context, opts DoctorOptions) ([]Check,
 	if berr != nil {
 		dr.add("version", "fail", "Claude was not found")
 	} else {
-		m = dr.version(ctx, b, folders)
+		m = dr.version(ctx, root, b, folders)
 	}
 	dr.identities(root, folders)
 	dr.markers(root, folders)
@@ -219,6 +224,7 @@ func (o *Orchestrator) Doctor(ctx context.Context, opts DoctorOptions) ([]Check,
 	dr.update(ctx)
 	if m != nil {
 		dr.bridge(ctx, m.Signals)
+		dr.busyDetection(m)
 	}
 	dr.managed()
 	dr.runnerJobs()
@@ -237,16 +243,36 @@ func (dr *doctor) state(root *state.Root) {
 }
 
 // version reports the app version, the mode and the probes per folder.
-func (dr *doctor) version(ctx context.Context, b app.BundleIdentity, folders []profile.Folder) *compat.Manifest {
+// It decides the mode from the same inputs as a switch's preflight
+// (probes, Local Storage format, native multi-account, the active org, a
+// downgrade and the SQLite backend) and lists the reasons and the rows a
+// run would skip, so exits 31 and 32 are explained.
+func (dr *doctor) version(ctx context.Context, root *state.Root, b app.BundleIdentity, folders []profile.Folder) *compat.Manifest {
 	d := dr.o.d
 	m, tested, err := d.Compat.Manifest(ctx, b.Version)
 	if err != nil {
 		m = nil
 	}
-	in := compat.DecideInput{Manifest: m, Version: b.Version, Tested: tested, RequireTested: d.Config.App.RequireTested, CompressionOK: true}
+	in := compat.DecideInput{Manifest: m, Version: b.Version, Tested: tested, RequireTested: d.Config.App.RequireTested,
+		CompressionOK: true, Downgraded: downgraded(root.LastAppVersion, b.Version)}
 	for _, f := range folders {
 		if f.Name == ids.DefaultFolder {
 			in.IdentityOK = f.Identity != nil
+		}
+		if sqliteLS(f.Path) {
+			in.SQLiteLS = true
+		}
+		if f.Identity != nil {
+			if a := aliasOf(root, f.Identity.Account); a != "" && profile.NativeMultiAccount(root.Profiles[a], f.Identity.Account) {
+				in.NativeMultiAccount = true
+			}
+		}
+		if dir := sources.LevelDBPath(f.Path); d.KV != nil {
+			if _, err := os.Stat(dir); err == nil {
+				if err := d.KV.CheckFormat(ctx, dir); errors.Is(err, kv.ErrUnknownCompression) {
+					in.CompressionOK = false
+				}
+			}
 		}
 		if m == nil {
 			continue
@@ -254,6 +280,7 @@ func (dr *doctor) version(ctx context.Context, b app.BundleIdentity, folders []p
 		res := dr.probeFolder(ctx, m, f)
 		in.Probes = append(in.Probes, res...)
 	}
+	in.OrgUnknown = dr.org(ctx, root, folders, m)
 	dec := d.Compat.Decide(in)
 	status := "ok"
 	switch dec.Mode {
@@ -267,7 +294,48 @@ func (dr *doctor) version(ctx context.Context, b app.BundleIdentity, folders []p
 		t = "tested"
 	}
 	dr.add("version", status, fmt.Sprintf("Claude %s (%s), mode %s", b.Version, t, dec.Mode))
+	for _, reason := range dec.Reasons {
+		dr.add("mode-reason", status, reason)
+	}
+	if len(dec.SkippedRows) > 0 {
+		names := make([]string, len(dec.SkippedRows))
+		for i, r := range dec.SkippedRows {
+			names[i] = string(r)
+		}
+		dr.add("skipped-rows", "warn", "a run would skip: "+strings.Join(names, ", "))
+	}
 	return m
+}
+
+// org reports the active folder's organization (masked) and whether it
+// is unknown, as a switch would resolve it.
+func (dr *doctor) org(ctx context.Context, root *state.Root, folders []profile.Folder, m *compat.Manifest) bool {
+	d := dr.o.d
+	if d.Resolve == nil {
+		return false
+	}
+	var hints profile.Hints
+	var acct ids.AccountID
+	for _, f := range folders {
+		if f.Name == ids.DefaultFolder && f.Identity != nil {
+			acct = f.Identity.Account
+		}
+	}
+	if m != nil && acct != "" {
+		if org, found, err := d.App.ActiveOrg(ctx, m.Signals, acct); err == nil && found {
+			hints.ActiveOrg = org
+		}
+	}
+	res, err := d.Resolve(d.Config, root, folders, hints)
+	if err != nil || res == nil || res.Active == nil {
+		return false
+	}
+	if res.Active.Replica.Org == "" {
+		dr.add("org", "warn", "the active organization is unknown; per-organization rows are skipped (exit 32)")
+		return true
+	}
+	dr.add("org", "ok", "active organization "+ids.Mask(string(res.Active.Replica.Org)))
+	return false
 }
 
 // probeFolder runs the probes on one folder and reports them.
@@ -294,7 +362,13 @@ func (dr *doctor) probeFolder(ctx context.Context, m *compat.Manifest, f profile
 		}
 	}
 	if failed > 0 {
-		dr.add("probes", "warn", fmt.Sprintf("%s: %d of %d probes failed", f.Name, failed, len(res)))
+		var names []string
+		for _, p := range res {
+			if !p.OK {
+				names = append(names, p.ProbeID)
+			}
+		}
+		dr.add("probes", "warn", fmt.Sprintf("%s: %d of %d probes failed: %s", f.Name, failed, len(res), strings.Join(names, ", ")))
 	} else {
 		dr.add("probes", "ok", fmt.Sprintf("%s: %d probes passed", f.Name, len(res)))
 	}
@@ -333,38 +407,29 @@ func (dr *doctor) markers(root *state.Root, folders []profile.Folder) {
 	}
 }
 
-// unclassified lists top-level entries of Claude/ that the manifest does
-// not classify.
+// unclassified lists, by name only, top-level entries of Claude/ that the
+// manifest does not classify, so a maintainer can add them. Such entries
+// are never touched (plan validation allows writes below synced only).
+// Contents are never opened. Names pass through redact (ids embedded in
+// a name become <id>) here, and the printer's redaction applies on top.
 func (dr *doctor) unclassified(m *compat.Manifest) {
 	entries, err := os.ReadDir(dr.o.claudePath())
 	if err != nil {
 		return
 	}
-	c := m.Classification
-	lists := [][]string{c.NeverTouched, c.NeverUntilClassified, c.Cache, c.Synced, c.Other}
 	var out []string
 	for _, e := range entries {
-		if !classified(e.Name(), lists) {
-			out = append(out, e.Name())
+		if !m.Classified(e.Name()) {
+			out = append(out, redact.Redactor{}.Key(e.Name()))
 		}
 	}
 	if len(out) > 0 {
-		dr.add("unclassified", "warn", fmt.Sprintf("%d unclassified entries in Claude (left untouched): %s", len(out), strings.Join(out, ", ")))
+		sort.Strings(out)
+		dr.add("unclassified", "warn", fmt.Sprintf("%d unclassified entries in Claude (never touched; add them to the compat manifest): %s",
+			len(out), strings.Join(out, ", ")))
 		return
 	}
 	dr.add("unclassified", "ok", "every entry in Claude is classified")
-}
-
-func classified(name string, lists [][]string) bool {
-	for _, l := range lists {
-		for _, g := range l {
-			first, _, _ := strings.Cut(g, "/")
-			if ok, _ := filepath.Match(first, name); ok || first == name {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func (dr *doctor) automation(ctx context.Context, grant bool) {
@@ -411,7 +476,23 @@ func (dr *doctor) bridge(ctx context.Context, sig compat.Signals) {
 			return
 		}
 	}
-	dr.add("chrome-bridge", "warn", "Claude in Chrome did not connect after the last launch. It follows the Chrome profile's sign-in, not the Claude folder: use one Chrome profile per account")
+	dr.add("chrome-bridge", "warn", "no Claude in Chrome connection line was found in the Claude log since the last launch. "+
+		"The extension follows the Chrome profile's sign-in, not the Claude folder: use one Chrome profile per account. "+
+		"If Claude in Chrome works, the log line may have changed in this Claude version (release checklist step 6)")
+}
+
+// busyDetection reports whether paritydesk can see working Code
+// sessions: it needs a turn_started log pattern or a sessions busy field
+// in the manifest. Without either, only the app's own quit dialog
+// protects a working session.
+func (dr *doctor) busyDetection(m *compat.Manifest) {
+	spec, _ := m.Row(model.RowSessions)
+	if m.Signals.TurnStarted != "" || len(spec.Fields[sources.RoleBusy]) > 0 {
+		dr.add("busy-detection", "ok", "working Code sessions are detected before Claude quits")
+		return
+	}
+	dr.add("busy-detection", "warn", "busy detection unavailable: this Claude version has no confirmed busy signal, "+
+		"so only Claude's own quit dialog protects a working Code session")
 }
 
 func (dr *doctor) managed() {

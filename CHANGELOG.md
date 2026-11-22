@@ -42,6 +42,47 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   ASCII-only text, and a private deny-list check for personal labels.
 - CI on Apple silicon and Intel: `go vet`, `gofmt`, `go test -race`,
   `govulncheck`, with actions pinned by commit.
+- More CI jobs (written, not yet run on GitHub runners): a Linux job that
+  runs `go vet` and the race tests of every package that does not need
+  macOS; a checks job for `gofmt`, `go vet` for darwin and linux and the
+  network-package check (with and without tests); a second macOS test
+  run under a `sandbox-exec` profile that denies all network, with a
+  probe test that proves the sandbox works; a differential test against
+  the C++ LevelDB library (Snappy and uncompressed, both directions); and
+  an end-to-end job that drives the real binary against a stub app with
+  a test bundle id in a temporary home. The e2e job refuses to run
+  outside CI or next to the real app. See CONTRIBUTING.md.
+- `paritydesk completion bash|zsh|fish`: completion scripts generated
+  from the command and flag tables, with golden tests per shell and a
+  test that every visible command and flag appears. Profile aliases are
+  completed from the config file through a hidden `__aliases` command.
+- `paritydesk doctor --bundle <file>` (and `--bundle-logs <n>`): a
+  support archive (tar.gz, mode 0600, never over an existing file, never
+  through a symbolic link, never inside a Claude data folder) holding
+  redacted doctor output, paritydesk's config with personal values
+  replaced, version and manifest information and the newest run logs.
+  Tests plant synthetic ids, home paths, aliases, labels and titles and
+  check that none reach the archive. `version --json` also reports the
+  commit and build date when they are set at build time.
+- Integrations in `integrations/`: a SwiftBar or xbar plugin, a Raycast
+  script command and a `pd` shell function, all thin wrappers around
+  `paritydesk switch --detach` that find the binary like the plugin's
+  hook shim and accept only a valid alias. Tests run them against a fake
+  binary, and run shellcheck when it is installed.
+- Release tooling: `.goreleaser.yaml` (darwin arm64, amd64 and a
+  universal binary; `-trimpath`, CGO off, version, commit and date
+  ldflags, commit timestamps so that builds are designed to be
+  reproducible, not yet checked; `SHA256SUMS`), a
+  Homebrew formula template in `packaging/homebrew/` that builds from
+  source, and a release workflow on `v*` tags that runs the tests and
+  govulncheck before GoReleaser, with write permission in the release
+  job only.
+- Documentation: [docs/install.md](docs/install.md) (why paritydesk is
+  not notarized, the from-source tap, `go install`, the tarball and its
+  checksum), [docs/integrations.md](docs/integrations.md), the support
+  archive in [PRIVACY.md](PRIVACY.md#the-support-archive), and release
+  checklist steps 25 to 35 (integrations, support archive and the
+  quarantine gate for design risk R8).
 
 ### Defaults
 
@@ -59,16 +100,83 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   paritydesk keeps watching and relaunches the profile you were on if
   Claude quits late.
 
-### Sequencing within v0.1
+### Changed
 
-- **WI-9, integrations and release**, starts once the `--json` schemas of
-  the command line (this work item, WI-8) are merged: SwiftBar and Raycast
-  wrappers and a shell alias around `switch --detach`, a `completion`
-  command, `doctor --bundle`, GoReleaser, the Homebrew tap formula, the
-  release workflow and the quarantine gate.
-- **WI-10, CI extensions**, follows on the same condition: a macOS job
-  with a stub app, a differential LevelDB test against the C++ library,
-  and a test run inside a network-deny sandbox.
+- The compatibility manifest for app 6.x follows a read-only survey of
+  the on-disk shapes ([ADR 0004](docs/adr/0004-data-shape-survey.md)):
+  session tombstones are a bare epoch-ms number; parent links include
+  nested fields; a session's worktree fields move as one group; security
+  grants in a session record keep the target account's own value and are
+  dropped from copies new to it; the presets file is read before its
+  Local Storage copy; worktree registrations are keyed by name; persisted
+  store versions are probed; unknown top-level entries are never touched
+  and `doctor` lists their names; the `active_org` and `app_started`
+  log patterns are filled in.
+- The app's backup of the sidebar store (`dframe-store.backup.*`) is on
+  the fixed Local Storage deny list.
+
+### Fixed
+
+- A Local Storage snapshot no longer fails when the database holds two
+  journal files (after an unclean exit or during a flush): goleveldb's
+  read-only open returns `EOF` there, so the private copy is then opened
+  read-write. The original is still never opened.
+- A value that matches a contested server value is no longer harvested
+  as an edit from a side whose sync base is invalid (C2), while such a
+  value still survives a removal by the other side (C1).
+- Bases of environments, tasks and worktrees are kept after a switch.
+  The read-back check compared the item order, which these rows' merges
+  do not carry, so every later switch was a first sync and a scripted
+  `switch --yes` exited 21.
+- A started-environment entry is removed only for a local session the
+  sessions row saw. Entries of other orgs' and other accounts' sessions,
+  and remote `session_` ids, are no longer deleted.
+- A `paritydesk verify` run later than 15 minutes after a switch, or
+  after that switch was already verified, only reports differences. It
+  no longer takes the user's own edits for app drift.
+- Presets are not written while their Local Storage copy and file mirror
+  disagree, and the Local Storage copy is read when `fileMirrored` is
+  not set.
+- `rollback` waits until no process uses the target folder (exit 41
+  otherwise), as a switch does.
+- The worktree loss guard also checks registry entries that a switch
+  would delete or replace, keeps a same-name entry with another
+  directory, and keeps paths on volumes that are not mounted.
+- The remote-control opt-in, vouched calls and worktree trust grants no
+  longer reach other accounts.
+- A newer deletion of a chain root or fork parent is no longer undone by
+  a child that was merely kept.
+- `sync.exclude` applies to backlog and scheduled tasks.
+- The active organization from `main.log` counts only when its line
+  names the active folder's account.
+- The permission-mode cap looks up modes, not preference names; a mode
+  the target's own sessions use is kept on new copies.
+- `init`, `profile add` and `profile adopt` ask whether the account is
+  managed (or need `--managed` / `--unmanaged` without a terminal).
+- A downgrade of Claude (exit 30) and the SQLite Local Storage backend
+  (exit 31) are detected. `doctor` decides the mode from the same inputs
+  as a switch and lists the reasons, skipped rows, failed probes and the
+  active organization.
+- The support archive replaces aliases of removed profiles in messages
+  and keeps only the count of unclassified entries.
+- Override manifests can no longer remove `never_until_classified`
+  entries, widen `synced`, or bypass the deny lists through another name.
+- The bash completion now matches the last value flag of a command.
+- `doctor --bundle` refuses a data folder reached through a case variant
+  or a symbolic link.
+- The SessionStart hook stays usable for `brew install --HEAD` builds.
+
+### Not yet confirmed on a real Mac
+
+- Every item above is covered by automated tests with synthetic data
+  only. The release checklist confirms them on a real Mac before v0.1 is
+  tagged; until then the README describes them as designed, not as
+  confirmed. In particular the integrations (steps 26 to 28), the
+  support archive (step 29) and every install path (steps 31 to 35) have
+  not been run on a real Mac.
+- The tap formula installs from source rather than a prebuilt tarball,
+  unlike the original design (D23), so that no unsigned downloaded binary
+  is quarantined (R8).
 
 ### Deferred to v0.2
 

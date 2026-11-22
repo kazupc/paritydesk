@@ -11,24 +11,34 @@ import (
 )
 
 // recordMerger returns a field merge over the given field lists, or nil
-// when both are empty (no field merge, whole-record Prefer).
-func recordMerger(perField, maxTime []string) fieldMergeFunc {
-	if len(perField) == 0 && len(maxTime) == 0 {
+// when all are empty (no field merge, whole-record Prefer). groups are
+// sets of fields that move together (for example a session's worktree:
+// name, path and branches).
+func recordMerger(perField, maxTime []string, groups ...[]string) fieldMergeFunc {
+	var gs [][]string
+	for _, g := range groups {
+		if len(g) > 0 {
+			gs = append(gs, g)
+		}
+	}
+	if len(perField) == 0 && len(maxTime) == 0 && len(gs) == 0 {
 		return nil
 	}
 	return func(p pair) (model.Item, bool, bool, error) {
-		return mergeRecord(p, perField, maxTime)
+		return mergeRecord(p, perField, maxTime, gs)
 	}
 }
 
 // mergeRecord merges a record both sides changed (D8). The result starts
 // from the winner's record; each per-field field comes from the side that
 // changed it (the winner when both did; object values are merged member by
-// member first); max-time fields take the maximum. Edits go through jsonx
-// on the winner's value and, when it mirrors the value, its raw bytes. Any
-// failure falls back to the whole winner (ok=false); so does a secret item
-// whose raw bytes cannot follow the merge.
-func mergeRecord(p pair, perField, maxTime []string) (model.Item, bool, bool, error) {
+// member first); each group of fields comes whole from the side that
+// changed any of them (the winner when both did); max-time fields take
+// the maximum. Edits go through jsonx on the winner's value and, when it
+// mirrors the value, its raw bytes. Any failure falls back to the whole
+// winner (ok=false); so does a secret item whose raw bytes cannot follow
+// the merge.
+func mergeRecord(p pair, perField, maxTime []string, groups [][]string) (model.Item, bool, bool, error) {
 	w, lo := p.win(), p.lose()
 	if !isObject(w.Item.Value) || !isObject(lo.Item.Value) {
 		return model.Item{}, false, false, nil
@@ -43,6 +53,15 @@ func mergeRecord(p pair, perField, maxTime []string) (model.Item, bool, bool, er
 		}
 		conflict = conflict || c
 	}
+	merged := append(append([]string(nil), perField...), maxTime...)
+	for _, g := range groups {
+		c, err := mergeGroup(d, g, w, lo)
+		if err != nil {
+			return model.Item{}, false, false, nil
+		}
+		conflict = conflict || c
+		merged = append(merged, g...)
+	}
 	for _, f := range maxTime {
 		if err := maxField(d, jsonx.Path{f}, *lo.Item); err != nil {
 			return model.Item{}, false, false, nil
@@ -52,7 +71,7 @@ func mergeRecord(p pair, perField, maxTime []string) (model.Item, bool, bool, er
 		return model.Item{}, false, false, nil
 	}
 	if !conflict {
-		conflict = otherFieldsLost(w, lo, append(append([]string(nil), perField...), maxTime...))
+		conflict = otherFieldsLost(w, lo, merged)
 	}
 	st := w.Item.Stamp
 	if lo.Item.Stamp.AppTime > st.AppTime {
@@ -63,6 +82,35 @@ func mergeRecord(p pair, perField, maxTime []string) (model.Item, bool, bool, er
 		return model.Item{}, false, false, nil
 	}
 	return it, true, conflict, nil
+}
+
+// mergeGroup takes every field of group from the loser when only the
+// loser changed any of them, so the group never mixes the two sides. It
+// reports a conflict when both sides changed the group to different
+// values; the winner's group is kept then.
+func mergeGroup(d *editDoc, group []string, w, lo merge.Version) (bool, error) {
+	wc, lc := false, false
+	same := true
+	for _, f := range group {
+		p := jsonx.Path{f}
+		wc = wc || fieldChanged(w, p)
+		lc = lc || fieldChanged(lo, p)
+		wv, wok := getAt(w.Item.Value, p)
+		lv, lok := getAt(lo.Item.Value, p)
+		same = same && sameJSON(wv, wok, lv, lok)
+	}
+	switch {
+	case !lc || same:
+		return false, nil
+	case wc:
+		return true, nil
+	}
+	for _, f := range group {
+		if err := d.copyFrom(jsonx.Path{f}, *lo.Item); err != nil {
+			return false, err
+		}
+	}
+	return false, nil
 }
 
 // fieldChanged reports whether v changed the value at path since its base.

@@ -499,7 +499,7 @@ func (a *fakeApp) WaitUpdateInstalled(context.Context, string, time.Duration) er
 	return nil
 }
 
-func (a *fakeApp) ActiveOrg(context.Context, compat.Signals) (ids.OrgID, bool, error) {
+func (a *fakeApp) ActiveOrg(context.Context, compat.Signals, ids.AccountID) (ids.OrgID, bool, error) {
 	return "", false, app.ErrSignalUnknown
 }
 
@@ -579,11 +579,11 @@ func testManifest() *compat.Manifest {
 		Rows: []compat.RowSpec{
 			{Row: model.RowEnvironments, WritePath: compat.PathOff, Files: []string{rowFile(model.RowEnvironments)}},
 			{Row: model.RowSessions, WritePath: compat.PathOff, Files: []string{rowFile(model.RowSessions)},
-				Fields: map[string][]string{"run_state": {"busy"}}},
+				Fields: map[string][]string{"busy": {"busy"}}},
 			{Row: model.RowGroupOrder, WritePath: compat.PathOffVerify, Files: []string{rowFile(model.RowGroupOrder)},
 				MirrorFile: "mirror.json"},
 		},
-		Classification: compat.Classification{NeverTouched: []string{"identity.json"}, Synced: []string{"rows"}},
+		Classification: compat.Classification{NeverTouched: []string{"identity.json"}, Synced: []string{"rows/**"}},
 		Footprints:     []compat.Footprint{{Tool: "other-switcher", FolderGlobs: []string{"Claude-Other*"}}},
 		Signals:        compat.Signals{TurnEnded: "x", LoginRequired: "y"},
 	}
@@ -840,10 +840,14 @@ func (s *fakeSessions) ResolveByCLISession(_ context.Context, _ string, _ model.
 
 func (s *fakeSessions) DiscoverReplicas(string) ([]model.Replica, error) { return nil, nil }
 
-type fakeWorktrees struct{ lost []string }
+type fakeWorktrees struct{ lost, lostEntries []string }
 
-func (w *fakeWorktrees) LostRegistrations(_, _ *model.RowSnapshot) ([]string, error) {
+func (w *fakeWorktrees) LostRegistrations(_, _ *model.RowSnapshot, _ []string) ([]string, error) {
 	return w.lost, nil
+}
+
+func (w *fakeWorktrees) LostEntries(_, _ *model.RowSnapshot, _ []string) ([]string, error) {
+	return w.lostEntries, nil
 }
 
 type fakeDetacher struct {

@@ -100,6 +100,22 @@ func getString(doc []byte, name string) (string, bool) {
 	return s, true
 }
 
+// getStringPath returns the string value at a nested path.
+func getStringPath(doc []byte, path jsonx.Path) (string, bool) {
+	if len(path) == 0 || path[0] == "" {
+		return "", false
+	}
+	v, ok := getAt(doc, path)
+	if !ok {
+		return "", false
+	}
+	var s string
+	if err := json.Unmarshal(v, &s); err != nil {
+		return "", false
+	}
+	return s, true
+}
+
 // sameJSON compares two optional JSON values by canonical form.
 func sameJSON(a []byte, aok bool, b []byte, bok bool) bool {
 	if !aok || !bok {

@@ -15,7 +15,8 @@ import (
 
 // Members and item key prefixes of a sidebar scope object.
 const (
-	seededMember   = "prefsSeeded" // the app's own seeding flag; never carried
+	seededMember   = "prefsSeeded"  // the app's own seeding flag; never carried
+	migratedMember = "migratedFrom" // the app's own migration marker; never carried
 	sectionsMember = "sections"
 	fieldPrefix    = "field:"
 	sectionPrefix  = "section:"
@@ -45,8 +46,10 @@ func viewLayout(spec compat.RowSpec) (layout, error) {
 }
 
 // scopeItems splits a scope object into items: "field:<name>" per member
-// except prefsSeeded and sections, "section:<id>" per section. order lists
-// the section ids.
+// except prefsSeeded, migratedFrom and sections, "section:<id>" per
+// section. order lists the section ids. prefsSeeded and migratedFrom are
+// the app's own markers of one account's seeding and migration, so each
+// scope keeps its own and they are never carried.
 func scopeItems(v json.RawMessage, name string, stamp model.Stamp) (map[string]model.Item, []string, error) {
 	obj, err := sources.DecodeObject(v, name)
 	if err != nil {
@@ -56,7 +59,7 @@ func scopeItems(v json.RawMessage, name string, stamp model.Stamp) (map[string]m
 	var order []string
 	for k, raw := range obj {
 		switch k {
-		case seededMember:
+		case seededMember, migratedMember:
 			continue
 		case sectionsMember:
 			order, err = sectionItems(raw, name, stamp, items)
