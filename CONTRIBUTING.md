@@ -78,6 +78,12 @@ LevelDB code with the C++ LevelDB library in both directions: databases
 written by C++ (with and without Snappy, many keys, deletions and
 compactions) are read through the snapshot path and the table checker,
 and a batch written through `OpenWritable` is read back by C++. The C++
+library usually leaves a journal whose first batches are numbered below
+its manifest's last sequence, as the app may leave its own database on
+quit; the tests log it, and both the snapshot path and `OpenWritable`
+must read every key of that database as C++ left it. The tests also
+check that C++ reads the state a crash leaves right after `OpenWritable`
+added its replay journal. The C++
 helper is built from `testdata/leveldb-cxx/`. Without
 `PARITYDESK_LEVELDB_CXX` the tests skip.
 
@@ -109,7 +115,8 @@ error.
 The e2e job builds a stub app from `testdata/stubapp/StubApp.swift` with
 the test bundle id `dev.paritydesk.stubapp`, installs it as
 `Applications/Claude.app` inside a temporary HOME, and drives the real
-`paritydesk` binary against it under the network-deny sandbox. The tests
+`paritydesk` binary against it, under the network-deny sandbox when the
+runner delivers Apple Events there (see below). The tests
 in `internal/e2e` cover a switch from a to b and back, `recover` after a
 run stopped at each phase or killed with SIGKILL, waiting for a vetoed
 quit, and a vetoed quit that times out without writing anything. The
@@ -118,10 +125,53 @@ quit for a set number of seconds, holds the LevelDB lock and an open
 file in its data folder, and writes main.log lines in the formats of
 `internal/compat/manifests/6.x.toml`.
 
-The job runs `scripts/ci/e2e.sh`. If the stub-app tests are skipped
-(for example because the runner blocks Apple Events), the job fails,
-since nothing was tested; set `PARITYDESK_E2E_ALLOW_SKIP=1` only for a
-runner known to block them. The detached switch, `profile add` and
+The job runs `scripts/ci/e2e.sh` in steps:
+
+1. `e2e.sh prepare` builds paritydesk, the test binary and the stub and
+   installs the stub in the temporary HOME.
+2. `e2e.sh probe LABEL` is the Apple Events diagnostic. It launches the
+   stub once and sends it two harmless events (`reopen`, `count
+   windows`) from `osascript`: outside any sandbox, under an allow-all
+   `sandbox-exec` profile and under the network-deny profile, with a
+   Finder `count windows` as a control. It prints each exit code and
+   AppleScript error number with a class (`ok`, `delivered(N)`,
+   `blocked-tcc(N)`, `blocked-privilege(N)`, `timeout(N)`,
+   `not-running(N)`, `error(...)`), the AppleEvents rows of the runner
+   user's TCC.db and the matching TCC, appleeventsd and sandbox log
+   lines, and writes a table and a conclusion to the job summary.
+3. Only when the stub launched but Apple Events did not reach it outside
+   the sandbox, `e2e.sh grant-tcc` adds Automation rows for the stub's
+   bundle id to the runner user's TCC.db (GitHub-hosted runners only, in
+   the runner image's own format), and the diagnostic runs again.
+4. `e2e.sh run` runs the tests. The last diagnostic decides the sandbox:
+   under the network-deny sandbox when Apple Events reach the stub there
+   (`PARITYDESK_E2E_NONET=1`), otherwise without `sandbox-exec`, which
+   the log and the summary state. The paritydesk runs the tests start
+   are then not network-denied, and no other job drives the built
+   binary under the sandbox: the checks job only proves that no network
+   package is linked (`go list -deps`), and the network-deny run of the
+   macOS test job skips the stub-app tests. `e2e.sh` with no argument
+   runs `prepare` and `run` without the diagnostic, so it uses the
+   sandbox only when `PARITYDESK_E2E_NONET=1` is set.
+
+If the stub-app tests are skipped, the job fails, since nothing was
+tested, with one exception that needs two things. The diagnostic must
+show that the runner refuses Apple Events to the running stub outside
+any sandbox in a way the stub cannot cause: both stub events refused by
+Automation (`blocked-tcc`), or both refused with -10004 while the
+Finder control is refused the same way. A timeout, a crash or a -10004
+for the stub alone never counts, since a hung or broken stub looks the
+same. And a maintainer must have set the repository variable
+`PARITYDESK_E2E_ALLOW_SKIP` to `1`. The skip is then a warning and a
+"NOT RUN" line in the job summary. That is a limit of GitHub-hosted
+runners, not a pass: before every release, the stub-app tests must then
+be run on a self-hosted runner, or on a Mac or macOS virtual machine
+that has no `/Applications/Claude.app` and no real data, as
+`docs/release-checklist.md` describes (`e2e.sh` refuses to run while
+`/Applications/Claude.app` exists, so another user account on a Mac
+with the real app is not enough). Never run them on a Mac that has the
+real app or real data. The detached
+switch, `profile add` and
 `rollback` are not covered yet. The stub stands in for the real app;
 passing e2e runs do not show that paritydesk works with the real app.
 Those checks are the steps of `docs/release-checklist.md`.

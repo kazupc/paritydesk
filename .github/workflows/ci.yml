@@ -168,12 +168,74 @@ jobs:
           go-version: '1.26.x'
           check-latest: true
 
-      - name: Stub-app end-to-end tests
-        # Builds paritydesk and the stub app (test bundle id, never the
-        # real one), installs the stub in a temporary HOME and drives the
-        # real binary against it, under the network-deny sandbox. The
-        # script refuses to run outside CI or next to the real app.
+      - name: Build paritydesk and the stub app
+        # Builds paritydesk, the e2e test binary and the stub app (test
+        # bundle id, never the real one) and installs the stub as
+        # Applications/Claude.app in a temporary HOME. The script refuses
+        # to run outside CI or next to the real app.
         env:
           PARITYDESK_E2E_BUNDLE_ID: dev.paritydesk.stubapp
-          PARITYDESK_E2E_NONET: '1'
-        run: scripts/ci/e2e.sh
+        run: scripts/ci/e2e.sh prepare
+
+      - name: Apple Events diagnostic
+        # Launches the installed stub (nothing new is built) and sends it
+        # two harmless Apple Events (reopen, count windows) from osascript:
+        # outside any sandbox, under an allow-all sandbox-exec profile and
+        # under the network-deny profile the tests use, with a Finder
+        # "count windows" as the control (the runner image pre-grants
+        # Automation for osascript to Finder). It prints each exit code
+        # and error, the runner user's AppleEvents TCC rows and the TCC,
+        # appleeventsd and sandbox log lines, writes a job summary, and
+        # sets the outputs the test step reads. It always exits 0 unless
+        # it is misused.
+        id: ae1
+        env:
+          PARITYDESK_E2E_BUNDLE_ID: dev.paritydesk.stubapp
+        run: scripts/ci/e2e.sh probe before-grant
+
+      - name: Grant Automation for the stub (GitHub-hosted runner only)
+        # Only when the stub launched but Apple Events did not reach it
+        # outside the sandbox. Adds kTCCServiceAppleEvents rows for the
+        # stub's bundle id to the runner user's TCC.db with sqlite3, in
+        # the format and for the clients the runner image itself uses for
+        # Finder and System Events (actions/runner-images,
+        # images/macos/scripts/build/configure-tccdb-macos.sh). It touches
+        # only this disposable runner, never runs on a self-hosted one,
+        # and never fails the job; the next diagnostic shows whether tccd
+        # honours the rows.
+        id: grant
+        if: steps.ae1.outputs.stub_launched == '1' && steps.ae1.outputs.outside != 'ok'
+        env:
+          PARITYDESK_E2E_BUNDLE_ID: dev.paritydesk.stubapp
+        run: scripts/ci/e2e.sh grant-tcc
+
+      - name: Apple Events diagnostic after the grant
+        id: ae2
+        if: steps.grant.outcome == 'success'
+        env:
+          PARITYDESK_E2E_BUNDLE_ID: dev.paritydesk.stubapp
+        run: scripts/ci/e2e.sh probe after-grant
+
+      - name: Stub-app end-to-end tests
+        # Drives the real paritydesk binary against the stub. The last
+        # diagnostic decides the sandbox: PARITYDESK_E2E_NONET is 1 when
+        # Apple Events reach the stub inside the network-deny sandbox;
+        # then the tests and every paritydesk run they start run under it.
+        # Otherwise they run without sandbox-exec, and the log and summary
+        # say so: those paritydesk runs are then not network-denied, and
+        # no other job drives the built binary under the sandbox (the
+        # checks job only proves there are no network packages; the macOS
+        # test job's network-deny run skips the stub-app tests).
+        # A skip fails the job unless both the diagnostic showed that the
+        # runner refuses Apple Events to the running stub in a way the
+        # stub cannot cause (PARITYDESK_E2E_RUNNER_BLOCKS_AE) and a
+        # maintainer has set the repository variable
+        # PARITYDESK_E2E_ALLOW_SKIP to 1. Such a skip is a warning and a
+        # "NOT RUN" line in the summary, nothing was tested, and the tests
+        # must be run by hand before a release (docs/release-checklist.md).
+        env:
+          PARITYDESK_E2E_BUNDLE_ID: dev.paritydesk.stubapp
+          PARITYDESK_E2E_NONET: ${{ steps.ae2.outputs.e2e_nonet || steps.ae1.outputs.e2e_nonet }}
+          PARITYDESK_E2E_RUNNER_BLOCKS_AE: ${{ steps.ae2.outputs.runner_blocks_ae || steps.ae1.outputs.runner_blocks_ae }}
+          PARITYDESK_E2E_ALLOW_SKIP: ${{ vars.PARITYDESK_E2E_ALLOW_SKIP }}
+        run: scripts/ci/e2e.sh run

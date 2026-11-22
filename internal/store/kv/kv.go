@@ -19,6 +19,15 @@ var (
 	// never its content) when a table block uses a compression type other
 	// than none or Snappy. The orchestrator maps it to swap-only (exit 31).
 	ErrUnknownCompression = errors.New("kv: unknown block compression")
+	// ErrJournalSequence is returned (wrapped, naming the journal file but
+	// never its content) when a journal the database would replay holds
+	// batches out of order: a batch numbered below the end of the batch
+	// before it. Neither LevelDB library writes that, so OpenSnapshot and
+	// OpenWritable refuse it rather than guess an order. The leveldb
+	// package's CheckJournals also returns it for batches numbered below
+	// the manifest's last sequence, which the C++ library can leave and
+	// both open paths replay.
+	ErrJournalSequence = errors.New("kv: journal batch out of sequence")
 )
 
 // Reader reads keys. Values returned must not be modified by the caller.
@@ -47,7 +56,8 @@ type Opener interface {
 	OpenSnapshot(ctx context.Context, dir string) (Reader, error)
 	// OpenWritable opens dir itself for writing. The caller must have
 	// proven quiescence (no process holds LOCK or has files open under the
-	// folder). Unknown block compression is refused.
+	// folder). Unknown block compression is refused, and so are journal
+	// batches out of order (ErrJournalSequence).
 	OpenWritable(ctx context.Context, dir string) (Writer, error)
 	// CheckFormat clones dir (as OpenSnapshot does) and checks every table
 	// block's compression type without opening the database. It returns

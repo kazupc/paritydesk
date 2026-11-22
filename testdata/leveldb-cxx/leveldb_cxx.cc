@@ -13,7 +13,11 @@
 //       a batch and single writes that stay in the log. Small write
 //       buffers and file sizes give many table files. Prints the expected
 //       content: "P <hex key> <hex value>" for every live pair in key
-//       order, then "D <hex key>" for every deleted key.
+//       order, then "D <hex key>" for every deleted key. The last writes
+//       overlap background compactions, so the database is usually left
+//       with a journal whose first batches are numbered below the
+//       manifest's last sequence (internal/store/kv/leveldb/journal.go);
+//       this depends on timing.
 //   leveldb-cxx dump DIR
 //       Opens the existing database in DIR and prints "P <hex key> <hex
 //       value>" for every pair in key order.

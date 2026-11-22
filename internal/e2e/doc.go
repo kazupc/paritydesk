@@ -1,7 +1,12 @@
 // Package e2e holds end-to-end tests that drive the real paritydesk
 // binary against a stub app (testdata/stubapp) in a temporary HOME. They
 // run only on CI, in the e2e job of .github/workflows/ci.yml, through
-// scripts/ci/e2e.sh.
+// scripts/ci/e2e.sh. In that job the script's Apple Events diagnostic
+// (e2e.sh probe) runs first, and its result decides whether the tests run
+// under the network-deny sandbox and whether a skip may be reported
+// instead of failed (only if a maintainer also allows it). e2e.sh with no
+// argument runs no diagnostic and uses the sandbox only when
+// PARITYDESK_E2E_NONET=1.
 //
 // The tests are skipped unless PARITYDESK_E2E=1 and
 // PARITYDESK_E2E_BUNDLE_ID are both set. They refuse to run (CheckTarget)

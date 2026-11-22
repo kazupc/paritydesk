@@ -78,15 +78,30 @@ func New(tempRoot string, fs fsx.Ops) (*Opener, error) {
 // fresh directory under TempRoot and opens the clone read-only; the clone
 // is removed on Close. If the read-only open fails, the clone (never the
 // original) is opened read-write once, which replays its journals the
-// way the app would on its next start. The original directory is never
-// opened.
+// way the app would on its next start. If a journal holds batches
+// goleveldb would drop for their sequence numbers (see journal.go), the
+// clone's journals are replayed by this package instead: they are read,
+// removed from the clone, and written in order into the clone opened
+// read-write. Batches out of order fail with kv.ErrJournalSequence. The
+// original directory is never opened.
 func (o *Opener) OpenSnapshot(ctx context.Context, dir string) (kv.Reader, error) {
 	name, err := o.clone(ctx, dir)
 	if err != nil {
 		return nil, err
 	}
-	db, err := leveldb.OpenFile(o.clonePath(name), snapshotOptions())
+	st, err := inspectJournals(o.clonePath(name), snapshotOptions())
+	if err == nil && st.disordered != "" {
+		err = st.sequenceErr()
+	}
 	if err != nil {
+		return nil, errors.Join(fmt.Errorf("leveldb: open snapshot: %w", err), o.removeTemp(name))
+	}
+	var db *leveldb.DB
+	if st.behind != "" {
+		if db, err = o.replayClone(name, st); err != nil {
+			return nil, errors.Join(fmt.Errorf("leveldb: open snapshot: %w", err), o.removeTemp(name))
+		}
+	} else if db, err = leveldb.OpenFile(o.clonePath(name), snapshotOptions()); err != nil {
 		var rwErr error
 		db, rwErr = leveldb.OpenFile(o.clonePath(name), cloneRecoveryOptions())
 		if rwErr != nil {
@@ -96,10 +111,43 @@ func (o *Opener) OpenSnapshot(ctx context.Context, dir string) (kv.Reader, error
 	return &store{db: db, cleanup: func() error { return o.removeTemp(name) }}, nil
 }
 
+// replayClone replays a clone's journals the way the C++ library does:
+// every batch, in order, whatever its sequence number. It removes the
+// journals from the clone, opens the clone read-write (so goleveldb has
+// nothing to replay) and writes the batches again; goleveldb numbers them
+// above everything in the tables, which they are newer than. Only ever
+// called on a private clone.
+func (o *Opener) replayClone(name string, st *journalState) (*leveldb.DB, error) {
+	for _, j := range st.journals {
+		if err := o.FS.RemoveAll(filepath.Join(o.TempRoot, name), cloneDirName+"/"+j); err != nil {
+			return nil, fmt.Errorf("leveldb: remove clone journal: %w", err)
+		}
+	}
+	db, err := leveldb.OpenFile(o.clonePath(name), cloneRecoveryOptions())
+	if err != nil {
+		return nil, fmt.Errorf("leveldb: open snapshot clone for journal replay: %w", err)
+	}
+	for _, b := range st.batches {
+		if err := db.Write(b, nil); err != nil {
+			return nil, errors.Join(fmt.Errorf("leveldb: journal replay: %w", err), db.Close())
+		}
+	}
+	return db, nil
+}
+
 // OpenWritable implements kv.Opener. It checks every table's block
-// compression first (reading only), then opens dir itself strictly. It
-// never creates a database and never runs recovery; errors after the open
-// are returned wrapped so the caller restores from its generation.
+// compression and reads the manifest and journals with strict checks
+// first (both only read), then opens dir itself strictly. Batches out of
+// order fail with kv.ErrJournalSequence before anything is written. If a
+// journal holds batches goleveldb would drop for their sequence numbers
+// (journal.go), it first adds a replay journal holding every batch again,
+// in order and renumbered, and opens dir with goleveldb's journal check
+// relaxed so the old copies are skipped and the replay journal applied;
+// every other strict check stays. A failed open may leave the replay
+// journal, or goleveldb's partly done journal recovery, behind; either
+// holds the same content for both libraries. It never creates a database
+// and never runs recovery; errors after the open are returned wrapped so
+// the caller restores from its generation.
 func (o *Opener) OpenWritable(ctx context.Context, dir string) (kv.Writer, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -110,7 +158,27 @@ func (o *Opener) OpenWritable(ctx context.Context, dir string) (kv.Writer, error
 	if err := CheckCompressions(dir); err != nil {
 		return nil, err
 	}
-	db, err := leveldb.OpenFile(dir, writableOptions())
+	opts := writableOptions()
+	st, err := inspectJournals(dir, opts)
+	if err != nil {
+		return nil, err
+	}
+	if st.disordered != "" {
+		return nil, st.sequenceErr()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if st.behind != "" {
+		if _, err := writeReplayJournal(dir, st); err != nil {
+			return nil, fmt.Errorf("leveldb: open for writing: %w", err)
+		}
+		// The journals were just read with strict checks, so the only
+		// batches goleveldb skips now are the old copies of the replayed
+		// ones.
+		opts.Strict &^= opt.StrictJournal
+	}
+	db, err := leveldb.OpenFile(dir, opts)
 	if err != nil {
 		return nil, fmt.Errorf("leveldb: open for writing: %w", err)
 	}

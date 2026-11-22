@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -118,6 +119,20 @@ func newOpener(t *testing.T) *leveldb.Opener {
 	return o
 }
 
+// scanContent returns r's content in scan order.
+func scanContent(t *testing.T, r kv.Reader) content {
+	t.Helper()
+	c := content{live: map[string]string{}}
+	if err := r.Scan(nil, func(k, v []byte) error {
+		c.keys = append(c.keys, string(k))
+		c.live[string(k)] = string(v)
+		return nil
+	}); err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	return c
+}
+
 // readSnapshot reads dir through OpenSnapshot (the path paritydesk uses
 // for every read) and returns its content in scan order.
 func readSnapshot(t *testing.T, o *leveldb.Opener, dir string) (content, kv.Reader) {
@@ -127,15 +142,7 @@ func readSnapshot(t *testing.T, o *leveldb.Opener, dir string) (content, kv.Read
 		t.Fatalf("OpenSnapshot: %v", err)
 	}
 	t.Cleanup(func() { _ = r.Close() })
-	c := content{live: map[string]string{}}
-	if err := r.Scan(nil, func(k, v []byte) error {
-		c.keys = append(c.keys, string(k))
-		c.live[string(k)] = string(v)
-		return nil
-	}); err != nil {
-		t.Fatalf("Scan: %v", err)
-	}
-	return c, r
+	return scanContent(t, r), r
 }
 
 // sameContent fails the test when got differs from want in keys, order
@@ -235,6 +242,7 @@ func TestDifferentialCXXWritesGoReads(t *testing.T) {
 	for _, comp := range []string{"none", "snappy"} {
 		t.Run(comp, func(t *testing.T) {
 			dir, want := writeCXX(t, bin, comp)
+			logJournalState(t, dir)
 			n, files := tableBytes(t, dir)
 			if files < 2 {
 				t.Fatalf("the workload left %d table files; want several", files)
@@ -258,20 +266,80 @@ func TestDifferentialCXXWritesGoReads(t *testing.T) {
 	}
 }
 
-// TestDifferentialGoWritesCXXReads: a batch written through
-// OpenWritable into a database the C++ library created is read back the
-// same by the C++ library, and by paritydesk after the C++ library has
-// opened (and possibly compacted) it.
+// logJournalState logs whether the C++ library left a journal holding
+// batches numbered below its manifest's last sequence (journal.go) and
+// reports whether it did. It usually does: the workload's last writes
+// overlap background compactions, so this depends on timing and is not
+// asserted.
+func logJournalState(t *testing.T, dir string) bool {
+	t.Helper()
+	switch err := leveldb.CheckJournals(dir); {
+	case errors.Is(err, kv.ErrJournalSequence):
+		t.Logf("the C++ library left a journal behind its manifest: %v", err)
+		return true
+	case err != nil:
+		t.Fatalf("CheckJournals: %v", err)
+	default:
+		t.Log("the C++ library left no journal behind its manifest")
+	}
+	return false
+}
+
+// copyDB copies the regular files of src into a new directory.
+func copyDB(t *testing.T, src string) string {
+	t.Helper()
+	dst := filepath.Join(t.TempDir(), "copy")
+	if err := os.MkdirAll(dst, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	es, err := os.ReadDir(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range es {
+		if !e.Type().IsRegular() {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(src, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dst, e.Name()), b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dst
+}
+
+// TestDifferentialGoWritesCXXReads: OpenWritable opens the database the
+// C++ library left, as the app leaves it on quit (usually with a journal
+// behind its manifest, which OpenWritable replays), and a batch written
+// through it is read back the same by the C++ library, and by paritydesk
+// after the C++ library has opened (and possibly compacted) it. The
+// state a crash right after OpenWritable added its replay journal leaves
+// is read the same by the C++ library too.
 func TestDifferentialGoWritesCXXReads(t *testing.T) {
 	bin := cxxHelper(t)
 	for _, comp := range []string{"none", "snappy"} {
 		t.Run(comp, func(t *testing.T) {
 			dir, want := writeCXX(t, bin, comp)
 			o := newOpener(t)
+			if logJournalState(t, dir) {
+				crashed := copyDB(t, dir)
+				name, err := leveldb.AddReplayJournal(crashed)
+				if err != nil || name == "" {
+					t.Fatalf("AddReplayJournal: %q, %v", name, err)
+				}
+				got, r := readSnapshot(t, o, crashed)
+				sameContent(t, "snapshot read after a replay journal was added", want, got)
+				checkGets(t, r, want)
+				sameContent(t, "C++ dump after a replay journal was added", want, parseCXX(t, runCXX(t, bin, "dump", crashed)))
+			}
 			w, err := o.OpenWritable(context.Background(), dir)
 			if err != nil {
 				t.Fatalf("OpenWritable: %v", err)
 			}
+			sameContent(t, "read through OpenWritable before a Go write", want, scanContent(t, w))
 			b := &kv.Batch{}
 			for i, k := range want.keys {
 				switch {

@@ -117,6 +117,21 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 
 ### Fixed
 
+- Local Storage reads and writes no longer go wrong when a journal holds
+  batches numbered below the manifest's last sequence. The C++ LevelDB
+  library, which Chromium and so the app build on, can leave its
+  database that way (the differential test's C++ workload does in nearly
+  every run). goleveldb dropped those batches without an error in a
+  snapshot, so the newest writes were missing, and refused the database
+  with "invalid sequence number" when opening it for a sync or restore
+  write. The snapshot path now replays such journals itself on its
+  private copy, in order. `OpenWritable` first adds a replay journal to
+  the database (every batch again, in order, renumbered above every
+  sequence number in use; written to a temporary file and renamed) and
+  then opens it; both LevelDB libraries read the result, and any state a
+  crash leaves, with the same content. Batches out of order are refused
+  (`kv.ErrJournalSequence`). The manifest is now chosen from `CURRENT`,
+  a pending `CURRENT.<n>` or `CURRENT.bak` as goleveldb chooses it.
 - A Local Storage snapshot no longer fails when the database holds two
   journal files (after an unclean exit or during a flush): goleveldb's
   read-only open returns `EOF` there, so the private copy is then opened

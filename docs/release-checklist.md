@@ -9,6 +9,33 @@ check confirms a new runtime behaviour, record it in
 
 Use scratch content wherever a step deletes or edits something.
 
+## Stub-app end-to-end tests (not on this Mac)
+
+Check the "e2e (stub app)" job of the release commit's CI run. If its
+summary shows the stub-app tests as passed, nothing more is needed here.
+If it shows them as NOT RUN (the Apple Events diagnostic found that the
+GitHub-hosted runner refuses Apple Events to the stub, and the
+repository variable `PARITYDESK_E2E_ALLOW_SKIP` allows that skip),
+nothing was tested: run them by hand before the release, and never on
+the Mac used for the steps below:
+
+- Use a self-hosted runner, or a Mac or macOS virtual machine that has
+  no real Claude app and no real Claude data, in a disposable user:
+  `scripts/ci/e2e.sh` refuses to run when `/Applications/Claude.app`
+  exists, so another user account on the Mac with the real app is not
+  enough. The tests also refuse the real user's home and the real
+  bundle id.
+- In that user, from a checkout of the release commit, run
+  `CI=true scripts/ci/e2e.sh prepare`, then
+  `CI=true scripts/ci/e2e.sh probe local`, then
+  `CI=true PARITYDESK_E2E_NONET=1 scripts/ci/e2e.sh run` (or
+  `PARITYDESK_E2E_NONET=0` if the probe says Apple Events are refused
+  inside the sandbox). Allow Automation for the stub
+  (`dev.paritydesk.stubapp`) when macOS asks.
+- Expected: `TestStubApp` and its four subtests pass, with no skip.
+  Record the macOS version, the Mac (Apple silicon or Intel), the
+  sandbox used and the result in the release pull request.
+
 ## Before you start
 
 1. Quit Claude and make a safety copy of every `Claude` and `Claude-*`

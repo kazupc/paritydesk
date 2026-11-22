@@ -178,7 +178,14 @@ func (h *harness) probeAppleEvents(t *testing.T) {
 	defer cancel()
 	out, err := h.osaQuit(ctx)
 	if err != nil {
-		t.Skipf("Apple Events to the stub are not allowed on this runner (%v: %s); the stub-app tests cannot run here", err, bytes.TrimSpace(out))
+		// scripts/ci/e2e.sh names the sandbox the tests run in; its
+		// Apple Events diagnostic tells a runner that blocks Apple Events
+		// apart from a sandbox that does.
+		sandbox := os.Getenv("PARITYDESK_E2E_SANDBOX")
+		if sandbox == "" {
+			sandbox = "unknown"
+		}
+		t.Skipf("Apple Events to the stub are not allowed here (sandbox: %s; %v: %s); the stub-app tests cannot run, see the Apple Events diagnostic of the e2e job", sandbox, err, bytes.TrimSpace(out))
 	}
 	h.waitExited(t, pid, 30*time.Second)
 }
