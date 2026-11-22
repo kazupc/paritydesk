@@ -4,12 +4,22 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"sync"
 )
 
-// ErrClosed is returned after Close.
-var ErrClosed = errors.New("kv: store closed")
+// Errors.
+var (
+	// ErrClosed is returned after Close.
+	ErrClosed = errors.New("kv: store closed")
+	// ErrReadOnly is returned by a ReadOnly opener's OpenWritable.
+	ErrReadOnly = errors.New("kv: read-only mode")
+	// ErrUnknownCompression is returned (wrapped, naming the table file but
+	// never its content) when a table block uses a compression type other
+	// than none or Snappy. The orchestrator maps it to swap-only (exit 31).
+	ErrUnknownCompression = errors.New("kv: unknown block compression")
+)
 
 // Reader reads keys. Values returned must not be modified by the caller.
 type Reader interface {
@@ -17,6 +27,8 @@ type Reader interface {
 	// Scan calls fn for every key with the prefix, in key order, until fn
 	// returns an error.
 	Scan(prefix []byte, fn func(key, value []byte) error) error
+	// Close releases the store. Every later call, a second Close
+	// included, returns ErrClosed.
 	Close() error
 }
 
@@ -37,6 +49,85 @@ type Opener interface {
 	// proven quiescence (no process holds LOCK or has files open under the
 	// folder). Unknown block compression is refused.
 	OpenWritable(ctx context.Context, dir string) (Writer, error)
+	// CheckFormat clones dir (as OpenSnapshot does) and checks every table
+	// block's compression type without opening the database. It returns
+	// an error wrapping ErrUnknownCompression for unknown types. It never
+	// writes outside the opener's temp root and works in read-only mode.
+	CheckFormat(ctx context.Context, dir string) error
+}
+
+// ReadOnly wraps o so that OpenWritable fails with ErrReadOnly. Snapshots
+// and format checks pass through. Used with fsx.ReadOnly for --read-only
+// and PARITYDESK_READONLY=1.
+func ReadOnly(o Opener) Opener { return readOnly{o} }
+
+type readOnly struct{ o Opener }
+
+func (r readOnly) OpenSnapshot(ctx context.Context, dir string) (Reader, error) {
+	return r.o.OpenSnapshot(ctx, dir)
+}
+
+func (r readOnly) OpenWritable(context.Context, string) (Writer, error) { return nil, ErrReadOnly }
+
+func (r readOnly) CheckFormat(ctx context.Context, dir string) error {
+	return r.o.CheckFormat(ctx, dir)
+}
+
+// MemOpener is an in-memory Opener for tests: each directory maps to a
+// MemStore. OpenSnapshot returns an independent copy, OpenWritable the
+// store itself (reopened). Missing directories fail like a missing
+// database. FormatErr, if set, is returned by CheckFormat.
+type MemOpener struct {
+	mu        sync.Mutex
+	Stores    map[string]*MemStore
+	FormatErr error
+}
+
+// NewMemOpener returns an empty MemOpener.
+func NewMemOpener() *MemOpener { return &MemOpener{Stores: map[string]*MemStore{}} }
+
+// Put registers store under dir.
+func (o *MemOpener) Put(dir string, s *MemStore) {
+	o.mu.Lock()
+	o.Stores[dir] = s
+	o.mu.Unlock()
+}
+
+func (o *MemOpener) get(dir string) (*MemStore, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	s, ok := o.Stores[dir]
+	if !ok {
+		return nil, fmt.Errorf("kv: no database at %s", dir)
+	}
+	return s, nil
+}
+
+// OpenSnapshot implements Opener with a copy of the store.
+func (o *MemOpener) OpenSnapshot(_ context.Context, dir string) (Reader, error) {
+	s, err := o.get(dir)
+	if err != nil {
+		return nil, err
+	}
+	return s.copy(), nil
+}
+
+// OpenWritable implements Opener.
+func (o *MemOpener) OpenWritable(_ context.Context, dir string) (Writer, error) {
+	s, err := o.get(dir)
+	if err != nil {
+		return nil, err
+	}
+	s.Reopen()
+	return s, nil
+}
+
+// CheckFormat implements Opener.
+func (o *MemOpener) CheckFormat(_ context.Context, dir string) error {
+	if _, err := o.get(dir); err != nil {
+		return err
+	}
+	return o.FormatErr
 }
 
 // Op is one batch operation.
@@ -138,9 +229,23 @@ func (s *MemStore) Write(b *Batch) error {
 // Close implements Reader.
 func (s *MemStore) Close() error {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return ErrClosed
+	}
 	s.closed = true
-	s.mu.Unlock()
 	return nil
+}
+
+// copy returns an independent open store with the same contents.
+func (s *MemStore) copy() *MemStore {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c := NewMem()
+	for k, v := range s.m {
+		c.m[k] = append([]byte(nil), v...)
+	}
+	return c
 }
 
 // Reopen clears the closed flag so a test can inspect the store again.

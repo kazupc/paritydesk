@@ -1,9 +1,10 @@
 package rows
 
 import (
+	"fmt"
+
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
-	"github.com/kazupc/paritydesk/internal/pderr"
 )
 
 // Side is one replica's input.
@@ -19,8 +20,10 @@ type Side struct {
 	BaseValid bool
 	// LiveEpoch is the epoch during which this replica was last live.
 	LiveEpoch uint64
-	// Contested is set when P12 saw the app replace what was written.
-	Contested *model.Contested
+	// Contested holds, by item key, the items whose value P12 saw the app
+	// replace after a write. Such an item counts as changed on this side
+	// only if its hash differs from both contested hashes.
+	Contested map[string]model.Contested
 	// ToolStamps are app-time values paritydesk wrote on this replica.
 	ToolStamps map[string]int64
 }
@@ -29,11 +32,18 @@ type Side struct {
 type Policy struct {
 	TombstoneMode string   // "newer-wins" | "delete-wins"
 	Exclude       []string // sync.exclude: project-path globs and session ids
-	// Export and Import say whether the row's category crosses from the
-	// leaving profile and into the entering profile.
-	Export, Import bool
-	// ManagedEdge is true when either profile is managed_by_org.
-	ManagedEdge bool
+	// LeavingExports: the leaving profile's edits in this row's category
+	// may reach canonical. When false they stay in the leaving overlay.
+	LeavingExports bool
+	// EnteringExports: the entering profile's own edits since its base
+	// (made outside paritydesk, or drift) may reach canonical. When false
+	// they stay in the entering overlay and never reach canonical.
+	EnteringExports bool
+	// EnteringImports: canonical reaches the entering profile. When false
+	// Desired is the entering side's own state (its overlay), unchanged.
+	EnteringImports bool
+	// LeavingManaged and EnteringManaged are the managed_by_org flags.
+	LeavingManaged, EnteringManaged bool
 	// SecretsMayCross applies sync.secrets; SecretsAllow lists
 	// "<preset>/<VAR>" exceptions.
 	SecretsMayCross bool
@@ -44,7 +54,14 @@ type Policy struct {
 	// EnvRemap maps environment ids of one side to the other, produced by
 	// the environments row and consumed by the sessions row (rows 7, 8).
 	EnvRemap map[string]string
+	// Fields are the row's manifest field lists by role ("per_field",
+	// "account_bound", "run_state", "max_time", "parent"), copied from
+	// compat.RowSpec.Fields. Modules never hard-code on-disk field names.
+	Fields map[string][]string
 }
+
+// ManagedEdge reports whether either side is managed_by_org.
+func (p Policy) ManagedEdge() bool { return p.LeavingManaged || p.EnteringManaged }
 
 // Input is a module's input.
 type Input struct {
@@ -52,16 +69,23 @@ type Input struct {
 	Leaving   Side
 	Entering  Side
 	Canonical *model.RowSnapshot // nil on a first sync
-	Overlay   *model.RowSnapshot // the entering profile's overlay, may be nil
-	Policy    Policy
+	// LeavingOverlay and EnteringOverlay are each profile's private items
+	// (D27); either may be nil.
+	LeavingOverlay  *model.RowSnapshot
+	EnteringOverlay *model.RowSnapshot
+	Policy          Policy
 }
 
 // Output is a module's result.
 type Output struct {
 	Canonical *model.RowSnapshot
-	// LeavingOverlay is the leaving profile's overlay after the harvest.
-	LeavingOverlay *model.RowSnapshot
-	// Desired is what the entering replica must hold after apply.
+	// LeavingOverlay and EnteringOverlay are both profiles' overlays after
+	// the merge. An overlay never loses an item unless its own side
+	// removed it relative to a valid base.
+	LeavingOverlay  *model.RowSnapshot
+	EnteringOverlay *model.RowSnapshot
+	// Desired is what the entering replica must hold after apply
+	// (canonical ⊕ entering overlay when importing).
 	Desired   *model.RowSnapshot
 	Changes   []model.Change
 	Conflicts []model.Conflict
@@ -80,14 +104,30 @@ type Module interface {
 
 // Registry returns the module of every v0.1 row.
 func Registry() map[model.RowID]Module {
-	m := map[model.RowID]Module{}
-	for _, r := range model.AllRows {
-		m[r] = pending{row: r}
+	mods := []Module{
+		environmentsModule{},
+		sessionsModule{},
+		keyedModule{row: model.RowTasks},
+		waitingInputModule{},
+		keyedModule{row: model.RowWorktrees},
+		orderModule{row: model.RowGroupOrder},
+		sidebarModule{},
+		orderModule{row: model.RowPinnedOrder},
+		keyedModule{row: model.RowAppPrefs, noFieldMerge: true},
+		keyedModule{row: model.RowWindowState, noFieldMerge: true},
+		mcpModule{},
+	}
+	m := make(map[model.RowID]Module, len(mods))
+	for _, mod := range mods {
+		m[mod.Row()] = mod
 	}
 	return m
 }
 
-type pending struct{ row model.RowID }
-
-func (p pending) Row() model.RowID            { return p.row }
-func (p pending) Merge(Input) (Output, error) { return Output{}, pderr.ErrNotImplemented }
+// checkRow refuses an input meant for another row.
+func checkRow(in Input, row model.RowID) error {
+	if in.Row != "" && in.Row != row {
+		return fmt.Errorf("rows: input for row %q given to module %q", in.Row, row)
+	}
+	return nil
+}

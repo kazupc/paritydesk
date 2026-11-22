@@ -8,3 +8,7 @@ coverage.*
 /testdata/private/
 *.ldb
 *.log
+# ...but generated or hand-written test fixtures under testdata/ are kept
+# (the private PII deny-list stays ignored by /testdata/private/ above).
+!internal/**/testdata/**/*.ldb
+!internal/**/testdata/**/*.log

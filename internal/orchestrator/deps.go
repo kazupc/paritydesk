@@ -32,7 +32,7 @@ type StateStore interface {
 	PutSnapshot(s *model.RowSnapshot) (state.Ref, error)
 	GetSnapshot(ref state.Ref) (*model.RowSnapshot, error)
 	GC(r *state.Root) error
-	Lock() (*state.Lock, error)
+	Lock(ctx context.Context, wait time.Duration) (*state.Lock, error)
 }
 
 // Generations is the backup contract (gen.Store).
@@ -40,7 +40,7 @@ type Generations interface {
 	Begin(n uint64, runID string, alias ids.Alias, rep model.Replica) (gen.Writer, error)
 	List() ([]gen.Info, error)
 	Load(n uint64) (*gen.Manifest, error)
-	DeleteIncomplete() ([]uint64, error)
+	DeleteIncomplete(n uint64) (bool, error)
 	Prune(p gen.PrunePolicy) error
 	Purge() error
 	Restore(ctx context.Context, in gen.RestoreInput) (gen.RestoreReport, error)
@@ -59,7 +59,11 @@ type AppControl interface {
 	Running(ctx context.Context, bundlePath string) ([]app.Process, error)
 	CheckQuiescence(ctx context.Context, in app.QuiescenceInput) (app.QuiescenceReport, error)
 	QuitAndWait(ctx context.Context, bundleID, bundlePath string, sig compat.Signals, timeout time.Duration, onVeto func()) (app.QuitResult, error)
+	WaitExited(ctx context.Context, bundlePath string, timeout time.Duration) (bool, error)
 	WaitTurnEnded(ctx context.Context, from int64, sig compat.Signals, session ids.SessionID, timeout time.Duration) error
+	BusySessions(ctx context.Context, from int64, sig compat.Signals) ([]ids.SessionID, error)
+	WaitUpdateInstalled(ctx context.Context, bundleID string, timeout time.Duration) error
+	ActiveOrg(ctx context.Context, sig compat.Signals) (ids.OrgID, bool, error)
 	Launch(ctx context.Context, bundleID string) error
 	OpenSession(ctx context.Context, id ids.SessionID) error
 	ProbeAutomation(ctx context.Context, bundleID string) error
@@ -81,7 +85,7 @@ type CompatGate interface {
 // SessionDirectory reads session records outside row merges
 // (sources.Directory).
 type SessionDirectory interface {
-	ListSessions(ctx context.Context, folder string, r model.Replica) ([]sources.SessionInfo, error)
+	ListSessions(ctx context.Context, folder string, r model.Replica, spec compat.RowSpec) ([]sources.SessionInfo, error)
 	ResolveByCLISession(ctx context.Context, folder string, r model.Replica, cliSessionID string) (ids.SessionID, error)
 	DiscoverReplicas(folder string) ([]model.Replica, error)
 }
@@ -100,7 +104,15 @@ type Applier interface {
 // Detacher hands a run to launchd (runner.Detacher).
 type Detacher interface {
 	InsideApp(ctx context.Context) (bool, error)
+	// Submit starts a job with args from SwitchOptions.JobArgs.
 	Submit(ctx context.Context, args []string) (string, error)
+}
+
+// PlanStore keeps confirmed plans between `plan` (or the interactive
+// parent of a detached switch) and the detached job (runner.PlanStore).
+type PlanStore interface {
+	Save(p *plan.Plan) (string, error)
+	Load(hash string, now time.Time) (*plan.Plan, error)
 }
 
 // Deps are the orchestrator's dependencies.
@@ -116,27 +128,41 @@ type Deps struct {
 	Gens     Generations
 	Folders  FolderScanner
 	// Resolve is profile.Resolve.
-	Resolve func(cfg *config.Config, root *state.Root, folders []profile.Folder) (*profile.Resolution, error)
+	Resolve func(cfg *config.Config, root *state.Root, folders []profile.Folder, hints profile.Hints) (*profile.Resolution, error)
 	// ReadMarker and WriteMarker are profile.ReadMarker / WriteMarker.
 	ReadMarker  func(fs fsx.Ops, folder string) (*model.Marker, error)
 	WriteMarker func(fs fsx.Ops, folder string, m model.Marker) error
 	App         AppControl
 	Compat      CompatGate
-	KV          kv.Opener
-	Adapters    sources.Registry
-	Rows        map[model.RowID]rows.Module
+	// KV opens Local Storage. In read-only mode it is kv.ReadOnly over the
+	// LevelDB opener, whose own filesystem access is confined to its temp
+	// root, so snapshots still work.
+	KV       kv.Opener
+	Adapters sources.Registry
+	Rows     map[model.RowID]rows.Module
+	// PostMerge is rows.PostMerge, run after every row's Merge.
+	PostMerge func(outs map[model.RowID]*rows.Output) error
+	// Compose is plan.Compose: adapter edits, in model.AllRows order, to
+	// one op per location.
+	Compose func(edits []plan.Edit, src plan.Source) ([]plan.Op, error)
 	// Validate is plan.Validate.
-	Validate  func(in plan.ValidateInput) error
-	Applier   Applier
-	Sessions  SessionDirectory
-	Worktrees WorktreeGuard
-	Detach    Detacher
-	UI        UI
+	Validate func(in plan.ValidateInput) error
+	// PermissionAcks is prefs.PermissionAcks, read from the entering folder
+	// for rows.Policy.PermissionAcks.
+	PermissionAcks func(ctx context.Context, folder string, r model.Replica) (map[string]bool, error)
+	Applier        Applier
+	Sessions       SessionDirectory
+	Worktrees      WorktreeGuard
+	Detach         Detacher
+	Plans          PlanStore
+	UI             UI
 	// Crash, if non-nil, is consulted after every intent; returning true
 	// stops the run immediately without cleanup, as if the process had been
 	// killed (PARITYDESK_FAULT=after:<phase> and recovery tests).
 	Crash func(after Phase) bool
-	// ReadOnly plans only (--read-only, PARITYDESK_READONLY=1).
+	// ReadOnly plans only (--read-only, PARITYDESK_READONLY=1): no run
+	// lock, no state commit, no config save, no plan save, no runner
+	// submit; FS is fsx.ReadOnly and KV is kv.ReadOnly.
 	ReadOnly bool
 }
 
@@ -151,4 +177,6 @@ var (
 	_ WorktreeGuard    = worktrees.Guard{}
 	_ Applier          = (*apply.Applier)(nil)
 	_ Detacher         = runner.Detacher{}
+	_ PlanStore        = runner.PlanStore{}
+	_ Service          = (*Orchestrator)(nil)
 )

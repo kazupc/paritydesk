@@ -1,0 +1,1 @@
+{"v":1,"error":{"code":22,"id":"PD-E22","title":"The plan would delete more than the configured limit.","message":"sessions: 5 deletions exceed the limit of 3","safe":"Nothing was changed.","next":"paritydesk plan; if intended, add --allow-deletions=N","anchor":"deletion-breaker"}}

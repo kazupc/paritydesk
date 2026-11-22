@@ -3,10 +3,11 @@ package compat
 import (
 	"context"
 	"embed"
+	"errors"
+	"sort"
 	"strings"
 
 	"github.com/kazupc/paritydesk/internal/model"
-	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/store/kv"
 )
 
@@ -40,11 +41,17 @@ type RowSpec struct {
 	// session directory when SessionScoped is true).
 	Files         []string `toml:"files"`
 	SessionScoped bool     `toml:"session_scoped"`
+	// PerOrg marks rows whose data is scoped by organization (session
+	// directories, per-scope sidebar keys). They are skipped (exit 32)
+	// when the active org is unknown and the account has several orgs.
+	PerOrg bool `toml:"per_org"`
 	// PersistVersion is the expected persisted-store version, 0 if none.
 	PersistVersion int            `toml:"persist_version"`
 	Limits         map[string]int `toml:"limits"`
 	// Fields lists record field names with special handling (D8, D10),
-	// keyed by role: "per_field", "account_bound", "run_state", "max_time".
+	// keyed by role: "per_field", "account_bound", "run_state", "max_time",
+	// "parent" (fork and routine family links). The orchestrator copies
+	// them into rows.Policy.Fields; no other package hard-codes field names.
 	Fields map[string][]string `toml:"fields"`
 	Probes []string            `toml:"probes"`
 }
@@ -100,15 +107,25 @@ type Probe struct {
 }
 
 // Signals are main.log line patterns (Go regexp syntax). {session} is
-// replaced by a validated session id before compiling.
+// replaced by regexp.QuoteMeta of a validated session id before compiling.
+// An empty pattern means the signal is unknown for this version; callers
+// then fall back (for example, busy detection uses session records and the
+// app's own quit veto only).
 type Signals struct {
-	QuitVetoed         string `toml:"quit_vetoed"`
-	TurnEnded          string `toml:"turn_ended"`
-	FocusedSession     string `toml:"focused_session"`
-	BridgeConnected    string `toml:"bridge_connected"`
-	PairingDisabled    string `toml:"pairing_disabled"`
-	UncleanExit        string `toml:"unclean_exit"`
-	LoginRequired      string `toml:"login_required"`
+	QuitVetoed  string `toml:"quit_vetoed"`
+	TurnStarted string `toml:"turn_started"` // with {session}, or a named group (?P<session>...)
+	TurnEnded   string `toml:"turn_ended"`   // with {session}, or a named group (?P<session>...)
+	// AppStarted marks a fresh app start; busy scans begin after the last
+	// one.
+	AppStarted      string `toml:"app_started"`
+	FocusedSession  string `toml:"focused_session"`
+	BridgeConnected string `toml:"bridge_connected"`
+	PairingDisabled string `toml:"pairing_disabled"`
+	UncleanExit     string `toml:"unclean_exit"`
+	LoginRequired   string `toml:"login_required"`
+	// ActiveOrg has a named group (?P<org>...) holding the active
+	// organization's UUID; the value is validated with ids.ParseOrg.
+	ActiveOrg          string `toml:"active_org"`
 	NativeMultiAccount string `toml:"native_multi_account"`
 }
 
@@ -146,7 +163,19 @@ type Manifest struct {
 	// TmpRecoveryGlobs are app file names the app promotes at startup;
 	// paritydesk never creates files matching them (D30).
 	TmpRecoveryGlobs []string `toml:"tmp_recovery_globs"`
+	// PrefTags tags every known app preference key: "ui_state" and "other"
+	// may be listed in sync.app_prefs; "security" and "internal_state" are
+	// rejected by config.Validate. Keys absent from the map are rejected.
+	PrefTags map[string]string `toml:"pref_tags"`
 }
+
+// Preference tags.
+const (
+	TagUIState       = "ui_state"
+	TagOther         = "other"
+	TagSecurity      = "security"
+	TagInternalState = "internal_state"
+)
 
 // Row returns the spec of a row.
 func (m *Manifest) Row(r model.RowID) (RowSpec, bool) {
@@ -160,15 +189,46 @@ func (m *Manifest) Row(r model.RowID) (RowSpec, bool) {
 
 // Load returns the embedded manifests, with files from overrideDir
 // (paritydesk/compat.d) taking precedence by name. Unknown keys are errors.
+// An override may add to classification.never_touched but never remove an
+// entry of the embedded manifest of the same name; such an override is
+// refused. (The fixed floor in package denylist applies regardless.)
 func Load(overrideDir string) ([]*Manifest, error) {
-	_ = embedded
-	return nil, pderr.ErrNotImplemented
+	byName, order, err := loadEmbedded()
+	if err != nil {
+		return nil, err
+	}
+	if overrideDir != "" {
+		if err := applyOverrides(overrideDir, byName, &order); err != nil {
+			return nil, err
+		}
+	}
+	out := make([]*Manifest, 0, len(order))
+	for _, n := range order {
+		out = append(out, byName[n])
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return compareVersions(out[i].MinVersion, out[j].MinVersion) < 0
+	})
+	return out, nil
 }
 
 // Select returns the manifest whose range contains version, and whether the
 // version is listed as tested. Versions compare numerically per component.
 func Select(ms []*Manifest, version string) (m *Manifest, tested bool, err error) {
-	return nil, false, pderr.ErrNotImplemented
+	if _, err := parseVersion(version); err != nil {
+		return nil, false, err
+	}
+	for _, c := range ms {
+		if compareVersions(version, c.MinVersion) >= 0 && compareVersions(version, c.MaxVersion) <= 0 {
+			for _, t := range c.Tested {
+				if compareVersions(version, t) == 0 {
+					return c, true, nil
+				}
+			}
+			return c, false, nil
+		}
+	}
+	return nil, false, nil
 }
 
 // ProbeEnv is what probes may look at for one folder.
@@ -189,7 +249,18 @@ type ProbeResult struct {
 
 // RunProbes runs every probe of m against env.
 func RunProbes(ctx context.Context, m *Manifest, env ProbeEnv) ([]ProbeResult, error) {
-	return nil, pderr.ErrNotImplemented
+	if m == nil {
+		return nil, errors.New("compat: no manifest")
+	}
+	out := make([]ProbeResult, 0, len(m.Probes))
+	for _, p := range m.Probes {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		ok, detail := runProbe(p, env)
+		out = append(out, ProbeResult{ProbeID: p.ID, Row: p.Row, OK: ok, Critical: p.Critical, Detail: detail})
+	}
+	return out, nil
 }
 
 // Mode is the run mode decided from version and probes.
@@ -213,8 +284,20 @@ type DecideInput struct {
 	RequireTested bool
 	Downgraded    bool
 	IdentityOK    bool // default folder identity readable
-	Probes        []ProbeResult
-	SQLiteLS      bool // a SQLite Local Storage backend was found
+	// Probes include the critical idx-version probe (archived-sessions.idx
+	// v == 1); its failure gives swap-only like any critical probe.
+	Probes   []ProbeResult
+	SQLiteLS bool // a SQLite Local Storage backend was found
+	// CompressionOK is false when kv.Opener.CheckFormat found an unknown
+	// block compression in the S or T Local Storage (swap-only, exit 31).
+	CompressionOK bool
+	// NativeMultiAccount is true when the app's own multi-account mode is
+	// detected (folder account history, or the manifest signal): swap-only.
+	NativeMultiAccount bool
+	// OrgUnknown is true when the account has several org directories and
+	// the active org could not be determined: rows with PerOrg are
+	// skipped (degraded, exit 32).
+	OrgUnknown bool
 }
 
 // Decision is the outcome.
@@ -224,9 +307,103 @@ type Decision struct {
 	Reasons     []string      `json:"reasons,omitempty"`
 }
 
-// Decide maps the inputs to a mode (see docs/dev/implementation-plan.md).
+// Decide maps the inputs to a mode (see docs/dev/implementation-plan.md):
+//
+//	identity unreadable, or a downgrade          -> refuse
+//	no manifest covers the version               -> swap-only
+//	known-bad version                            -> swap-only
+//	SQLite LS, unknown compression, native
+//	multi-account, critical or identity probe
+//	failed                                       -> swap-only
+//	row probes failed, or org unknown            -> degraded (rows skipped)
+//	unknown version (probes pass)                -> full-warn, or
+//	                                                preview-only with RequireTested
+//	known version, probes pass                   -> full
 func Decide(in DecideInput) Decision {
-	return Decision{Mode: ModeRefuse, Reasons: []string{pderr.ErrNotImplemented.Error()}}
+	switch {
+	case !in.IdentityOK:
+		return Decision{Mode: ModeRefuse, Reasons: []string{"default folder identity unreadable"}}
+	case in.Downgraded:
+		return Decision{Mode: ModeRefuse, Reasons: []string{"app version is older than the last one seen"}}
+	}
+	if r := swapOnlyReasons(in); len(r) > 0 {
+		return Decision{Mode: ModeSwapOnly, Reasons: r}
+	}
+	d := Decision{Mode: ModeFull}
+	if !in.Tested {
+		d.Mode = ModeFullWarn
+		d.Reasons = append(d.Reasons, "app version not tested")
+		if in.RequireTested {
+			d.Mode = ModePreviewOnly
+		}
+	}
+	d.SkippedRows = skippedRows(in)
+	if len(d.SkippedRows) > 0 {
+		if d.Mode != ModePreviewOnly {
+			d.Mode = ModeDegraded
+		}
+		d.Reasons = append(d.Reasons, "some rows skipped")
+	}
+	return d
+}
+
+func swapOnlyReasons(in DecideInput) []string {
+	var r []string
+	if in.Manifest == nil {
+		return []string{"no manifest covers the app version"}
+	}
+	for _, v := range in.Manifest.KnownBad {
+		if compareVersions(in.Version, v) == 0 {
+			r = append(r, "app version is known bad")
+		}
+	}
+	if in.SQLiteLS {
+		r = append(r, "Local Storage uses an unsupported backend")
+	}
+	if !in.CompressionOK {
+		r = append(r, "Local Storage uses an unknown block compression")
+	}
+	if in.NativeMultiAccount {
+		r = append(r, "the app's own multi-account mode is in use")
+	}
+	for _, p := range in.Probes {
+		if !p.OK && (p.Critical || p.Row == "") {
+			r = append(r, "critical probe failed: "+p.ProbeID)
+		}
+	}
+	return r
+}
+
+func skippedRows(in DecideInput) []model.RowID {
+	skip := map[model.RowID]bool{}
+	for _, p := range in.Probes {
+		if !p.OK && p.Row != "" {
+			skip[p.Row] = true
+		}
+	}
+	if in.OrgUnknown {
+		for _, s := range in.Manifest.Rows {
+			if s.PerOrg {
+				skip[s.Row] = true
+			}
+		}
+	}
+	var out []model.RowID
+	for _, r := range model.AllRows {
+		if skip[r] {
+			out = append(out, r)
+			delete(skip, r)
+		}
+	}
+	rest := make([]string, 0, len(skip))
+	for r := range skip {
+		rest = append(rest, string(r))
+	}
+	sort.Strings(rest)
+	for _, r := range rest {
+		out = append(out, model.RowID(r))
+	}
+	return out
 }
 
 // Gate bundles the loaded manifests behind methods, so the orchestrator

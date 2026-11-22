@@ -1,12 +1,31 @@
 #!/bin/sh
-# Resolves the paritydesk binary from fixed locations only (never from the
-# working directory) and runs `paritydesk hook <event>`. A missing binary or
-# any failure is silent and exits 0, so a session never fails because of
-# this hook. Work item WI-8 adds the version-skew check.
-for b in /opt/homebrew/bin/paritydesk /usr/local/bin/paritydesk "$HOME/go/bin/paritydesk"; do
-  if [ -x "$b" ]; then
-    "$b" hook "$@" 2>/dev/null
-    exit 0
+# Runs `paritydesk hook <event>` with the plugin's version, so the binary
+# can stay silent on version skew. The binary is resolved only from:
+#   1. the absolute path recorded by `paritydesk init` (and refreshed by
+#      `paritydesk doctor`) in the file below, if it names an executable;
+#   2. the fixed Homebrew locations.
+# Never from PATH or the working directory. A missing binary or any
+# failure is silent and exits 0, so a session never fails because of this
+# hook.
+PLUGIN_VERSION="0.1.0-dev" # kept equal to .claude-plugin/plugin.json by a policy test
+RECORD="$HOME/Library/Application Support/paritydesk/hook-binary"
+
+run() {
+  bin="$1"
+  shift
+  "$bin" hook "$@" --plugin-version "$PLUGIN_VERSION" 2>/dev/null
+  exit 0
+}
+
+if [ -f "$RECORD" ]; then
+  b=$(head -n 1 "$RECORD" 2>/dev/null)
+  case "$b" in
+    /*) [ -x "$b" ] && [ -f "$b" ] && run "$b" "$@" ;;
+  esac
+fi
+for b in /opt/homebrew/bin/paritydesk /usr/local/bin/paritydesk; do
+  if [ -x "$b" ] && [ -f "$b" ]; then
+    run "$b" "$@"
   fi
 done
 exit 0

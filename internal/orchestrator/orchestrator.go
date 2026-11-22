@@ -9,7 +9,6 @@ import (
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/plan"
-	"github.com/kazupc/paritydesk/internal/state"
 )
 
 // Phase names a step of the switch algorithm.
@@ -53,6 +52,21 @@ const (
 	ConfirmOutsideSwitch  ConfirmKind = "outside-switch"  // offer sync
 	ConfirmRecover        ConfirmKind = "recover"         // recover proposes a move
 	ConfirmRollback       ConfirmKind = "rollback"
+	ConfirmAddBind        ConfirmKind = "add-bind" // bind a newly signed-in account to the pending profile add
+)
+
+// Timing contracts.
+const (
+	// ConfirmedPlanTTL bounds how long a confirmation stays valid: the P2
+	// prompt, and a plan saved for `switch --confirmed-plan`.
+	ConfirmedPlanTTL = 120 * time.Second
+	// DetachedLockWait is how long the detached job retries the run lock.
+	DetachedLockWait = 10 * time.Second
+	// CommitTimeout bounds the uncancellable section (P5 commit to P10)
+	// and every abort, rollback and relaunch path, which run on
+	// context.WithoutCancel so a SIGINT or SIGTERM cannot strand a
+	// half-applied run.
+	CommitTimeout = 5 * time.Minute
 )
 
 // Confirmation is a question for the user.
@@ -85,25 +99,74 @@ type SwitchOptions struct {
 	FromRunner         bool // this process is the detached job
 	// ReopenCLISession is the invoking Claude Code session id (UUID), used
 	// to find the local session to reopen and to wait for its turn to end.
+	// Empty means no reopen and no turn wait.
 	ReopenCLISession   string
 	AllowDeletions     int
 	AcceptWorktreeRisk bool
 	AllowUpdate        bool // ADR 0003: wait for a staged update, re-probe
+	// LogOffset is main.log's size recorded by the invoking process before
+	// the hand-off (P0, before anything else), so the job's turn-end wait
+	// sees a turn that ended before P3. -1 means unset.
+	LogOffset int64
+	// ConfirmedPlan is the hash of a plan the user already confirmed (saved
+	// in the PlanStore by `plan` or by the interactive parent). The job's
+	// P2 loads it and aborts before quitting when its own plan has a
+	// destructive change the confirmed plan did not (plan.NewDestructive),
+	// when the confirmed plan expired, or when it is missing.
+	ConfirmedPlan string
+	// ConfirmFirstSync confirms a union first sync (invalid bases) that
+	// the confirmed plan showed; without it a non-interactive run exits 21.
+	ConfirmFirstSync bool
+}
+
+// PreviewOptions are the flags of `plan`.
+type PreviewOptions struct {
+	To         ids.Alias
+	Only, Skip []model.Category
+	// Save stores the plan in the PlanStore so a later switch can name it
+	// with --confirmed-plan (ignored in read-only mode).
+	Save bool
 }
 
 // Result is the outcome of a run.
 type Result struct {
-	RunID      string                  `json:"run"`
-	From       ids.Alias               `json:"from"`
-	To         ids.Alias               `json:"to"`
-	Mode       compat.Mode             `json:"mode"`
-	Plan       *plan.Plan              `json:"plan,omitempty"`
-	Summary    *plan.Summary           `json:"summary,omitempty"`
-	Generation uint64                  `json:"generation,omitempty"`
-	Code       pderr.Code              `json:"code"`
-	Timings    map[Phase]time.Duration `json:"timings,omitempty"`
-	Warnings   []string                `json:"warnings,omitempty"`
-	Detached   bool                    `json:"detached,omitempty"`
+	RunID   string        `json:"run"`
+	From    ids.Alias     `json:"from"`
+	To      ids.Alias     `json:"to"`
+	Mode    compat.Mode   `json:"mode"`
+	Plan    *plan.Plan    `json:"plan,omitempty"`
+	Summary *plan.Summary `json:"summary,omitempty"`
+	// PlanHash and DestructiveDigest identify the plan for
+	// --confirmed-plan and for logs.
+	PlanHash          string                  `json:"plan_hash,omitempty"`
+	DestructiveDigest string                  `json:"destructive_digest,omitempty"`
+	Generation        uint64                  `json:"generation,omitempty"`
+	Code              pderr.Code              `json:"code"`
+	Timings           map[Phase]time.Duration `json:"timings,omitempty"`
+	Warnings          []string                `json:"warnings,omitempty"`
+	Detached          bool                    `json:"detached,omitempty"`
+	// QuitPending is set when the app vetoed the quit and had not quit by
+	// the end of the late-quit watch: the user's answer in the app decides.
+	QuitPending bool `json:"quit_pending,omitempty"`
+}
+
+// Service is every command the front end calls. cli depends on this
+// interface, so its tests use a fake.
+type Service interface {
+	Switch(ctx context.Context, opts SwitchOptions) (*Result, error)
+	Preview(ctx context.Context, opts PreviewOptions) (*Result, error)
+	Sync(ctx context.Context, opts SyncOptions) (*Result, error)
+	Verify(ctx context.Context) (*VerifyResult, error)
+	Recover(ctx context.Context, opts RecoverOptions) (*RecoverResult, error)
+	Rollback(ctx context.Context, n uint64, propagate bool) (*RollbackResult, error)
+	Rebase(ctx context.Context) error
+	Status(ctx context.Context, short bool) (*Status, error)
+	Doctor(ctx context.Context, opts DoctorOptions) ([]Check, error)
+	Init(ctx context.Context, opts InitOptions) error
+	ProfileAdopt(ctx context.Context, alias ids.Alias, folder string) error
+	ProfileAdd(ctx context.Context, alias ids.Alias, managed bool) error
+	ProfileRename(ctx context.Context, from, to ids.Alias) error
+	ProfileRemove(ctx context.Context, alias ids.Alias) error
 }
 
 // Orchestrator runs commands.
@@ -112,29 +175,6 @@ type Orchestrator struct{ d Deps }
 // New returns an Orchestrator.
 func New(d Deps) *Orchestrator { return &Orchestrator{d: d} }
 
-// Switch runs P0–P12 (or hands off to the detached runner first).
-func (o *Orchestrator) Switch(ctx context.Context, opts SwitchOptions) (*Result, error) {
-	return nil, pderr.ErrNotImplemented
-}
-
-// Preview computes the approximate plan (P0, P2) without quitting.
-func (o *Orchestrator) Preview(ctx context.Context, to ids.Alias, only, skip []model.Category) (*Result, error) {
-	return nil, pderr.ErrNotImplemented
-}
-
-// SyncOptions are the flags of `sync`.
-type SyncOptions struct {
-	Yes            bool
-	AllowDeletions int
-	NoLaunch       bool
-}
-
-// Sync re-applies canonical state to the active profile: P3–P7, P10–P12,
-// no swap.
-func (o *Orchestrator) Sync(ctx context.Context, opts SyncOptions) (*Result, error) {
-	return nil, pderr.ErrNotImplemented
-}
-
 // VerifyResult is the outcome of P12.
 type VerifyResult struct {
 	Drift          []model.RowID `json:"drift,omitempty"`
@@ -142,135 +182,4 @@ type VerifyResult struct {
 	SessionFocused bool          `json:"session_focused"`
 	PairingOK      bool          `json:"pairing_ok"`
 	BridgeSeen     bool          `json:"bridge_connected"`
-}
-
-// Verify runs P12 for the last run: waits for LOCK and a stable config
-// mirror, compares verify rows (reading JSON only, never LevelDB), marks
-// drifted rows contested, and checks main.log signals.
-func (o *Orchestrator) Verify(ctx context.Context) (*VerifyResult, error) {
-	return nil, pderr.ErrNotImplemented
-}
-
-// RecoverOptions are the flags of `recover`.
-type RecoverOptions struct {
-	Rollback bool // undo an interrupted run instead of completing it
-	Yes      bool
-}
-
-// RecoverResult reports what recover did.
-type RecoverResult struct {
-	Actions []string  `json:"actions"`
-	Active  ids.Alias `json:"active"`
-}
-
-// Recover reconciles an interrupted run from state intents and folder
-// identities, or, without a journal, from identities alone. It never
-// creates, merges or deletes data folders automatically.
-func (o *Orchestrator) Recover(ctx context.Context, opts RecoverOptions) (*RecoverResult, error) {
-	return nil, pderr.ErrNotImplemented
-}
-
-// RollbackResult reports a rollback.
-type RollbackResult struct {
-	Generation uint64   `json:"generation"`
-	Restored   int      `json:"restored"`
-	Conflicts  []string `json:"conflicts,omitempty"`
-}
-
-// Rollback restores generation n conditionally (app stopped), records an
-// epoch event, and sets bases according to propagate (M6).
-func (o *Orchestrator) Rollback(ctx context.Context, n uint64, propagate bool) (*RollbackResult, error) {
-	return nil, pderr.ErrNotImplemented
-}
-
-// Rebase drops every base; the next run is a first sync (M14).
-func (o *Orchestrator) Rebase(ctx context.Context) error { return pderr.ErrNotImplemented }
-
-// ProfileStatus is one profile in `status`.
-type ProfileStatus struct {
-	Alias     ids.Alias `json:"alias"`
-	Label     string    `json:"label,omitempty"`
-	Folder    string    `json:"folder"`
-	Active    bool      `json:"active"`
-	Account   string    `json:"account_masked,omitempty"`
-	Managed   bool      `json:"managed_by_org"`
-	BaseValid bool      `json:"base_valid"`
-	Problem   string    `json:"problem,omitempty"`
-}
-
-// Status is the output of `status`.
-type Status struct {
-	Active       ids.Alias           `json:"active,omitempty"`
-	Previous     ids.Alias           `json:"previous,omitempty"`
-	AppRunning   bool                `json:"app_running"`
-	NeedsRecover bool                `json:"needs_recover"`
-	UpdateStaged bool                `json:"update_staged"`
-	Profiles     []ProfileStatus     `json:"profiles"`
-	LastVerify   *state.VerifyRecord `json:"last_verify,omitempty"`
-	Generations  int                 `json:"generations"`
-	Warnings     []string            `json:"warnings,omitempty"`
-}
-
-// Status reports the current state. With short, it reads only root.json
-// and folder names (under 50 ms, never opens LevelDB, G5).
-func (o *Orchestrator) Status(ctx context.Context, short bool) (*Status, error) {
-	return nil, pderr.ErrNotImplemented
-}
-
-// Check is one doctor finding.
-type Check struct {
-	ID     string `json:"id"`
-	Status string `json:"status"` // "ok" | "warn" | "fail"
-	Detail string `json:"detail"`
-}
-
-// DoctorOptions are the flags of `doctor`.
-type DoctorOptions struct {
-	GrantAutomation bool
-}
-
-// Doctor checks the installation: app version and mode, probes per folder,
-// folder identities (masked), markers, unclassified top-level entries,
-// other tools, Automation, staged update, Chrome bridge connection after
-// the last launch and the one-profile-per-account setup (ADR 0003), and
-// account-looks-managed hints.
-func (o *Orchestrator) Doctor(ctx context.Context, opts DoctorOptions) ([]Check, error) {
-	return nil, pderr.ErrNotImplemented
-}
-
-// InitOptions are the answers `init` collects interactively.
-type InitOptions struct {
-	Alias   ids.Alias
-	Label   string
-	Managed bool
-}
-
-// Init records the active folder's account as a profile, writes the config
-// (printing each change first), detects other tools and asks for
-// Automation while the user is present.
-func (o *Orchestrator) Init(ctx context.Context, opts InitOptions) error {
-	return pderr.ErrNotImplemented
-}
-
-// ProfileAdopt registers a parked folder after checking its identity.
-func (o *Orchestrator) ProfileAdopt(ctx context.Context, alias ids.Alias, folder string) error {
-	return pderr.ErrNotImplemented
-}
-
-// ProfileAdd adds an account without signing out: quit the app, park the
-// current folder, launch on an empty default folder so the user signs in
-// through the app's own flow.
-func (o *Orchestrator) ProfileAdd(ctx context.Context, alias ids.Alias, managed bool) error {
-	return pderr.ErrNotImplemented
-}
-
-// ProfileRename renames an alias (state and config; the folder is renamed
-// only if it uses the default name and the app is stopped).
-func (o *Orchestrator) ProfileRename(ctx context.Context, from, to ids.Alias) error {
-	return pderr.ErrNotImplemented
-}
-
-// ProfileRemove unregisters a profile; its folder is left intact.
-func (o *Orchestrator) ProfileRemove(ctx context.Context, alias ids.Alias) error {
-	return pderr.ErrNotImplemented
 }

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"time"
 
+	"github.com/kazupc/paritydesk/internal/clock"
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/ids"
-	"github.com/kazupc/paritydesk/internal/pderr"
 )
 
 // Errors.
@@ -21,7 +21,17 @@ var (
 	ErrNotRunning = errors.New("app: not running")
 	// ErrInvalidSession: a session id failed validation.
 	ErrInvalidSession = errors.New("app: invalid session id")
+	// ErrSignalUnknown: the manifest has no pattern for a needed main.log
+	// signal; the caller falls back (records and the quit veto only).
+	ErrSignalUnknown = errors.New("app: log signal unknown for this version")
+	// ErrInvalidArgument: Argv refused a command argument.
+	ErrInvalidArgument = errors.New("app: invalid command argument")
 )
+
+// JobLabelPrefix prefixes every launchd job label paritydesk creates; a
+// run id ([0-9a-z-]{8,64}) completes it. runner.LabelPrefix is this value,
+// and Argv accepts only labels of this form.
+const JobLabelPrefix = "io.github.kazupc.paritydesk.run."
 
 // Process is one running process.
 type Process struct {
@@ -73,6 +83,10 @@ type Bundle interface {
 	// UpdateStaged reports a staged update that would install on quit
 	// (updater state file present, or the updater process running).
 	UpdateStaged(ctx context.Context, bundleID string) (bool, error)
+	// WaitUpdateInstalled waits, after the app has quit, until the updater
+	// has started (or the staged state is gone) and exited, up to timeout.
+	// The caller then re-runs Locate for a new identity baseline.
+	WaitUpdateInstalled(ctx context.Context, bundleID string, timeout time.Duration) error
 }
 
 // Controller sends Apple Events and opens the app.
@@ -115,6 +129,16 @@ type MainLog interface {
 	// session id for session events) and the new offset. Lines are never
 	// returned or logged verbatim.
 	Events(ctx context.Context, from int64, sig compat.Signals, session ids.SessionID) ([]LogEvent, int64, error)
+	// Busy returns the sessions with a turn start and no later turn end,
+	// scanning from the later of from and the last AppStarted line, and at
+	// most the last 8 MiB. Ids are validated (ids.ParseSession); anything
+	// else is skipped. ErrSignalUnknown when TurnStarted or TurnEnded is
+	// empty.
+	Busy(ctx context.Context, from int64, sig compat.Signals) ([]ids.SessionID, error)
+	// ActiveOrg returns the org named by the last ActiveOrg line (bounded
+	// tail scan), validated as a UUID; found is false when none was seen.
+	// ErrSignalUnknown when the pattern is empty.
+	ActiveOrg(ctx context.Context, sig compat.Signals) (org ids.OrgID, found bool, err error)
 }
 
 // GitStatus runs a read-only `git -C <dir> status --porcelain`.
@@ -131,24 +155,25 @@ type Platform struct {
 	Control Controller
 	Log     MainLog
 	Git     GitStatus
+	// Clock drives every poll and timeout (250 ms polls in QuitAndWait,
+	// WaitExited and WaitTurnEnded), so tests use clock.Fake.
+	Clock clock.Clock
 }
 
 // DarwinConfig configures the macOS platform.
 type DarwinConfig struct {
 	Home     string // for ~/Library/Logs/Claude/main.log and updater caches
 	BundleID string
-	Exec     Runner // nil: the real runner in exec.go
+	Exec     Runner      // nil: the real runner in exec.go
+	Clock    clock.Clock // nil: the real clock
+	// AppName is the bundle's file name without ".app"; "" means
+	// "Claude".
+	AppName string
+	// AppDirs are the directories searched for the bundle, in order; nil
+	// means /Applications then Home/Applications (under `go test`, only
+	// Home/Applications).
+	AppDirs []string
 }
-
-// NewDarwin returns the macOS implementation.
-func NewDarwin(cfg DarwinConfig) *Platform {
-	return &Platform{}
-}
-
-// IsAppProcess reports whether p belongs to the app's process set: its
-// executable lies inside bundlePath, and it is not one of the excluded
-// helpers (Chrome's native messaging host, the updater, the crash handler).
-func IsAppProcess(p Process, bundlePath string) bool { return false }
 
 // QuiescenceInput describes one quiescence check (D15).
 type QuiescenceInput struct {
@@ -176,81 +201,14 @@ type QuiescenceReport struct {
 	StartedAfter    []Process
 }
 
-// CheckQuiescence evaluates every D15 signal once.
-func (p *Platform) CheckQuiescence(ctx context.Context, in QuiescenceInput) (QuiescenceReport, error) {
-	return QuiescenceReport{}, pderr.ErrNotImplemented
-}
-
 // QuitResult is the outcome of QuitAndWait.
 type QuitResult struct {
 	Vetoed  bool // the app showed its "still working" dialog
 	Elapsed time.Duration
 	Exited  bool
+	// Pending is true when the app vetoed and was still running at the
+	// timeout: the dialog's answer is the user's, and the app may still
+	// quit later ("Wait for Claude"). The caller then watches with
+	// WaitExited instead of claiming the app keeps running.
+	Pending bool
 }
-
-// QuitAndWait sends the quit event and waits until the app's process set
-// is empty, up to timeout. A veto is reported through onVeto (so the UI
-// can tell the user to choose "Wait for Claude" or "Cancel") and waited
-// on. A timeout returns *pderr.Error AppDidNotQuit; no signal is ever sent.
-func (p *Platform) QuitAndWait(ctx context.Context, bundleID, bundlePath string, sig compat.Signals, timeout time.Duration, onVeto func()) (QuitResult, error) {
-	return QuitResult{}, pderr.ErrNotImplemented
-}
-
-// WaitTurnEnded waits until main.log reports that the given session's turn
-// ended, then a settle delay, so an in-app switch does not trip the app's
-// own quit veto (ADR 0003 finding 1).
-func (p *Platform) WaitTurnEnded(ctx context.Context, from int64, sig compat.Signals, session ids.SessionID, timeout time.Duration) error {
-	return pderr.ErrNotImplemented
-}
-
-// The methods below expose the Platform's parts as one interface for the
-// orchestrator.
-
-// Locate delegates to Bundle.
-func (p *Platform) Locate(ctx context.Context, bundleID string) (BundleIdentity, error) {
-	return BundleIdentity{}, pderr.ErrNotImplemented
-}
-
-// UpdateStaged delegates to Bundle.
-func (p *Platform) UpdateStaged(ctx context.Context, bundleID string) (bool, error) {
-	return false, pderr.ErrNotImplemented
-}
-
-// Running returns the app's process set (IsAppProcess over Procs).
-func (p *Platform) Running(ctx context.Context, bundlePath string) ([]Process, error) {
-	return nil, pderr.ErrNotImplemented
-}
-
-// Launch delegates to Control.
-func (p *Platform) Launch(ctx context.Context, bundleID string) error { return pderr.ErrNotImplemented }
-
-// OpenSession delegates to Control.
-func (p *Platform) OpenSession(ctx context.Context, id ids.SessionID) error {
-	return pderr.ErrNotImplemented
-}
-
-// ProbeAutomation delegates to Control.
-func (p *Platform) ProbeAutomation(ctx context.Context, bundleID string) error {
-	return pderr.ErrNotImplemented
-}
-
-// Notify delegates to Control.
-func (p *Platform) Notify(ctx context.Context, title, text string) error {
-	return pderr.ErrNotImplemented
-}
-
-// LogSize delegates to Log.
-func (p *Platform) LogSize() (int64, error) { return 0, pderr.ErrNotImplemented }
-
-// LogEvents delegates to Log.
-func (p *Platform) LogEvents(ctx context.Context, from int64, sig compat.Signals, session ids.SessionID) ([]LogEvent, int64, error) {
-	return nil, 0, pderr.ErrNotImplemented
-}
-
-// GitDirty delegates to Git.
-func (p *Platform) GitDirty(ctx context.Context, dir string) (bool, error) {
-	return false, pderr.ErrNotImplemented
-}
-
-// LockHeld delegates to Locks.
-func (p *Platform) LockHeld(path string) (bool, error) { return false, pderr.ErrNotImplemented }

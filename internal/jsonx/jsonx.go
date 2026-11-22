@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"unicode/utf8"
 )
 
 // Path is a sequence of literal object keys.
@@ -337,10 +338,20 @@ func Get(doc []byte, path Path) (json.RawMessage, error) {
 	return json.RawMessage(doc[m.valStart:m.valEnd]), nil
 }
 
+// errInvalidPathKey refuses a path key that is not valid UTF-8: it could
+// never match a decoded key, and inserting it would write U+FFFD instead.
+var errInvalidPathKey = errors.New("jsonx: path key is not valid UTF-8")
+
 // Set replaces the value at path with v, or inserts the last key into its
 // parent object when absent. Every parent must already exist. v must be
-// valid JSON without duplicate keys. The returned slice is new.
+// valid JSON without duplicate keys, and path keys valid UTF-8. The
+// returned slice is new.
 func Set(doc []byte, path Path, v json.RawMessage) ([]byte, error) {
+	for _, k := range path {
+		if !utf8.ValidString(k) {
+			return nil, errInvalidPathKey
+		}
+	}
 	if err := Validate(v); err != nil {
 		return nil, err
 	}
@@ -403,8 +414,9 @@ func splice(doc []byte, from, to int, with []byte) []byte {
 
 // TopLevelString finds key among the top-level members of doc and returns
 // its string value. Other values are skipped without being decoded, which
-// is how credential-bearing files are read . Top-level
-// duplicates of key are refused.
+// is how credential-bearing files are read. A document with any duplicate
+// top-level key is refused with ErrDuplicateKey, since its meaning is
+// ambiguous.
 func TopLevelString(doc []byte, key string) (string, bool, error) {
 	raw, found, err := topLevel(doc, key)
 	if err != nil || !found {
@@ -421,7 +433,8 @@ func TopLevelString(doc []byte, key string) (string, bool, error) {
 }
 
 // HasTopLevelKey reports whether doc's top-level object has key. The value
-// is never decoded.
+// is never decoded. Duplicate top-level keys are refused as in
+// TopLevelString.
 func HasTopLevelKey(doc []byte, key string) (bool, error) {
 	_, found, err := topLevel(doc, key)
 	return found, err
@@ -436,6 +449,7 @@ func topLevel(doc []byte, key string) ([]byte, bool, error) {
 	p.i++
 	var out []byte
 	found := false
+	seen := map[string]struct{}{}
 	p.ws()
 	if p.i < len(doc) && doc[p.i] == '}' {
 		p.i++
@@ -465,10 +479,11 @@ func topLevel(doc []byte, key string) ([]byte, bool, error) {
 		if err := p.value(1); err != nil {
 			return nil, false, err
 		}
+		if _, dup := seen[k]; dup {
+			return nil, false, fmt.Errorf("%w at offset %d", ErrDuplicateKey, ks)
+		}
+		seen[k] = struct{}{}
 		if k == key {
-			if found {
-				return nil, false, fmt.Errorf("%w at offset %d", ErrDuplicateKey, ks)
-			}
 			found, out = true, doc[vs:p.i]
 		}
 		p.ws()

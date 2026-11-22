@@ -38,29 +38,33 @@ func (d Duration) MarshalText() ([]byte, error) { return []byte(d.String()), nil
 
 // Config is the parsed config file.
 type Config struct {
-	Version  int       `toml:"version"`
-	App      App       `toml:"app"`
-	Profiles []Profile `toml:"profile"`
-	Sync     Sync      `toml:"sync"`
-	Limits   Limits    `toml:"limits"`
-	Backups  Backups   `toml:"backups"`
-	Log      Log       `toml:"log"`
+	Version  int       `toml:"version" json:"version"`
+	App      App       `toml:"app" json:"app"`
+	Profiles []Profile `toml:"profile" json:"profile"`
+	Sync     Sync      `toml:"sync" json:"sync"`
+	Limits   Limits    `toml:"limits" json:"limits"`
+	Backups  Backups   `toml:"backups" json:"backups"`
+	Log      Log       `toml:"log" json:"log"`
 }
 
 // App configures how the desktop app is found and controlled.
 type App struct {
-	BundleID      string   `toml:"bundle_id"`
-	DataRoot      string   `toml:"data_root"` // "~" is expanded
-	QuitTimeout   Duration `toml:"quit_timeout"`
-	RequireTested bool     `toml:"require_tested"`
+	BundleID    string   `toml:"bundle_id" json:"bundle_id"`
+	DataRoot    string   `toml:"data_root" json:"data_root"` // "~" is expanded
+	QuitTimeout Duration `toml:"quit_timeout" json:"quit_timeout"`
+	// LateQuitWatch is how long a run keeps watching after a vetoed quit
+	// timed out, so a late "Wait for Claude" quit is followed by a
+	// relaunch of the leaving profile instead of leaving the app closed.
+	LateQuitWatch Duration `toml:"late_quit_watch" json:"late_quit_watch"`
+	RequireTested bool     `toml:"require_tested" json:"require_tested"`
 }
 
 // Profile is one account the user switches between.
 type Profile struct {
-	Alias        ids.Alias `toml:"alias"`
-	Label        string    `toml:"label,omitempty"`
-	Folder       string    `toml:"folder,omitempty"` // default "Claude-<alias>"
-	ManagedByOrg bool      `toml:"managed_by_org"`
+	Alias        ids.Alias `toml:"alias" json:"alias"`
+	Label        string    `toml:"label,omitempty" json:"label,omitempty"`
+	Folder       string    `toml:"folder,omitempty" json:"folder,omitempty"` // default "Claude-<alias>"
+	ManagedByOrg bool      `toml:"managed_by_org" json:"managed_by_org"`
 }
 
 // ParkedFolder returns the profile's parked folder name.
@@ -73,41 +77,43 @@ func (p Profile) ParkedFolder() string {
 
 // Sync selects what is carried between accounts.
 type Sync struct {
-	Sessions     bool     `toml:"sessions"`
-	Tombstones   string   `toml:"tombstones"` // "newer-wins" | "delete-wins"
-	Exclude      []string `toml:"exclude"`    // project-path globs and session ids
-	Environments bool     `toml:"environments"`
-	GroupOrder   bool     `toml:"group_order"`
-	// SidebarView enables row 10 through the OFF + verify path. Off by
-	// default until the in-app (ON) path ships (ADR 0003).
-	SidebarView  bool                `toml:"sidebar_view"`
-	PinnedOrder  bool                `toml:"pinned_order"`
-	Worktrees    bool                `toml:"worktrees"`
-	WindowState  bool                `toml:"window_state"`
-	MCPServers   bool                `toml:"mcp_servers"`
-	AppPrefs     []string            `toml:"app_prefs"`
-	Export       map[string][]string `toml:"export"`  // alias -> categories
-	Import       map[string][]string `toml:"import"`  // alias -> categories
-	Secrets      string              `toml:"secrets"` // "same-boundary" | "never"
-	SecretsAllow []string            `toml:"secrets_allow"`
+	Sessions     bool     `toml:"sessions" json:"sessions"`
+	Tombstones   string   `toml:"tombstones" json:"tombstones"` // "newer-wins" | "delete-wins"
+	Exclude      []string `toml:"exclude" json:"exclude"`       // project-path globs and session ids
+	Environments bool     `toml:"environments" json:"environments"`
+	GroupOrder   bool     `toml:"group_order" json:"group_order"`
+	// SidebarView enables row 10 through the OFF + verify path (written to
+	// Local Storage and the config mirror together, verified after launch,
+	// drift marked contested), as ADR 0003 allows. On by default, as the
+	// design specifies; the in-app (ON) path is v0.2.
+	SidebarView  bool                `toml:"sidebar_view" json:"sidebar_view"`
+	PinnedOrder  bool                `toml:"pinned_order" json:"pinned_order"`
+	Worktrees    bool                `toml:"worktrees" json:"worktrees"`
+	WindowState  bool                `toml:"window_state" json:"window_state"`
+	MCPServers   bool                `toml:"mcp_servers" json:"mcp_servers"`
+	AppPrefs     []string            `toml:"app_prefs" json:"app_prefs"`
+	Export       map[string][]string `toml:"export" json:"export"`   // alias -> categories
+	Import       map[string][]string `toml:"import" json:"import"`   // alias -> categories
+	Secrets      string              `toml:"secrets" json:"secrets"` // "same-boundary" | "never"
+	SecretsAllow []string            `toml:"secrets_allow" json:"secrets_allow"`
 }
 
 // Limits holds the deletion breaker settings.
 type Limits struct {
-	MaxDeleteFraction float64 `toml:"max_delete_fraction"`
-	MaxDeleteMin      int     `toml:"max_delete_min"`
+	MaxDeleteFraction float64 `toml:"max_delete_fraction" json:"max_delete_fraction"`
+	MaxDeleteMin      int     `toml:"max_delete_min" json:"max_delete_min"`
 }
 
 // Backups configures generation retention.
 type Backups struct {
-	Keep              int    `toml:"keep"`
-	LevelDBClonesKeep int    `toml:"leveldb_clones_keep"`
-	MaxSize           string `toml:"max_size"` // e.g. "2GiB"
+	Keep              int    `toml:"keep" json:"keep"`
+	LevelDBClonesKeep int    `toml:"leveldb_clones_keep" json:"leveldb_clones_keep"`
+	MaxSize           string `toml:"max_size" json:"max_size"` // e.g. "2GiB"
 }
 
 // Log configures logging.
 type Log struct {
-	Redact bool `toml:"redact"`
+	Redact bool `toml:"redact" json:"redact"`
 }
 
 // Default returns the defaults of schema version 1.
@@ -115,16 +121,17 @@ func Default() *Config {
 	return &Config{
 		Version: SchemaVersion,
 		App: App{
-			BundleID:    DefaultBundleID,
-			DataRoot:    "~/Library/Application Support",
-			QuitTimeout: Duration{60 * time.Second},
+			BundleID:      DefaultBundleID,
+			DataRoot:      "~/Library/Application Support",
+			QuitTimeout:   Duration{60 * time.Second},
+			LateQuitWatch: Duration{10 * time.Minute},
 		},
 		Sync: Sync{
 			Sessions:     true,
 			Tombstones:   "newer-wins",
 			Environments: true,
 			GroupOrder:   true,
-			SidebarView:  false,
+			SidebarView:  true,
 			PinnedOrder:  true,
 			Worktrees:    true,
 			WindowState:  true,
@@ -159,17 +166,6 @@ func Load(path string) (*Config, error) {
 	}
 	return c, nil
 }
-
-// Validate checks every config rule: version, alias and folder
-// patterns, folder uniqueness (case-insensitive, NFC), reserved names,
-// enum values, app_prefs tags (keys tagged security or internal_state are
-// rejected), export/import aliases and categories, limits ranges.
-func (c *Config) Validate(reservedFolders []string) error {
-	return pderr.ErrNotImplemented
-}
-
-// Save writes c atomically with mode 0600.
-func (c *Config) Save(path string) error { return pderr.ErrNotImplemented }
 
 // Profile returns the profile with the alias.
 func (c *Config) Profile(a ids.Alias) (Profile, bool) {

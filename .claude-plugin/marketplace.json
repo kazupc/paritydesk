@@ -1,11 +1,23 @@
 {
   "name": "paritydesk",
-  "owner": { "name": "paritydesk maintainers" },
+  "owner": {
+    "name": "paritydesk maintainers"
+  },
+  "metadata": {
+    "description": "Claude Code plugin for paritydesk, an unofficial tool that switches the Claude desktop app between accounts on one Mac.",
+    "version": "0.1.0-dev"
+  },
   "plugins": [
     {
       "name": "paritydesk",
       "source": "./plugin",
-      "description": "Switch the Claude desktop app between accounts from a Code session."
+      "description": "Switch the Claude desktop app between accounts from a Code session. Requires the paritydesk binary.",
+      "version": "0.1.0-dev",
+      "license": "MIT",
+      "homepage": "https://github.com/kazupc/paritydesk",
+      "repository": "https://github.com/kazupc/paritydesk",
+      "keywords": ["accounts", "desktop", "macos", "profiles"],
+      "category": "productivity"
     }
   ]
 }

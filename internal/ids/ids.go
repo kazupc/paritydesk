@@ -21,11 +21,14 @@ type SessionID string
 type Alias string
 
 var (
-	uuidRE    = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
-	sessionRE = regexp.MustCompile(`^local_[0-9a-f-]{36}$`)
-	aliasRE   = regexp.MustCompile(`^[a-z0-9-]{1,32}$`)
+	uuidRE    = regexp.MustCompile(`^` + UUIDPattern + `$`)
+	sessionRE = regexp.MustCompile(`^local_` + UUIDPattern + `$`)
+	aliasRE   = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
 	folderRE  = regexp.MustCompile(`^Claude-[A-Za-z0-9._-]{1,48}$`)
 )
+
+// UUIDPattern is the unanchored pattern of a lower-case hyphenated UUID.
+const UUIDPattern = `[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`
 
 // DefaultFolder is the name of the active data folder.
 const DefaultFolder = "Claude"
@@ -62,10 +65,12 @@ func ParseSession(s string) (SessionID, error) {
 	return SessionID(s), nil
 }
 
-// ParseAlias validates s as a profile alias.
+// ParseAlias validates s as a profile alias. An alias starts with a
+// letter or digit, so it can never be read as a flag or as "-" (the
+// previous profile).
 func ParseAlias(s string) (Alias, error) {
 	if !aliasRE.MatchString(s) {
-		return "", fmt.Errorf("ids: alias must match [a-z0-9-]{1,32}")
+		return "", fmt.Errorf("ids: alias must match [a-z0-9][a-z0-9-]{0,31}")
 	}
 	return Alias(s), nil
 }

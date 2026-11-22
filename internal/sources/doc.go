@@ -1,9 +1,11 @@
 // Package sources is the only layer that knows the app's on-disk formats.
 //
 // Each row has an Adapter that reads a data folder into a normalized
-// model.RowSnapshot and, given a desired snapshot, produces the plan.Ops
-// that make the folder match it. Adapters do not write; plan.Ops are
-// executed by apply. Subpackages implement the adapters:
+// model.RowSnapshot and, given a desired snapshot, produces the literal-path
+// plan.Edits that make the folder match it. Adapters do not write; edits
+// are composed into plan.Ops by plan.Compose and executed by apply. For
+// keys mirrored in claude_desktop_config.json the mirror is authoritative.
+// Subpackages implement the adapters:
 //
 //	sessions/     rows sessions, tasks, waiting-input (records, tombstones,
 //	              archived-sessions.idx, backlog, scheduled tasks)

@@ -1,0 +1,1 @@
+{"v":1,"checks":[{"id":"app","status":"ok","detail":"Claude 6.28899.2 (tested)"},{"id":"automation","status":"warn","detail":"not granted yet"}],"hook_binary":"~/e84b3073"}

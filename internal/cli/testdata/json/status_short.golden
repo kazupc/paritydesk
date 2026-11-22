@@ -1,0 +1,1 @@
+{"v":1,"active":"work","previous":"home","app_running":false,"needs_recover":false,"update_staged":false,"profiles":[{"alias":"home","folder":"Claude-home","active":false,"account_masked":"0000…","managed_by_org":true,"base_valid":false},{"alias":"work","folder":"Claude","active":true,"account_masked":"0000…","managed_by_org":false,"base_valid":true}],"generations":2}

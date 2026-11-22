@@ -1,0 +1,269 @@
+package rows
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/kazupc/paritydesk/internal/jsonx"
+	"github.com/kazupc/paritydesk/internal/model"
+)
+
+// editDoc is a record being edited at literal paths. val is the item's
+// normalized value; raw is the item's raw bytes while they have the same
+// top-level shape as val (so every edit can be applied to both), else nil.
+type editDoc struct {
+	val, raw []byte
+}
+
+func newEditDoc(it model.Item) *editDoc {
+	d := &editDoc{val: append([]byte(nil), it.Value...)}
+	if mirrors(it.Value, it.Raw) {
+		d.raw = append([]byte(nil), it.Raw...)
+	}
+	return d
+}
+
+// mirrors reports whether raw is a JSON object with the same top-level
+// member names as the object val.
+func mirrors(val, raw []byte) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	if bytes.Equal(val, raw) {
+		return true
+	}
+	a, err := objectMembers(val)
+	if err != nil {
+		return false
+	}
+	b, err := objectMembers(raw)
+	if err != nil || len(a) != len(b) {
+		return false
+	}
+	for k := range a {
+		if _, ok := b[k]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// objectMembers decodes a JSON object's top-level members.
+func objectMembers(doc []byte) (map[string]json.RawMessage, error) {
+	if err := jsonx.Validate(doc); err != nil {
+		return nil, err
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(doc, &m); err != nil {
+		return nil, err
+	}
+	if m == nil {
+		return nil, jsonx.ErrNotObject
+	}
+	return m, nil
+}
+
+func isObject(v []byte) bool {
+	v = bytes.TrimSpace(v)
+	return len(v) > 0 && v[0] == '{'
+}
+
+// getAt returns the value at path, or false when it is absent or doc is
+// not an object along the path.
+func getAt(doc []byte, path jsonx.Path) (json.RawMessage, bool) {
+	if len(doc) == 0 {
+		return nil, false
+	}
+	v, err := jsonx.Get(doc, path)
+	if err != nil {
+		return nil, false
+	}
+	return v, true
+}
+
+// getString returns the string value of the top-level field name.
+func getString(doc []byte, name string) (string, bool) {
+	if name == "" {
+		return "", false
+	}
+	v, ok := getAt(doc, jsonx.Path{name})
+	if !ok {
+		return "", false
+	}
+	var s string
+	if err := json.Unmarshal(v, &s); err != nil {
+		return "", false
+	}
+	return s, true
+}
+
+// sameJSON compares two optional JSON values by canonical form.
+func sameJSON(a []byte, aok bool, b []byte, bok bool) bool {
+	if !aok || !bok {
+		return aok == bok
+	}
+	ha, err1 := model.ItemHash(a)
+	hb, err2 := model.ItemHash(b)
+	if err1 != nil || err2 != nil {
+		return bytes.Equal(bytes.TrimSpace(a), bytes.TrimSpace(b))
+	}
+	return ha == hb
+}
+
+// setPath sets v at path, creating missing parent objects.
+func setPath(doc []byte, path jsonx.Path, v json.RawMessage) ([]byte, error) {
+	for i := 1; i < len(path); i++ {
+		if _, err := jsonx.Get(doc, path[:i]); errors.Is(err, jsonx.ErrNotFound) {
+			if doc, err = jsonx.Set(doc, path[:i], json.RawMessage(`{}`)); err != nil {
+				return nil, err
+			}
+		} else if err != nil {
+			return nil, err
+		}
+	}
+	return jsonx.Set(doc, path, v)
+}
+
+// deletePath removes path if present.
+func deletePath(doc []byte, path jsonx.Path) ([]byte, error) {
+	out, err := jsonx.Delete(doc, path)
+	if errors.Is(err, jsonx.ErrNotFound) {
+		return doc, nil
+	}
+	return out, err
+}
+
+// set writes the same value at path in val and raw (non-secret values).
+func (d *editDoc) set(path jsonx.Path, v json.RawMessage) error {
+	var err error
+	if d.val, err = setPath(d.val, path, v); err != nil {
+		return fmt.Errorf("rows: set %s: %w", strings.Join(path, "."), err)
+	}
+	if d.raw != nil {
+		if d.raw, err = setPath(d.raw, path, v); err != nil {
+			d.raw = nil
+		}
+	}
+	return nil
+}
+
+// del removes path from val and raw.
+func (d *editDoc) del(path jsonx.Path) error {
+	var err error
+	if d.val, err = deletePath(d.val, path); err != nil {
+		return fmt.Errorf("rows: delete %s: %w", strings.Join(path, "."), err)
+	}
+	if d.raw != nil {
+		if d.raw, err = deletePath(d.raw, path); err != nil {
+			d.raw = nil
+		}
+	}
+	return nil
+}
+
+// copyFrom makes path hold what it holds in from (or removes it), taking
+// the raw counterpart from from's raw bytes so secrets stay consistent.
+func (d *editDoc) copyFrom(path jsonx.Path, from model.Item) error {
+	v, ok := getAt(from.Value, path)
+	var err error
+	if ok {
+		d.val, err = setPath(d.val, path, v)
+	} else {
+		d.val, err = deletePath(d.val, path)
+	}
+	if err != nil {
+		return fmt.Errorf("rows: copy %s: %w", strings.Join(path, "."), err)
+	}
+	if d.raw == nil {
+		return nil
+	}
+	if !mirrors(from.Value, from.Raw) {
+		d.raw = nil
+		return nil
+	}
+	if rv, rok := getAt(from.Raw, path); rok {
+		d.raw, err = setPath(d.raw, path, rv)
+	} else {
+		d.raw, err = deletePath(d.raw, path)
+	}
+	if err != nil {
+		d.raw = nil
+	}
+	return nil
+}
+
+// item builds the edited item. Raw is the edited raw when it was kept in
+// step, else nil.
+func (d *editDoc) item(key string, st model.Stamp, secret bool) (model.Item, error) {
+	return model.NewItem(key, d.val, d.raw, st, secret)
+}
+
+// rewriteStrings replaces every JSON string in v that is a key of m by its
+// mapped value. It reports whether anything changed; unchanged input is
+// returned as is.
+func rewriteStrings(v json.RawMessage, m map[string]string) (json.RawMessage, bool, error) {
+	if len(m) == 0 || len(v) == 0 {
+		return v, false, nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(v))
+	dec.UseNumber()
+	var x any
+	if err := dec.Decode(&x); err != nil {
+		return nil, false, fmt.Errorf("rows: rewrite ids: %w", err)
+	}
+	y, changed := walkStrings(x, m)
+	if !changed {
+		return v, false, nil
+	}
+	out, err := jsonx.Marshal(y)
+	if err != nil {
+		return nil, false, fmt.Errorf("rows: rewrite ids: %w", err)
+	}
+	return out, true, nil
+}
+
+func walkStrings(x any, m map[string]string) (any, bool) {
+	switch t := x.(type) {
+	case string:
+		if r, ok := m[t]; ok {
+			return r, true
+		}
+	case []any:
+		changed := false
+		for i := range t {
+			var c bool
+			t[i], c = walkStrings(t[i], m)
+			changed = changed || c
+		}
+		return t, changed
+	case map[string]any:
+		changed := false
+		for k := range t {
+			var c bool
+			t[k], c = walkStrings(t[k], m)
+			changed = changed || c
+		}
+		return t, changed
+	}
+	return x, false
+}
+
+// stringList decodes a JSON array of strings.
+func stringList(v []byte) ([]string, bool) {
+	var out []string
+	if err := json.Unmarshal(v, &out); err != nil {
+		return nil, false
+	}
+	return out, true
+}
+
+// marshalList encodes a string list, never as null.
+func marshalList(xs []string) (json.RawMessage, error) {
+	if xs == nil {
+		xs = []string{}
+	}
+	return jsonx.Marshal(xs)
+}

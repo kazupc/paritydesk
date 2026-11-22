@@ -2,6 +2,11 @@
   "name": "paritydesk",
   "version": "0.1.0-dev",
   "description": "Switch the Claude desktop app between accounts from a Code session. Requires the paritydesk binary.",
+  "author": {
+    "name": "paritydesk maintainers"
+  },
   "license": "MIT",
-  "homepage": "https://github.com/kazupc/paritydesk"
+  "homepage": "https://github.com/kazupc/paritydesk",
+  "repository": "https://github.com/kazupc/paritydesk",
+  "keywords": ["accounts", "desktop", "macos", "profiles"]
 }

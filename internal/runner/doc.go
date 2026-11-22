@@ -4,7 +4,9 @@
 // passed: a gui/<uid> job survived three quit and relaunch cycles).
 //
 // The plist lives in the 0700 run/ directory, names the absolute, verified
-// binary path and fixed arguments, uses a unique label, and is removed
-// after the job finishes. The job writes a result file and posts a
-// notification; it never assumes --yes for destructive differences.
+// binary path and the arguments built by orchestrator.SwitchOptions.JobArgs,
+// and uses a unique label. The job writes its result file, removes its
+// plist and exits; it never boots itself out (Reap does that before the
+// next submit). It never assumes --yes for destructive differences: it
+// compares its own plan against the plan the user confirmed (PlanStore).
 package runner

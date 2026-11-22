@@ -23,13 +23,13 @@ func TestKeyRoundTrip(t *testing.T) {
 }
 
 func TestFlagChoice(t *testing.T) {
-	if EncodeString("é")[0] != FlagLatin1 {
+	if EncodeString("\u00e9")[0] != FlagLatin1 {
 		t.Fatal("U+00E9 must be Latin-1")
 	}
-	if EncodeString("ā")[0] != FlagUTF16 {
+	if EncodeString("\u0101")[0] != FlagUTF16 {
 		t.Fatal("U+0101 must be UTF-16")
 	}
-	if got := EncodeString("€"); !bytes.Equal(got, []byte{0x00, 0xAC, 0x20}) {
+	if got := EncodeString("\u20ac"); !bytes.Equal(got, []byte{0x00, 0xAC, 0x20}) {
 		t.Fatalf("got % x", got)
 	}
 }

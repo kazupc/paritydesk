@@ -10,4 +10,9 @@
 //     by the caller, with strict checks, as one synced batch, followed by a
 //     read-back.
 //   - Recovery APIs that rewrite a damaged database are never used.
+//   - CheckFormat inspects table block compression on a copy, so an
+//     unknown compression is found at preflight (swap-only) rather than at
+//     the writable open.
+//   - ReadOnly(o) refuses OpenWritable; read-only mode uses it instead of
+//     wrapping the filesystem the opener needs for its snapshot copies.
 package kv

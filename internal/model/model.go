@@ -1,9 +1,12 @@
 package model
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"sort"
 
 	"github.com/kazupc/paritydesk/internal/ids"
@@ -106,18 +109,65 @@ type Stamp struct {
 // element, a scalar or a whole file.
 type Item struct {
 	Key string `json:"key"`
-	// Value is the normalized value as canonical JSON. Secret parts are
-	// replaced by their hashes before a snapshot is persisted (D27).
+	// Value is the normalized value as JSON. Secret parts are replaced by
+	// "sha256:<hex>" strings before the item leaves its adapter (D27), so
+	// Value never holds a secret.
 	Value json.RawMessage `json:"value,omitempty"`
-	// Hash is the sha256 (hex) of the item's original bytes. Used for
-	// equality and for secret values.
+	// Hash is ItemHash(Value): the sha256 (hex) of Value's canonical form.
+	// Envelope metadata (tabId, timestamp, persisted-store version) is not
+	// part of Value and so never changes the hash; the same value read from
+	// Local Storage or from the config mirror hashes the same. Use NewItem
+	// to build items so the rule holds everywhere.
 	Hash  string `json:"hash"`
 	Stamp Stamp  `json:"stamp"`
 	// Secret marks items whose Value carries hashed secrets.
 	Secret bool `json:"secret,omitempty"`
 	// Raw holds the original bytes in memory only, including secrets. It is
-	// never persisted, logged or rendered.
+	// used only to copy bytes between folders; it is never hashed for
+	// equality, persisted, logged or rendered.
 	Raw []byte `json:"-"`
+}
+
+// Canonical returns v re-encoded deterministically: object keys sorted,
+// insignificant whitespace removed, numbers kept as written, no HTML
+// escaping. Two JSON values that differ only in key order or spacing have
+// the same canonical form.
+func Canonical(v json.RawMessage) (json.RawMessage, error) {
+	dec := json.NewDecoder(bytes.NewReader(v))
+	dec.UseNumber()
+	var x any
+	if err := dec.Decode(&x); err != nil {
+		return nil, fmt.Errorf("model: canonical: %w", err)
+	}
+	if dec.More() {
+		return nil, errors.New("model: canonical: trailing data")
+	}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(x); err != nil {
+		return nil, fmt.Errorf("model: canonical: %w", err)
+	}
+	return json.RawMessage(bytes.TrimRight(buf.Bytes(), "\n")), nil
+}
+
+// ItemHash returns the hex sha256 of Canonical(v). This is the only hash
+// used to compare item values (bases, contested entries, verify).
+func ItemHash(v json.RawMessage) (string, error) {
+	c, err := Canonical(v)
+	if err != nil {
+		return "", err
+	}
+	return HashBytes(c), nil
+}
+
+// NewItem builds an item with Hash = ItemHash(value).
+func NewItem(key string, value json.RawMessage, raw []byte, stamp Stamp, secret bool) (Item, error) {
+	h, err := ItemHash(value)
+	if err != nil {
+		return Item{}, fmt.Errorf("model: item %q: %w", key, err)
+	}
+	return Item{Key: key, Value: value, Hash: h, Stamp: stamp, Secret: secret, Raw: raw}, nil
 }
 
 // Tombstone records a deletion and when it happened (D9).
@@ -135,6 +185,11 @@ type RowSnapshot struct {
 	Items      map[string]Item      `json:"items,omitempty"`
 	Order      []string             `json:"order,omitempty"` // for ordered rows: item keys in order
 	Tombstones map[string]Tombstone `json:"tombstones,omitempty"`
+	// Stale lists item keys whose Local Storage copy disagreed with the
+	// authoritative config mirror at read time (S1, S4). The mirror's value
+	// is in Items; the stale copy is never harvested as an edit. Memory
+	// only; reported as a warning.
+	Stale []string `json:"-"`
 }
 
 // Clone returns a deep copy of s (Raw slices are shared, never mutated).
@@ -151,6 +206,7 @@ func (s *RowSnapshot) Clone() *RowSnapshot {
 		}
 	}
 	c.Order = append([]string(nil), s.Order...)
+	c.Stale = append([]string(nil), s.Stale...)
 	if s.Tombstones != nil {
 		c.Tombstones = make(map[string]Tombstone, len(s.Tombstones))
 		for k, v := range s.Tombstones {
@@ -234,12 +290,16 @@ type Conflict struct {
 	Reason    string    `json:"reason"`
 }
 
-// Contested marks a row whose value after launch differed from what
-// paritydesk wrote (P12). A later harvest counts the row as changed on
-// that replica only if its value differs from both hashes.
+// Contested marks an item whose value after launch differed from what
+// paritydesk wrote (P12). A later harvest counts the item as changed on
+// that replica only if its hash differs from both hashes. Both hashes are
+// Item.Hash values (ItemHash of the normalized value), computed by the
+// row's adapter from the config mirror (sources.MirrorReader), so they
+// compare directly with harvested items.
 type Contested struct {
 	Row          RowID   `json:"row"`
 	Replica      Replica `json:"replica"`
+	Key          string  `json:"key"`
 	ServerHash   string  `json:"server_hash"`
 	IntendedHash string  `json:"intended_hash"`
 }

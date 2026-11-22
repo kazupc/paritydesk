@@ -19,7 +19,7 @@ func (unsupported) WriteFileAtomic(string, string, []byte, fs.FileMode, string) 
 }
 func (unsupported) MoveInto(string, string, string) error         { return ErrUnsupported }
 func (unsupported) MkdirAll(string, fs.FileMode) error            { return ErrUnsupported }
-func (unsupported) RemoveAll(string) error                        { return ErrUnsupported }
+func (unsupported) RemoveAll(string, string) error                { return ErrUnsupported }
 func (unsupported) FullSync(string) error                         { return ErrUnsupported }
 func (unsupported) ID(string) (FileID, error)                     { return FileID{}, ErrUnsupported }
 func (unsupported) GetXattr(string, string) ([]byte, bool, error) { return nil, false, ErrUnsupported }

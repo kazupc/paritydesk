@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -10,7 +11,11 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/kazupc/paritydesk/internal/config"
+	"github.com/kazupc/paritydesk/internal/orchestrator"
 	"github.com/kazupc/paritydesk/internal/pderr"
+	"github.com/kazupc/paritydesk/internal/redact"
+	"github.com/kazupc/paritydesk/internal/render"
 )
 
 // Version is set at build time with -ldflags "-X .../cli.Version=v0.1.0".
@@ -22,15 +27,29 @@ type globalFlags struct {
 	Config, StateDir, AppSupportDir       string
 }
 
+// globalNames lists the global flags, for the usage text.
+var globalNames = map[string]bool{
+	"json": true, "plain": true, "no-color": true, "ascii": true, "read-only": true,
+	orchestrator.FlagConfig: true, orchestrator.FlagStateDir: true, orchestrator.FlagAppSupportDir: true,
+}
+
+// hiddenFlags are accepted but not listed in the usage text: internal
+// flags set by the plugin's shim and by the detached runner.
+var hiddenFlags = map[string]bool{
+	"plugin-version":            true,
+	orchestrator.FlagFromRunner: true,
+	orchestrator.FlagLogOffset:  true,
+}
+
 func (g *globalFlags) register(fs *flag.FlagSet) {
 	fs.BoolVar(&g.JSON, "json", g.JSON, "print one JSON document")
 	fs.BoolVar(&g.Plain, "plain", g.Plain, "plain lines, no tables or spinners")
 	fs.BoolVar(&g.NoColor, "no-color", g.NoColor, "no colour (also NO_COLOR, TERM=dumb)")
 	fs.BoolVar(&g.ASCII, "ascii", g.ASCII, "ASCII only")
 	fs.BoolVar(&g.ReadOnly, "read-only", g.ReadOnly, "plan only; never write (also PARITYDESK_READONLY=1)")
-	fs.StringVar(&g.Config, "config", g.Config, "config file (also PARITYDESK_CONFIG)")
-	fs.StringVar(&g.StateDir, "state-dir", g.StateDir, "state directory (also PARITYDESK_STATE_DIR)")
-	fs.StringVar(&g.AppSupportDir, "app-support-dir", g.AppSupportDir, "paritydesk support directory")
+	fs.StringVar(&g.Config, orchestrator.FlagConfig, g.Config, "config file (also PARITYDESK_CONFIG)")
+	fs.StringVar(&g.StateDir, orchestrator.FlagStateDir, g.StateDir, "state directory (also PARITYDESK_STATE_DIR)")
+	fs.StringVar(&g.AppSupportDir, orchestrator.FlagAppSupportDir, g.AppSupportDir, "paritydesk support directory")
 }
 
 // env is what a command's run function receives.
@@ -39,6 +58,8 @@ type env struct {
 	stdin  io.Reader
 	stdout io.Writer
 	stderr io.Writer
+	sys    *system
+	in     *bufio.Reader // lazily wraps stdin, shared by every prompt
 }
 
 // command is one node of the command tree. The tree is built on the
@@ -52,6 +73,9 @@ type command struct {
 	hidden  bool
 	minArgs int
 	maxArgs int // -1: unlimited
+	// lenient commands never fail: parse and run errors exit 0 (the
+	// plugin's hook entry point).
+	lenient bool
 	flags   func(fs *flag.FlagSet)
 	run     func(ctx context.Context, e *env, fs *flag.FlagSet, args []string) error
 	sub     []*command
@@ -60,65 +84,136 @@ type command struct {
 // errUsage marks command-line errors (exit 2).
 var errUsage = errors.New("usage")
 
-// Execute runs the command line and returns the exit code.
-func Execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	e := &env{g: &globalFlags{}, stdin: stdin, stdout: stdout, stderr: stderr}
-	err := dispatch(ctx, e, root(), args)
-	switch {
-	case err == nil, errors.Is(err, flag.ErrHelp):
-		return int(pderr.OK)
-	case errors.Is(err, errUsage):
-		fmt.Fprintln(stderr, "paritydesk:", err)
-		return int(pderr.Usage)
-	default:
-		fmt.Fprintln(stderr, "paritydesk:", err)
-		return int(pderr.CodeOf(err))
-	}
+// usageErrorf returns a command-line error.
+func usageErrorf(format string, args ...any) error {
+	return fmt.Errorf("%w: "+format, append([]any{errUsage}, args...)...)
 }
 
-func dispatch(ctx context.Context, e *env, c *command, args []string) error {
-	fs := flag.NewFlagSet(c.name, flag.ContinueOnError)
-	fs.SetOutput(e.stderr)
+// quietError carries an exit code whose message was already printed (a
+// JSON document with its own code, for example).
+type quietError struct{ err error }
+
+func (q *quietError) Error() string { return q.err.Error() }
+func (q *quietError) Unwrap() error { return q.err }
+
+// Execute runs the command line and returns the exit code.
+func Execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	return execute(ctx, args, stdin, stdout, stderr, realSystem())
+}
+
+// execute runs the command line against sys, which tests replace.
+func execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, sys *system) int {
+	e := &env{g: &globalFlags{}, stdin: stdin, stdout: stdout, stderr: stderr, sys: sys}
+	return e.finish(dispatch(ctx, e, root(), args, "paritydesk"))
+}
+
+// finish prints err with its catalog entry and returns the exit code.
+func (e *env) finish(err error) int {
+	if err == nil || errors.Is(err, flag.ErrHelp) {
+		return int(pderr.OK)
+	}
+	var q *quietError
+	if errors.As(err, &q) {
+		return int(pderr.CodeOf(q.err))
+	}
+	if errors.Is(err, errUsage) {
+		err = &pderr.Error{Code: pderr.Usage, Op: "usage", Msg: strings.TrimPrefix(err.Error(), errUsage.Error()+": ")}
+	}
+	e.printer().Error(err)
+	return int(pderr.CodeOf(err))
+}
+
+// printer returns the printer for the flags parsed so far.
+func (e *env) printer() *render.Printer {
+	m := render.DetectMode(render.Mode{
+		JSON: e.g.JSON, Plain: e.g.Plain, NoColor: e.g.NoColor, ASCII: e.g.ASCII,
+	}, e.sys.getenv, e.sys.isTerminal(e.stdout))
+	return &render.Printer{Out: e.stdout, Err: e.stderr, Mode: m, Redact: e.redactor().String}
+}
+
+// redactor hides home paths and ids in output meant to be shared (JSON
+// error documents and doctor). Without a home directory only ids and
+// other users' home paths are hidden.
+func (e *env) redactor() redact.Redactor {
+	home, err := e.sys.home()
+	if err != nil {
+		home = ""
+	}
+	return redact.Redactor{Home: home}
+}
+
+// readOnly reports read-only mode (--read-only or PARITYDESK_READONLY=1).
+func (e *env) readOnly() bool {
+	return e.g.ReadOnly || e.sys.getenv("PARITYDESK_READONLY") == "1"
+}
+
+// paths resolves paritydesk's own locations from flags and environment.
+func (e *env) paths() (config.Paths, string, error) {
+	home, err := e.sys.home()
+	if err != nil {
+		return config.Paths{}, "", fmt.Errorf("home directory: %w", err)
+	}
+	return config.ResolvePaths(home, e.sys.getenv, config.Overrides{
+		Config: e.g.Config, StateDir: e.g.StateDir, AppSupportDir: e.g.AppSupportDir,
+	}), home, nil
+}
+
+func dispatch(ctx context.Context, e *env, c *command, args []string, path string) error {
+	fs := flag.NewFlagSet(path, flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.Usage = func() {}
 	e.g.register(fs)
 	if c.flags != nil {
 		c.flags(fs)
 	}
-	fs.Usage = func() { printUsage(e.stderr, c, fs) }
 	if len(c.sub) > 0 {
 		// Only global flags may precede a subcommand name.
 		if err := fs.Parse(args); err != nil {
-			return wrapUsage(err)
+			return e.parseError(c, fs, path, err)
 		}
 		rest := fs.Args()
 		if len(rest) == 0 {
-			printUsage(e.stderr, c, fs)
-			return fmt.Errorf("%w: missing command", errUsage)
+			printUsage(e.stderr, c, fs, path)
+			return usageErrorf("missing command; run paritydesk help %s", strings.TrimPrefix(path, "paritydesk"))
 		}
 		for _, s := range c.sub {
 			if s.name == rest[0] {
-				return dispatch(ctx, e, s, rest[1:])
+				return dispatch(ctx, e, s, rest[1:], path+" "+s.name)
 			}
 		}
-		return fmt.Errorf("%w: unknown command %q", errUsage, rest[0])
+		return usageErrorf("unknown command %q", rest[0])
 	}
 	pos, err := parseInterleaved(fs, args)
 	if err != nil {
-		return wrapUsage(err)
+		if c.lenient && !errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
+		return e.parseError(c, fs, path, err)
 	}
 	if len(pos) < c.minArgs || (c.maxArgs >= 0 && len(pos) > c.maxArgs) {
-		return fmt.Errorf("%w: paritydesk %s %s", errUsage, c.name, c.args)
+		if c.lenient {
+			return nil
+		}
+		return usageErrorf("%s %s", path, c.args)
 	}
 	if c.run == nil {
-		return pderr.ErrNotImplemented
+		return pderr.New(pderr.Internal, path, "command has no run function")
 	}
-	return c.run(ctx, e, fs, pos)
+	err = c.run(ctx, e, fs, pos)
+	if c.lenient {
+		return nil
+	}
+	return err
 }
 
-func wrapUsage(err error) error {
+// parseError prints the usage for --help (exit 0) and turns other parse
+// errors into usage errors.
+func (e *env) parseError(c *command, fs *flag.FlagSet, path string, err error) error {
 	if errors.Is(err, flag.ErrHelp) {
+		printUsage(e.stdout, c, fs, path)
 		return err
 	}
-	return fmt.Errorf("%w: %v", errUsage, err)
+	return usageErrorf("%v", err)
 }
 
 // parseInterleaved accepts flags before and after positional arguments.
@@ -141,8 +236,12 @@ func parseInterleaved(fs *flag.FlagSet, args []string) ([]string, error) {
 	}
 }
 
-func printUsage(w io.Writer, c *command, fs *flag.FlagSet) {
-	fmt.Fprintf(w, "usage: paritydesk %s %s\n", c.name, c.args)
+func printUsage(w io.Writer, c *command, fs *flag.FlagSet, path string) {
+	args := c.args
+	if len(c.sub) == 0 {
+		args = strings.TrimSpace(args + " [flags]")
+	}
+	fmt.Fprintf(w, "usage: %s %s\n", path, args)
 	if c.short != "" {
 		fmt.Fprintf(w, "\n%s\n", c.short)
 	}
@@ -156,101 +255,176 @@ func printUsage(w io.Writer, c *command, fs *flag.FlagSet) {
 			}
 		}
 	}
-	fmt.Fprintln(w, "\nflags:")
-	fs.PrintDefaults()
+	printFlags(w, fs, "flags", func(name string) bool { return !globalNames[name] })
+	printFlags(w, fs, "global flags", func(name string) bool { return globalNames[name] })
 }
 
-var categoryNames = []string{"sessions", "environments", "order", "sidebar", "pins", "prefs", "worktrees", "window", "mcp"}
+// printFlags lists the visible flags that keep selects.
+func printFlags(w io.Writer, fs *flag.FlagSet, title string, keep func(string) bool) {
+	var lines []string
+	fs.VisitAll(func(f *flag.Flag) {
+		if !keep(f.Name) || hiddenFlags[f.Name] {
+			return
+		}
+		typ, usage := flag.UnquoteUsage(f)
+		name := "--" + f.Name
+		if typ != "" {
+			name += " " + typ
+		}
+		if d := f.DefValue; d != "" && d != "false" && d != "0" {
+			usage += fmt.Sprintf(" (default %s)", d)
+		}
+		lines = append(lines, fmt.Sprintf("  %-28s %s", name, usage))
+	})
+	if len(lines) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "\n%s:\n%s\n", title, strings.Join(lines, "\n"))
+}
 
 func categoryFlags(fs *flag.FlagSet) {
-	fs.String("only", "", "categories to carry, comma-separated: "+strings.Join(categoryNames, ","))
-	fs.String("skip", "", "categories to leave alone, comma-separated")
+	fs.String(orchestrator.FlagOnly, "", "categories to carry, comma-separated: "+strings.Join(categoryNames(), ","))
+	fs.String(orchestrator.FlagSkip, "", "categories to leave alone, comma-separated")
 }
 
-func leaf(name, args, short string, min, max int, flags func(*flag.FlagSet)) *command {
-	return &command{name: name, args: args, short: short, minArgs: min, maxArgs: max, flags: flags}
+func leaf(name, args, short string, min, max int, flags func(*flag.FlagSet), run func(context.Context, *env, *flag.FlagSet, []string) error) *command {
+	return &command{name: name, args: args, short: short, minArgs: min, maxArgs: max, flags: flags, run: run}
 }
 
 func group(name, args, short string, hidden bool, sub ...*command) *command {
 	return &command{name: name, args: args, short: short, hidden: hidden, sub: sub}
 }
 
-func yesFlag(fs *flag.FlagSet) { fs.Bool("yes", false, "do not ask") }
+func yesFlag(fs *flag.FlagSet) { fs.Bool(orchestrator.FlagYes, false, "do not ask") }
 
-// root returns the command tree. Leaves without a run function are pending
-// (WI-8 maps each to its orchestrator, gen or hook call).
+// switchFlags registers the switch flags under the names the orchestrator
+// uses to build the detached job's argv (orchestrator.JobArgs).
+func switchFlags(fs *flag.FlagSet) {
+	categoryFlags(fs)
+	fs.Bool(orchestrator.FlagYes, false, "do not ask (destructive differences after the preview still ask)")
+	fs.Bool(orchestrator.FlagNoLaunch, false, "do not relaunch Claude")
+	fs.Bool(orchestrator.FlagNoReopen, false, "do not reopen the invoking session")
+	fs.Bool(orchestrator.FlagDetach, false, "run as a detached launchd job")
+	fs.Bool(flagJSONProgress, false, "NDJSON progress on stderr")
+	fs.Int(orchestrator.FlagAllowDeletions, 0, "allow up to N deletions per category past the breaker")
+	fs.Bool(orchestrator.FlagAcceptWorktreeRisk, false, "switch even if a worktree with uncommitted changes loses its registration")
+	fs.Bool(orchestrator.FlagAllowUpdate, false, "let a staged Claude update install, then re-check before syncing")
+	fs.String(orchestrator.FlagReopenSession, "", "Claude Code session id of the invoking session (set by the plugin; empty: no reopen)")
+	fs.String(orchestrator.FlagConfirmedPlan, "", "hash of the plan you confirmed (printed by paritydesk plan --json)")
+	fs.Bool(orchestrator.FlagConfirmFirstSync, false, "confirm the first-sync union that the confirmed plan showed")
+	fs.Int64(orchestrator.FlagLogOffset, -1, "internal: main.log offset recorded before the hand-off")
+	fs.Bool(orchestrator.FlagFromRunner, false, "internal: this process is the detached job")
+}
+
+// flagJSONProgress selects NDJSON progress events on stderr.
+const flagJSONProgress = "json-progress"
+
+// root returns the command tree. Every leaf maps to one orchestrator, gen,
+// config, log or hook call.
 func root() *command {
 	return group("paritydesk", "<command> [flags]",
 		"Switch the Claude desktop app between accounts and keep everything else in step.", false,
-		leaf("init", "", "Set up paritydesk for the account in the app now", 0, 0, nil),
+		leaf("init", "", "Set up paritydesk for the account in the app now", 0, 0, func(fs *flag.FlagSet) {
+			fs.String("alias", "", "alias for the account in Claude now (asked when missing)")
+			fs.String("label", "", "display label for the profile")
+			fs.Bool("managed", false, "the account is managed by an employer or client")
+		}, runInit),
 		group("profile", "<list|adopt|add|rename|remove>", "Manage profiles", false,
-			leaf("list", "", "List profiles", 0, 0, nil),
-			leaf("adopt", "<alias> <folder>", "Register a parked folder after checking its identity", 2, 2, nil),
+			leaf("list", "", "List profiles", 0, 0, nil, runProfileList),
+			leaf("adopt", "<alias> <folder>", "Register a parked folder after checking its identity", 2, 2, nil, runProfileAdopt),
 			leaf("add", "<alias>", "Add an account without signing out of any other", 1, 1, func(fs *flag.FlagSet) {
 				fs.Bool("managed", false, "the account is managed by an employer or client")
-			}),
-			leaf("rename", "<alias> <new-alias>", "Rename a profile", 2, 2, nil),
-			leaf("remove", "<alias>", "Unregister a profile; its folder is kept", 1, 1, nil),
+			}, runProfileAdd),
+			leaf("rename", "<alias> <new-alias>", "Rename a profile", 2, 2, nil, runProfileRename),
+			leaf("remove", "<alias>", "Unregister a profile; its folder is kept", 1, 1, nil, runProfileRemove),
 		),
 		leaf("status", "", "Show the active profile and anything pending", 0, 0, func(fs *flag.FlagSet) {
 			fs.Bool("short", false, "one line; never opens Local Storage")
-		}),
-		leaf("plan", "[<alias>]", "Preview what a switch would change (approximate)", 0, 1, categoryFlags),
-		leaf("switch", "[<alias>|-]", "Switch to another profile", 0, 1, func(fs *flag.FlagSet) {
-			categoryFlags(fs)
-			fs.Bool("yes", false, "do not ask (destructive differences after the preview still ask)")
-			fs.Bool("no-launch", false, "do not relaunch Claude")
-			fs.Bool("no-reopen", false, "do not reopen the invoking session")
-			fs.Bool("detach", false, "run as a detached launchd job")
-			fs.Bool("json-progress", false, "NDJSON progress on stderr")
-			fs.Int("allow-deletions", 0, "allow up to N deletions per category past the breaker")
-			fs.Bool("accept-worktree-risk", false, "switch even if a worktree with uncommitted changes loses its registration")
-			fs.Bool("allow-update", false, "let a staged Claude update install, then re-check before syncing")
-			fs.String("reopen-session", "", "Claude Code session id of the invoking session (set by the plugin)")
-			fs.Bool("from-runner", false, "internal: this process is the detached job")
-		}),
+		}, runStatus),
+		leaf("plan", "[<alias>|-]", "Preview what a switch would change (approximate)", 0, 1, categoryFlags, runPlan),
+		leaf("switch", "[<alias>|-]", "Switch to another profile", 0, 1, switchFlags, runSwitch),
 		leaf("sync", "", "Re-apply the shared state to the active profile", 0, 0, func(fs *flag.FlagSet) {
 			yesFlag(fs)
-			fs.Int("allow-deletions", 0, "allow up to N deletions per category past the breaker")
-		}),
-		leaf("verify", "", "Check that the app kept what the last run wrote", 0, 0, nil),
+			fs.Int(orchestrator.FlagAllowDeletions, 0, "allow up to N deletions per category past the breaker")
+			fs.Bool(orchestrator.FlagNoLaunch, false, "do not relaunch Claude")
+			fs.Bool(flagJSONProgress, false, "NDJSON progress on stderr")
+		}, runSync),
+		leaf("verify", "", "Check that the app kept what the last run wrote", 0, 0, nil, runVerify),
 		leaf("recover", "", "Finish or undo an interrupted run", 0, 0, func(fs *flag.FlagSet) {
 			fs.Bool("rollback", false, "undo the interrupted run instead of completing it")
 			yesFlag(fs)
-		}),
+		}, runRecover),
 		leaf("rollback", "[<n>]", "Restore a generation without overwriting newer work", 0, 1, func(fs *flag.FlagSet) {
 			fs.Bool("propagate", false, "carry the restored values to other profiles on the next switch")
-		}),
-		leaf("rebase", "", "Forget every sync base; the next run is a first sync", 0, 0, nil),
+			yesFlag(fs)
+		}, runRollback),
+		leaf("rebase", "", "Forget every sync base; the next run is a first sync", 0, 0, nil, runRebase),
 		group("generations", "<list|show>", "List or show backup generations", false,
-			leaf("list", "", "List generations", 0, 0, nil),
-			leaf("show", "<n>", "Show one generation", 1, 1, nil),
+			leaf("list", "", "List generations", 0, 0, nil, runGenerationsList),
+			leaf("show", "<n>", "Show one generation", 1, 1, nil, runGenerationsShow),
 		),
 		group("backups", "<prune|purge>", "Prune or purge backup generations", false,
-			leaf("prune", "", "Apply the retention policy", 0, 0, nil),
-			leaf("purge", "", "Remove every generation", 0, 0, yesFlag),
+			leaf("prune", "", "Apply the retention policy", 0, 0, nil, runBackupsPrune),
+			leaf("purge", "", "Remove every generation", 0, 0, yesFlag, runBackupsPurge),
 		),
 		leaf("doctor", "", "Check the installation, folders and app compatibility", 0, 0, func(fs *flag.FlagSet) {
 			fs.Bool("grant-automation", false, "ask macOS for Automation permission now")
-		}),
+		}, runDoctor),
 		leaf("log", "", "Show the log of a run", 0, 0, func(fs *flag.FlagSet) {
 			fs.String("run", "", "run id (default: the last run)")
-		}),
-		leaf("history", "", "List past runs", 0, 0, nil),
+		}, runLog),
+		leaf("history", "", "List past runs", 0, 0, nil, runHistory),
 		group("config", "<path|show|validate>", "Show, locate or validate the config file", false,
-			leaf("path", "", "Print the config file path", 0, 0, nil),
-			leaf("show", "", "Print the effective config", 0, 0, nil),
-			leaf("validate", "", "Validate the config file", 0, 0, nil),
+			leaf("path", "", "Print the config file path", 0, 0, nil, runConfigPath),
+			leaf("show", "", "Print the effective config", 0, 0, nil, runConfigShow),
+			leaf("validate", "", "Validate the config file", 0, 0, nil, runConfigValidate),
 		),
 		leaf("uninstall", "", "Remove paritydesk's state; every data folder is kept", 0, 0, func(fs *flag.FlagSet) {
 			fs.Bool("keep-backups", true, "keep backup generations")
+			fs.Bool("keep-state", false, "keep the state directory as well")
 			yesFlag(fs)
-		}),
+		}, runUninstall),
 		group("hook", "<event>", "Internal: entry point of the plugin's hooks", true,
-			leaf("session-start", "", "SessionStart hook", 0, 0, nil),
+			&command{name: "session-start", short: "SessionStart hook", maxArgs: -1, lenient: true,
+				flags: func(fs *flag.FlagSet) {
+					fs.String("plugin-version", "", "version of the calling plugin (silent on version skew)")
+				}, run: runHookSessionStart},
 		),
+		&command{name: "help", args: "[<command>...]", short: "Show help for a command", maxArgs: -1, run: runHelp},
 		&command{name: "version", short: "Print the version", run: runVersion},
 	)
+}
+
+// runHelp prints the usage of the named command.
+func runHelp(_ context.Context, e *env, _ *flag.FlagSet, args []string) error {
+	c, path := root(), "paritydesk"
+	for _, a := range args {
+		var next *command
+		for _, s := range c.sub {
+			if s.name == a {
+				next = s
+			}
+		}
+		if next == nil {
+			return usageErrorf("unknown command %q", a)
+		}
+		c, path = next, path+" "+a
+	}
+	fs := flag.NewFlagSet(path, flag.ContinueOnError)
+	(&globalFlags{}).register(fs)
+	if c.flags != nil {
+		c.flags(fs)
+	}
+	if e.g.JSON {
+		var b strings.Builder
+		printUsage(&b, c, fs, path)
+		return e.printer().JSON(struct {
+			Command string `json:"command"`
+			Usage   string `json:"usage"`
+		}{path, b.String()})
+	}
+	printUsage(e.stdout, c, fs, path)
+	return nil
 }
 
 func runVersion(_ context.Context, e *env, _ *flag.FlagSet, _ []string) error {
@@ -259,8 +433,9 @@ func runVersion(_ context.Context, e *env, _ *flag.FlagSet, _ []string) error {
 		v = bi.Main.Version
 	}
 	if e.g.JSON {
-		_, err := fmt.Fprintf(e.stdout, "{\"v\":1,\"version\":%q}\n", v)
-		return err
+		return e.printer().JSON(struct {
+			Version string `json:"version"`
+		}{v})
 	}
 	_, err := fmt.Fprintln(e.stdout, "paritydesk", v)
 	return err

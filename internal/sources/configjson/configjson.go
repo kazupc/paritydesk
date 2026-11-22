@@ -3,6 +3,7 @@ package configjson
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -33,25 +34,53 @@ type Identity struct {
 // ErrNoAccount means the folder has never recorded a signed-in account.
 var ErrNoAccount = errors.New("configjson: no account recorded")
 
-// ReadIdentity reads folder/config.json.
+// ReadIdentity reads folder/config.json. A symlink, a non-regular file or
+// a file larger than maxSize is refused. Errors never carry file content.
 func ReadIdentity(folder string) (Identity, error) {
-	path := filepath.Join(folder, FileName)
-	fi, err := os.Lstat(path)
-	if err != nil {
-		return Identity{}, err
-	}
-	if !fi.Mode().IsRegular() {
-		return Identity{}, fmt.Errorf("configjson: %s is not a regular file", FileName)
-	}
-	if fi.Size() > maxSize {
-		return Identity{}, fmt.Errorf("configjson: %s is too large", FileName)
-	}
-	buf, err := os.ReadFile(path)
+	buf, err := readBounded(filepath.Join(folder, FileName))
 	if err != nil {
 		return Identity{}, err
 	}
 	defer clear(buf)
 	return parse(buf)
+}
+
+// readBounded reads a regular file of at most maxSize bytes without
+// following a symlink. The opened file must be the one checked by Lstat,
+// and the read is bounded even if the file grows in between.
+func readBounded(path string) ([]byte, error) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("configjson: %s is not a regular file", FileName)
+	}
+	if fi.Size() > maxSize {
+		return nil, fmt.Errorf("configjson: %s is too large", FileName)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	opened, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !os.SameFile(fi, opened) {
+		return nil, fmt.Errorf("configjson: %s changed while opening", FileName)
+	}
+	buf, err := io.ReadAll(io.LimitReader(f, maxSize+1))
+	if err != nil {
+		clear(buf)
+		return nil, fmt.Errorf("configjson: read %s: %w", FileName, err)
+	}
+	if len(buf) > maxSize {
+		clear(buf)
+		return nil, fmt.Errorf("configjson: %s is too large", FileName)
+	}
+	return buf, nil
 }
 
 func parse(buf []byte) (Identity, error) {

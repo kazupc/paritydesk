@@ -1,16 +1,11 @@
 package profile
 
 import (
-	"context"
-
-	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/config"
 	"github.com/kazupc/paritydesk/internal/fsx"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
-	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/sources/configjson"
-	"github.com/kazupc/paritydesk/internal/state"
 )
 
 // IdentityReader reads a folder's identity; configjson.ReadIdentity in
@@ -41,20 +36,15 @@ type Scanner struct {
 	ListReplicas ReplicaLister
 }
 
-// Scan lists Claude and Claude-* directories (not symlinks) and identifies
-// each. It never writes.
-func (s Scanner) Scan(ctx context.Context) ([]Folder, error) {
-	return nil, pderr.ErrNotImplemented
-}
-
 // Binding is a profile resolved to its folder.
 type Binding struct {
 	Profile config.Profile
 	Folder  *Folder // nil if the folder is missing
 	// Replica is the profile's (account, org). Org comes from the single
-	// session directory of the recorded account, or from main.log when
-	// several exist; empty when unknown (per-org rows are then skipped,
-	// exit 32).
+	// session directory of the recorded account, or, for the active
+	// folder, from Hints.ActiveOrg when several exist; empty when unknown
+	// (per-org rows are then skipped, exit 32). A replica that differs from
+	// ProfileState.Replica makes BaseValid false (base miss).
 	Replica model.Replica
 	// BaseValid reports whether state's bases for this profile still match
 	// the folder (marker, file id, base hash).
@@ -71,14 +61,18 @@ type Resolution struct {
 	// OutsideSwitch is true when the active identity differs from state's
 	// recorded active profile (a switch made outside paritydesk; K21).
 	OutsideSwitch bool
+	// PendingAdd is set when root.PendingAdd is set and Claude/ holds no
+	// registered account: the folder (nil when Claude/ is missing) is
+	// accepted as the I1 exception for profile add instead of being an
+	// error. It is not listed in Unregistered.
+	PendingAdd *Folder
 }
 
-// Resolve binds every configured profile to a folder by identity and
-// checks markers against state. An alias whose folder holds a different
-// account gives *pderr.Error IdentityMismatch (exit 20); the message never
-// suggests signing out.
-func Resolve(cfg *config.Config, root *state.Root, folders []Folder) (*Resolution, error) {
-	return nil, pderr.ErrNotImplemented
+// Hints carry facts from outside the folders.
+type Hints struct {
+	// ActiveOrg is the org named by main.log (app.AppControl.ActiveOrg),
+	// empty when unknown. It applies to the active folder only.
+	ActiveOrg ids.OrgID
 }
 
 // NewMarker builds the marker written to a folder after apply (P7).
@@ -86,28 +80,8 @@ func NewMarker(alias ids.Alias, rep model.Replica, gen uint64, baseHash string) 
 	return model.Marker{Version: 1, Alias: alias, Replica: rep, Generation: gen, BaseHash: baseHash}
 }
 
-// ReadMarker reads and parses a folder's marker.
-func ReadMarker(fs fsx.Ops, folder string) (*model.Marker, error) {
-	return nil, pderr.ErrNotImplemented
-}
-
-// WriteMarker sets a folder's marker.
-func WriteMarker(fs fsx.Ops, folder string, m model.Marker) error {
-	return pderr.ErrNotImplemented
-}
-
 // ForeignTool is another account-switching tool found on this Mac.
 type ForeignTool struct {
 	Tool    string   `json:"tool"`
 	Folders []string `json:"folders,omitempty"` // folder names under the data root
 }
-
-// DetectForeign matches folders and home paths against manifest footprints.
-func DetectForeign(folders []Folder, home string, fps []compat.Footprint) ([]ForeignTool, error) {
-	return nil, pderr.ErrNotImplemented
-}
-
-// NativeMultiAccount reports signs of the app's own multi-account mode: a
-// change of the recorded account inside one folder's history, or the
-// manifest's main.log signal (checked by the caller).
-func NativeMultiAccount(ps *state.ProfileState, current ids.AccountID) bool { return false }

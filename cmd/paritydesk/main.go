@@ -12,8 +12,12 @@ import (
 )
 
 func main() {
-	// Interrupts cancel the context; phases stop at the next safe point and
-	// state intents make the rest recoverable.
+	// Interrupts (Ctrl-C, or SIGTERM from launchd at logout) cancel the
+	// context. The orchestrator checks it only at phase boundaries up to
+	// the P5 commit; from the P5 commit to P10, and on every abort,
+	// rollback and relaunch path, it works on context.WithoutCancel with
+	// its own timeout, so a signal never strands a half-applied run. State
+	// intents make anything else recoverable.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	code := cli.Execute(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
 	stop()

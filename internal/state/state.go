@@ -1,13 +1,14 @@
 package state
 
 import (
+	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/kazupc/paritydesk/internal/clock"
 	"github.com/kazupc/paritydesk/internal/fsx"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
-	"github.com/kazupc/paritydesk/internal/pderr"
 )
 
 // RootVersion is the root.json schema version.
@@ -18,8 +19,13 @@ type Ref string
 
 // ProfileState is what state remembers about one profile's folder.
 type ProfileState struct {
-	Alias   ids.Alias     `json:"alias"`
-	Replica model.Replica `json:"replica"`
+	Alias ids.Alias `json:"alias"`
+	// Replica is the profile's current (account, org); Replicas lists every
+	// replica seen in the folder. Bases are kept per replica, so a change
+	// of the active org is a base miss (union and confirmation), never a
+	// set of edits (D6, M7).
+	Replica  model.Replica   `json:"replica"`
+	Replicas []model.Replica `json:"replicas,omitempty"`
 	// FolderID and MarkerBase tie the bases to the physical folder (D4).
 	FolderID   fsx.FileID `json:"folder_id"`
 	MarkerBase string     `json:"marker_base"`
@@ -30,26 +36,40 @@ type ProfileState struct {
 	AccountHistory []ids.AccountID `json:"account_history,omitempty"`
 }
 
-// BaseKey identifies a base: one (profile, row).
+// BaseKey identifies a base, an overlay, tool stamps and contested
+// entries: one (profile, replica, row).
 type BaseKey struct {
-	Alias ids.Alias   `json:"alias"`
-	Row   model.RowID `json:"row"`
+	Alias   ids.Alias     `json:"alias"`
+	Replica model.Replica `json:"replica"`
+	Row     model.RowID   `json:"row"`
 }
 
 // IntentName names a recorded step of a run.
 type IntentName string
 
-// Intents, in phase order.
+// Intents. A run is closed in the same commit as its last step (P10 for
+// switch and sync), so there is no "committed" or "launched" intent;
+// launching and verifying happen after the run is closed.
 const (
-	IntentQuit      IntentName = "quit"      // P3
-	IntentPlanned   IntentName = "planned"   // P5
-	IntentBackedUp  IntentName = "backed_up" // P6
-	IntentApplied   IntentName = "applied"   // P7
-	IntentSwapping  IntentName = "swapping"  // P8, before renamex_np
-	IntentSwapped   IntentName = "swapped"   // P8, after
-	IntentParked    IntentName = "parked"    // P9
-	IntentCommitted IntentName = "committed" // P10
-	IntentLaunched  IntentName = "launched"  // P11
+	IntentQuit     IntentName = "quit"      // P3 (also the --allow-update quit), before the Apple Event
+	IntentPlanned  IntentName = "planned"   // P5
+	IntentBackedUp IntentName = "backed_up" // P6
+	IntentApplied  IntentName = "applied"   // P7
+	IntentSwapping IntentName = "swapping"  // P8, before renamex_np
+	IntentSwapped  IntentName = "swapped"   // P8, after
+	// IntentSwapBack: P8 post-swap check found an intruder; swapping back.
+	IntentSwapBack IntentName = "swap_back"
+	// The journaled two-rename fallback when RENAME_SWAP is unsupported:
+	// first Claude -> Claude-<S folder> (no Claude/ exists between the two
+	// steps), then Claude-<T folder> -> Claude.
+	IntentFallbackSParked IntentName = "fallback_s_parked"
+	IntentFallbackTPlaced IntentName = "fallback_t_placed"
+	IntentParked          IntentName = "parked" // P9
+	// IntentRestoring: rollback (RunRollback) is restoring a generation.
+	IntentRestoring IntentName = "restoring"
+	// IntentAddParked: profile add (RunAdd) moved Claude/ to the active
+	// profile's parked folder so the app starts on an empty folder.
+	IntentAddParked IntentName = "add_parked"
 )
 
 // Intent is one recorded step. Done is false between "before" and "after".
@@ -87,7 +107,24 @@ type Run struct {
 	PendingBases map[model.RowID]Ref `json:"pending_bases,omitempty"`
 	Intents      []Intent            `json:"intents"`
 	// QuitByUs records that paritydesk quit the app, so an abort relaunches.
+	// It is committed with the quit intent, before the Apple Event.
 	QuitByUs bool `json:"quit_by_us"`
+	// ConfirmedPlan is the hash of the plan the user confirmed outside the
+	// run (switch --confirmed-plan), for the log and result file.
+	ConfirmedPlan string `json:"confirmed_plan,omitempty"`
+}
+
+// PendingAdd records a profile add whose new account has not signed in
+// yet. This is the one documented exception to I1: until the sign-in,
+// Claude/ may be empty or unidentified. The next command that finds an
+// identity in Claude/ binds it to Alias (after confirmation) and clears
+// PendingAdd; `recover` can instead move the parked profile back.
+type PendingAdd struct {
+	Alias   ids.Alias `json:"alias"`
+	Managed bool      `json:"managed_by_org"`
+	// ParkedFrom is the profile whose folder was parked for the add.
+	ParkedFrom ids.Alias `json:"parked_from"`
+	Started    time.Time `json:"started"`
 }
 
 // Last returns the most recent intent, or nil.
@@ -114,12 +151,14 @@ type Root struct {
 	Active   ids.Alias                   `json:"active,omitempty"`
 	Previous ids.Alias                   `json:"previous,omitempty"`
 	Profiles map[ids.Alias]*ProfileState `json:"profiles"`
-	// Bases are per (profile, row); a missing entry means no valid base.
-	Bases     map[string]Ref             `json:"bases"` // key: BaseKey.String()
-	Canonical map[model.RowID]Ref        `json:"canonical"`
-	Overlays  map[string]Ref             `json:"overlays"` // key: BaseKey.String()
+	// Bases are per (profile, replica, row); a missing entry means no valid
+	// base.
+	Bases     map[string]Ref      `json:"bases"` // key: BaseKey.String()
+	Canonical map[model.RowID]Ref `json:"canonical"`
+	Overlays  map[string]Ref      `json:"overlays"` // key: BaseKey.String()
+	// Contested is keyed by ContestedKey(BaseKey, item key).
 	Contested map[string]model.Contested `json:"contested,omitempty"`
-	// ToolStamps are app-time values paritydesk wrote, per (profile,row).
+	// ToolStamps are app-time values paritydesk wrote, per BaseKey.String().
 	ToolStamps map[string]map[string]int64 `json:"tool_stamps,omitempty"`
 	// TombstoneLedger maps "row/key" to the aliases that have applied it;
 	// an entry is dropped only when every registered profile has (D9).
@@ -129,6 +168,9 @@ type Root struct {
 	// LastVerify is the outcome of the last P12, for status and the
 	// SessionStart hook.
 	LastVerify *VerifyRecord `json:"last_verify,omitempty"`
+	// PendingAdd is set between a profile add and the new account's first
+	// sign-in.
+	PendingAdd *PendingAdd `json:"pending_add,omitempty"`
 }
 
 // VerifyRecord is the stored outcome of a verify.
@@ -140,8 +182,13 @@ type VerifyRecord struct {
 	Focused bool          `json:"session_focused,omitempty"`
 }
 
-// String returns "alias/row".
-func (k BaseKey) String() string { return string(k.Alias) + "/" + string(k.Row) }
+// String returns "alias/account/org/row".
+func (k BaseKey) String() string {
+	return string(k.Alias) + "/" + k.Replica.Key() + "/" + string(k.Row)
+}
+
+// ContestedKey returns the Root.Contested key of one item.
+func ContestedKey(k BaseKey, item string) string { return k.String() + "/" + item }
 
 // NewRoot returns an empty root bound to dataRoot.
 func NewRoot(dataRoot string) *Root {
@@ -157,62 +204,41 @@ func NewRoot(dataRoot string) *Root {
 
 // Store reads and writes state.
 type Store struct {
-	dir   string
-	fs    fsx.Ops
-	clock clock.Clock
+	dir      string
+	lockFile string
+	fs       fsx.Ops
+	clock    clock.Clock
 }
 
-// Open returns a Store rooted at dir, creating it with mode 0700.
-func Open(dir string, fs fsx.Ops, clk clock.Clock) (*Store, error) {
-	return &Store{dir: dir, fs: fs, clock: clk}, nil
+// LockFile returns the run lock path for a data root:
+// <supportDir>/locks/<first 16 hex digits of sha256(dataRoot)>.lock. The
+// lock is keyed to the data root, not to the state directory, so two
+// invocations with different --state-dir values on the same data root
+// still exclude each other.
+func LockFile(supportDir, dataRoot string) string {
+	return filepath.Join(supportDir, "locks", model.HashBytes([]byte(filepath.Clean(dataRoot)))[:16]+".lock")
+}
+
+// Open returns a Store rooted at dir that locks lockFile (see LockFile).
+// It does not create anything: the state directory is created (0700) by
+// the first Commit and the locks directory by the first Lock, so read-only
+// commands never write.
+func Open(dir, lockFile string, fs fsx.Ops, clk clock.Clock) (*Store, error) {
+	switch {
+	case dir == "" || !filepath.IsAbs(dir):
+		return nil, fmt.Errorf("state: open: state directory must be an absolute path")
+	case lockFile == "" || !filepath.IsAbs(lockFile):
+		return nil, fmt.Errorf("state: open: lock file must be an absolute path")
+	case fs == nil || clk == nil:
+		return nil, fmt.Errorf("state: open: filesystem and clock are required")
+	}
+	for _, p := range []string{dir, lockFile} {
+		if err := fsx.CheckTestPath(p); err != nil {
+			return nil, fmt.Errorf("state: open: %w", err)
+		}
+	}
+	return &Store{dir: filepath.Clean(dir), lockFile: filepath.Clean(lockFile), fs: fs, clock: clk}, nil
 }
 
 // Dir returns the state directory.
 func (s *Store) Dir() string { return s.dir }
-
-// Load reads root.json. A missing file yields (nil, nil); a root written
-// by a newer binary is refused; older versions are migrated in memory
-// after keeping a pre-migration copy.
-func (s *Store) Load() (*Root, error) { return nil, pderr.ErrNotImplemented }
-
-// Commit atomically replaces root.json with r.
-func (s *Store) Commit(r *Root) error { return pderr.ErrNotImplemented }
-
-// Begin appends a not-done intent to r.Run and commits.
-func (s *Store) Begin(r *Root, name IntentName, data map[string]string) error {
-	return pderr.ErrNotImplemented
-}
-
-// Done marks the last intent named name as done and commits.
-func (s *Store) Done(r *Root, name IntentName) error { return pderr.ErrNotImplemented }
-
-// PutSnapshot stores a row snapshot as an object and returns its ref.
-// Secret items are stored with their hashed values only.
-func (s *Store) PutSnapshot(snap *model.RowSnapshot) (Ref, error) {
-	return "", pderr.ErrNotImplemented
-}
-
-// GetSnapshot loads a snapshot object. Unknown schema versions are migrated
-// or reported as invalid (the base is then treated as missing, M8).
-func (s *Store) GetSnapshot(ref Ref) (*model.RowSnapshot, error) {
-	return nil, pderr.ErrNotImplemented
-}
-
-// GC removes objects not referenced by r.
-func (s *Store) GC(r *Root) error { return pderr.ErrNotImplemented }
-
-// Lock is the held run lock.
-type Lock struct{ release func() error }
-
-// Release releases the lock.
-func (l *Lock) Release() error {
-	if l == nil || l.release == nil {
-		return nil
-	}
-	return l.release()
-}
-
-// Lock takes run.lock (flock on a 0600 file next to the state dir). A held
-// lock gives *pderr.Error with code RunLockBusy. The artifacts commands of
-// later versions share this lock.
-func (s *Store) Lock() (*Lock, error) { return nil, pderr.ErrNotImplemented }

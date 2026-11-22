@@ -1,0 +1,34 @@
+usage: paritydesk <command> [flags]
+
+Switch the Claude desktop app between accounts and keep everything else in step.
+
+commands:
+  backups      Prune or purge backup generations
+  config       Show, locate or validate the config file
+  doctor       Check the installation, folders and app compatibility
+  generations  List or show backup generations
+  help         Show help for a command
+  history      List past runs
+  init         Set up paritydesk for the account in the app now
+  log          Show the log of a run
+  plan         Preview what a switch would change (approximate)
+  profile      Manage profiles
+  rebase       Forget every sync base; the next run is a first sync
+  recover      Finish or undo an interrupted run
+  rollback     Restore a generation without overwriting newer work
+  status       Show the active profile and anything pending
+  switch       Switch to another profile
+  sync         Re-apply the shared state to the active profile
+  uninstall    Remove paritydesk's state; every data folder is kept
+  verify       Check that the app kept what the last run wrote
+  version      Print the version
+
+global flags:
+  --app-support-dir string     paritydesk support directory
+  --ascii                      ASCII only
+  --config string              config file (also PARITYDESK_CONFIG)
+  --json                       print one JSON document
+  --no-color                   no colour (also NO_COLOR, TERM=dumb)
+  --plain                      plain lines, no tables or spinners
+  --read-only                  plan only; never write (also PARITYDESK_READONLY=1)
+  --state-dir string           state directory (also PARITYDESK_STATE_DIR)

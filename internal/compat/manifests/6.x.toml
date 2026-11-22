@@ -1,15 +1,430 @@
 # Compatibility manifest for Claude desktop 6.x.
 #
-# Placeholder written with the skeleton. Work item WI-3 fills in every row,
-# probe, classification entry and signal from docs/dev/implementation-plan.md
-# (which restates design section 7 and ADR 0003). Values here are key names
-# and file names as they appear on disk; never byte offsets or identifiers
-# from the app bundle.
+# Values are key names, file names and log text as they appear on disk on a
+# tested Mac (ADR 0003); never byte offsets or identifiers from the app
+# bundle. Templates: {acct} and {org} are the replica's account and
+# organization UUIDs. Session-scoped files are relative to
+# claude-code-sessions/{acct}/{org}; other files to the data folder.
+#
+# Field lists (fields.<role>) are the only place row modules learn on-disk
+# field names. An empty list means "not observed yet": the module falls
+# back to its default rule.
 
 name = "6.x"
 min_version = "6.0.0"
 max_version = "6.999999.999"
-tested = []
+tested = ["6.28899.2"]
 known_bad = []
 ls_backend = "leveldb"
 compressions = [0, 1]
+
+# Folder names under the data root that a profile may never use.
+reserved_folders = ["Claude", "Claude-3p"]
+
+# The app promotes these files at startup without validating them (D30);
+# paritydesk never creates or writes a file whose name matches.
+tmp_recovery_globs = ["local_*.json.tmp"]
+
+# ---------------------------------------------------------------- rows
+
+[[row]]
+row = "sessions"
+write_path = "off"
+files = ["local_*.json", "deleted_*", "archived-sessions.idx"]
+session_scoped = true
+per_org = true
+probes = ["sessions-dir", "sessions-records", "sessions-idx-version"]
+[row.fields]
+per_field = ["title", "isArchived", "envScopeId", "startedFromEnvironmentId", "model"]
+account_bound = ["bridgeSessionIds", "chromeTabGroupId", "enabledMcpTools", "remoteMcpServersConfig", "toolSurfaceSnapshot"]
+run_state = ["interruptedByQuitAt"]
+max_time = ["lastActivityAt", "lastFocusedAt"]
+parent = []
+# Fields holding environment ids, rewritten through the preset remap (row 8).
+env_ref = ["envScopeId", "startedFromEnvironmentId"]
+# The permission-mode field, carried only when the target permits the mode.
+permission = ["permissionMode"]
+# The field sync.exclude project-path globs are matched against. Assumed
+# name; confirm read-only on a tested Mac before release.
+project_path = ["cwd"]
+# A tombstone's time: this member of its content when present, else the
+# file's mtime (open question 3 of the plan).
+tombstone_time = ["deletedAt"]
+
+[[row]]
+row = "tasks"
+write_path = "off"
+files = ["backlog/tasks.json", "scheduled-tasks.json"]
+session_scoped = true
+per_org = true
+probes = ["tasks-backlog", "tasks-scheduled"]
+[row.fields]
+max_time = []
+
+[[row]]
+row = "waiting-input"
+write_path = "off"
+files = ["waiting-input"]
+session_scoped = true
+per_org = true
+
+[[row]]
+row = "environments"
+write_path = "off"
+ls_keys = ["persisted.ccd-session-presets.{acct}", "persisted.ccd-started-environments"]
+files = ["ccd-session-presets.json"]
+probes = ["presets-wrapper", "presets-by-account", "started-environments", "started-environments-version"]
+[row.limits]
+max_presets = 200
+max_bytes = 524288
+[row.fields]
+per_field = ["settings"]
+max_time = ["updatedAt"]
+# The preset name used for the unique same-name fallback match (M5).
+name = ["name"]
+secret = ["settings.env", "env"]
+
+[[row]]
+row = "group-order"
+write_path = "off-verify"
+contested = true
+ls_keys = ["LSS-persisted.code-projects-order.{acct}"]
+mirror_file = "claude_desktop_config.json"
+mirror_paths = [["preferences", "epitaxyPrefs", "code-projects-order.{acct}"]]
+probes = ["group-order-mirror", "group-order-ls"]
+
+[[row]]
+row = "sidebar-view"
+write_path = "off-verify"
+contested = true
+per_org = true
+ls_keys = ["LSS-persisted.dframe-code-sections", "dframe-store"]
+mirror_file = "claude_desktop_config.json"
+mirror_paths = [["preferences", "epitaxyPrefs", "dframe-code-sections", "{acct}/{org}"]]
+# 0: the store's expected version has not been recorded on a tested Mac;
+# the probe then checks the wrapper's shape only.
+persist_version = 0
+probes = ["sections-mirror", "sections-ls", "sidebar-store-key", "sidebar-store-version"]
+
+[[row]]
+row = "pinned-order"
+write_path = "off-verify"
+contested = true
+ls_keys = ["LSS-persisted.dframe-local-slice", "dframe-store"]
+mirror_file = "claude_desktop_config.json"
+mirror_paths = [["preferences", "epitaxyPrefs", "dframe-local-slice", "pinnedOrder"]]
+persist_version = 0
+probes = ["pinned-mirror", "pinned-ls", "pinned-store-version"]
+
+[[row]]
+row = "app-prefs"
+write_path = "off"
+files = ["claude_desktop_config.json"]
+probes = ["app-prefs"]
+
+[[row]]
+row = "window-state"
+write_path = "off"
+files = ["window-state.json"]
+probes = ["window-state"]
+
+[[row]]
+row = "mcp-servers"
+write_path = "off"
+files = ["claude_desktop_config.json"]
+probes = ["mcp-servers"]
+[row.fields]
+secret = ["env"]
+
+[[row]]
+row = "worktrees"
+write_path = "off"
+files = ["git-worktrees.json"]
+probes = ["worktrees"]
+
+# ---------------------------------------------------------------- probes
+#
+# Probes read names and shapes only. file, dir and ls-key need the target
+# to exist. json-shape, ls-shape, persist-version and idx-version pass when
+# the target or path is absent and fail when it is present with another
+# shape. A target with "*" checks every matching file. config.json is read
+# by a top-level span scan only.
+
+[[probe]]
+id = "identity-config"
+kind = "file"
+target = "config.json"
+critical = true
+
+[[probe]]
+id = "identity-account"
+kind = "json-shape"
+target = "config.json"
+path = ["lastKnownAccountUuid"]
+type = "string"
+critical = true
+
+[[probe]]
+id = "sessions-dir"
+kind = "dir"
+target = "claude-code-sessions/{acct}/{org}"
+critical = true
+
+[[probe]]
+id = "sessions-records"
+kind = "json-shape"
+target = "claude-code-sessions/{acct}/{org}/local_*.json"
+path = []
+type = "object"
+critical = true
+
+[[probe]]
+id = "sessions-idx-version"
+kind = "idx-version"
+target = "claude-code-sessions/{acct}/{org}/archived-sessions.idx"
+version = 1
+critical = true
+
+[[probe]]
+id = "tasks-backlog"
+row = "tasks"
+kind = "json-shape"
+target = "claude-code-sessions/{acct}/{org}/backlog/tasks.json"
+path = ["items"]
+type = "array"
+
+[[probe]]
+id = "tasks-scheduled"
+row = "tasks"
+kind = "json-shape"
+target = "claude-code-sessions/{acct}/{org}/scheduled-tasks.json"
+path = ["scheduledTasks"]
+type = "array"
+
+[[probe]]
+id = "presets-wrapper"
+row = "environments"
+kind = "ls-shape"
+target = "persisted.ccd-session-presets.{acct}"
+path = ["state", "presets"]
+type = "array"
+
+[[probe]]
+id = "presets-by-account"
+row = "environments"
+kind = "json-shape"
+target = "ccd-session-presets.json"
+path = ["byAccount"]
+type = "object"
+
+[[probe]]
+id = "started-environments"
+row = "environments"
+kind = "ls-shape"
+target = "persisted.ccd-started-environments"
+path = ["state", "bySessionId"]
+type = "object"
+
+[[probe]]
+id = "started-environments-version"
+row = "environments"
+kind = "persist-version"
+target = "persisted.ccd-started-environments"
+version = 0
+
+[[probe]]
+id = "group-order-mirror"
+row = "group-order"
+kind = "json-shape"
+target = "claude_desktop_config.json"
+path = ["preferences", "epitaxyPrefs", "code-projects-order.{acct}"]
+type = "array"
+
+[[probe]]
+id = "group-order-ls"
+row = "group-order"
+kind = "ls-shape"
+target = "LSS-persisted.code-projects-order.{acct}"
+path = ["value"]
+type = "array"
+
+[[probe]]
+id = "sections-mirror"
+row = "sidebar-view"
+kind = "json-shape"
+target = "claude_desktop_config.json"
+path = ["preferences", "epitaxyPrefs", "dframe-code-sections", "{acct}/{org}"]
+type = "object"
+
+[[probe]]
+id = "sections-ls"
+row = "sidebar-view"
+kind = "ls-shape"
+target = "LSS-persisted.dframe-code-sections"
+path = ["value"]
+type = "object"
+
+[[probe]]
+id = "sidebar-store-key"
+row = "sidebar-view"
+kind = "ls-key"
+target = "dframe-store"
+
+[[probe]]
+id = "sidebar-store-version"
+row = "sidebar-view"
+kind = "persist-version"
+target = "dframe-store"
+version = 0
+
+[[probe]]
+id = "pinned-mirror"
+row = "pinned-order"
+kind = "json-shape"
+target = "claude_desktop_config.json"
+path = ["preferences", "epitaxyPrefs", "dframe-local-slice", "pinnedOrder"]
+type = "array"
+
+[[probe]]
+id = "pinned-ls"
+row = "pinned-order"
+kind = "ls-shape"
+target = "LSS-persisted.dframe-local-slice"
+path = ["value", "pinnedOrder"]
+type = "array"
+
+[[probe]]
+id = "pinned-store-version"
+row = "pinned-order"
+kind = "persist-version"
+target = "dframe-store"
+version = 0
+
+[[probe]]
+id = "app-prefs"
+row = "app-prefs"
+kind = "json-shape"
+target = "claude_desktop_config.json"
+path = ["preferences"]
+type = "object"
+
+[[probe]]
+id = "mcp-servers"
+row = "mcp-servers"
+kind = "json-shape"
+target = "claude_desktop_config.json"
+path = ["mcpServers"]
+type = "object"
+
+[[probe]]
+id = "worktrees"
+row = "worktrees"
+kind = "json-shape"
+target = "git-worktrees.json"
+path = ["worktrees"]
+type = "object"
+
+[[probe]]
+id = "window-state"
+row = "window-state"
+kind = "json-shape"
+target = "window-state.json"
+path = []
+type = "object"
+
+# ---------------------------------------------------------------- classification
+#
+# Top-level entries of a data folder (globs, slash-separated). The fixed
+# floor in package denylist applies on top of never_touched.
+
+[classification]
+never_touched = [
+  "config.json",
+  "Cookies",
+  "Cookies-journal",
+  "Network/**",
+  "Login Data",
+  "Login Data-journal",
+  "Login Data For Account",
+  "Login Data For Account-journal",
+  "Web Data",
+  "Web Data-journal",
+  "Trust Tokens",
+  "Trust Tokens-journal",
+  "Local State",
+  "Session Storage/**",
+  "IndexedDB/**",
+  "ant-did",
+  "ant-device-registry.json",
+  "ccd-ids.json",
+  "remote-control-state.json",
+  "plan-usage-history.json",
+  "Partitions/**",
+]
+never_until_classified = [
+  "ssh-remote-server-state.json",
+  "chrome-import-sites.json",
+  "cowork-enabled-cli-ops.json",
+  "claude-code-spare/**",
+]
+cache = [
+  "Cache/**",
+  "Code Cache/**",
+  "GPUCache/**",
+  "DawnGraphiteCache/**",
+  "DawnWebGPUCache/**",
+  "Crashpad/**",
+  "Shared Dictionary/**",
+  "blob_storage/**",
+  "plugin-list/**",
+  "spaces-present/**",
+  "local-agent-mode-sessions/skills-plugin/**",
+]
+synced = [
+  "claude-code-sessions/**",
+  "Local Storage/**",
+  "claude_desktop_config.json",
+  "ccd-session-presets.json",
+  "git-worktrees.json",
+  "window-state.json",
+]
+other = [
+  "local-agent-mode-sessions/**",
+  "mcp-user-tool-toggles.json",
+  "Preferences",
+  "vm_bundles/**",
+  "claude-code/**",
+]
+
+# ---------------------------------------------------------------- app preferences
+#
+# Every key under preferences in claude_desktop_config.json that the
+# app-prefs allow-list may name. ui_state and other may be synced;
+# security and internal_state are rejected by config validation.
+
+[pref_tags]
+sidebarMode = "ui_state"
+keepAwakeEnabled = "other"
+ccAutoArchiveInactiveDays = "other"
+ccAutoArchiveOnPrClose = "internal_state"
+coworkModelAutoFallbackByAccount = "internal_state"
+epitaxyPrefs = "internal_state"
+
+# ---------------------------------------------------------------- main.log signals
+#
+# Go regexps over main.log lines, only from text observed on a tested Mac
+# (ADR 0003). {session} is replaced by the quoted, validated local session
+# id. Empty means not observed: callers fall back.
+
+[signals]
+quit_vetoed = 'beforeQuit: vetoed by before-quit interceptor'
+turn_started = ''
+turn_ended = '\[Stop hook\] Query completed for session {session}\b'
+app_started = ''
+focused_session = 'setFocusedSession: sessionId={session}\b'
+bridge_connected = 'Chrome extension connected to bridge'
+pairing_disabled = ''
+unclean_exit = 'Previous run did not exit cleanly'
+login_required = ''
+active_org = ''
+native_multi_account = ''
