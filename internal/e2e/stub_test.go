@@ -322,11 +322,12 @@ func (h *harness) newWorld(t *testing.T, name, quitTimeout string, stub stubSett
 	return w
 }
 
-// initWorld registers a (the account in Claude) and adopts b.
+// initWorld registers a (the account in Claude) and adopts b. Both are
+// unmanaged: there is no terminal to ask.
 func (h *harness) initWorld(t *testing.T, w *world) {
 	t.Helper()
-	h.mustRun(t, w, []string{"init"}, "--alias", "a")
-	h.mustRun(t, w, []string{"profile", "adopt"}, "b", "Claude-b")
+	h.mustRun(t, w, []string{"init"}, "--unmanaged", "--alias", "a")
+	h.mustRun(t, w, []string{"profile", "adopt"}, "--unmanaged", "b", "Claude-b")
 	h.checkConsistent(t, w, "a")
 }
 
