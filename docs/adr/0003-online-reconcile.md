@@ -17,6 +17,7 @@ The design (D12, D26) says no capability claim goes into the README until a spik
 | S4 | Is a change made in the app on disk when the app quits? | **The config mirror is written at once; Local Storage later.** `set_view` wrote `claude_desktop_config.json` within a second; Local Storage still held the old value 4 s later. After an unclean exit (SIGTERM), the next launch rebuilt the Local Storage value from the config mirror. Flush-on-quit itself was not isolated. | Snapshots, `Config file written` in main.log |
 | S10 | Which `claude://` link reopens a given session? | **`claude://claude.ai/epitaxy/<local session id>`**, warm and cold (3 of 3), confirmed by `setFocusedSession` in main.log. `claude://code/continue?session=…` did nothing. On its own the app focuses no session after launch. | main.log |
 | S17 | Does the app keep an extended attribute on its data folder? | **Yes**, across two restarts. | `xattr -p` after each phase |
+| S18 | With one Chrome profile per Claude account, each running Claude in Chrome signed in to that account, does Claude in Chrome work on both accounts after a folder-swap switch? | **Yes.** On each account the extension of the matching profile connected to the bridge, and a tab was opened, navigated and closed through it. The switch between the two checks was a clean Apple Event quit, the folder swap, and a relaunch with `open -b`. | `list_connected_browsers`, a browser round trip on each account |
 
 ## Findings that were not spikes
 
@@ -34,7 +35,7 @@ The design (D12, D26) says no capability claim goes into the README until a spik
 - **Preflight:** refuse to switch while a ShipIt update is staged, unless `--allow-update` is given, in which case wait for the install and re-run the shape probes on the new version.
 - **Relaunch (P11):** reopen the invoking session with `claude://claude.ai/epitaxy/<id>`, rebuilt from a validated id (`^local_[0-9a-f-]{36}$`), and confirm it with `setFocusedSession` in main.log.
 - **Identity marker (S17):** the xattr marker is used.
-- **Claude in Chrome (G1):** paritydesk cannot keep one extension signed in to two accounts. The proposed setup is **one Chrome profile per Claude account**, each with Claude in Chrome signed in to that account and kept open. This is not yet tested (spike S18). `doctor` reports whether an extension connected to the active account's bridge after the last launch (`Chrome extension connected to bridge` in main.log) and explains the setup when it did not.
+- **Claude in Chrome (G1):** paritydesk cannot keep one extension signed in to two accounts. The supported setup is **one Chrome profile per Claude account**, each with Claude in Chrome signed in to that account and kept open (S18 passed). The README and `init` explain it. `doctor` reports whether an extension connected to the active account's bridge after the last launch (`Chrome extension connected to bridge` in main.log) and explains the setup when it did not.
 
 ## Not yet run
 
