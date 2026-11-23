@@ -230,11 +230,12 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 
 ### Deferred to v0.2
 
-- Artifact sync (beta) and `/paritydesk:artifacts`: they need spike S5
-  (do hooks fire for the app-injected tools?).
+- Artifact sync (beta) and `/paritydesk:artifacts`. Spike S5 showed that
+  hooks fire for the tools the app injects, so nothing blocks them now.
 - Pins through the app's own tools: v0.1 carries pin order offline.
 - The in-app write path for sections and group-by, online reconcile, the
-  capture phase, and the PreToolUse and PostToolUse hooks (spike S5).
+  capture phase, and the PreToolUse and PostToolUse hooks (unblocked by
+  spike S5).
 - Collapsed sidebar groups, which the first spike round did not cover.
 - Seed-only legacy sidebar keys.
 - A native file-descriptor scan; v0.1 uses `lsof` with fixed arguments.

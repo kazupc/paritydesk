@@ -35,9 +35,9 @@ opens a network connection.
 
 | Item | Why it waits |
 |---|---|
-| Artifact sync (beta), `/paritydesk:artifacts` | Gated on spike S5 (do hooks fire for the app-injected tools?); the guard and capture depend on it. Decision recorded here. |
-| Pins through the app's tools (capture, `set_pinned`) | S6 is run (one approval per call for another session); still needs S5. Which sessions are pinned lives in IndexedDB (S14), so v0.1 carries pin order only (pinned-order row) |
-| ON write path for sections and group-by, online reconcile (P13), P1 capture, PreToolUse guard, PostToolUse hook | Needs S5; v0.1 carries sidebar-view through OFF + verify |
+| Artifact sync (beta), `/paritydesk:artifacts` | Was gated on spike S5, which passed: hooks fire for the app-injected tools and a PreToolUse deny stops them. Scheduled for v0.2. |
+| Pins through the app's tools (capture, `set_pinned`) | S5 and S6 are run (hooks fire; one approval per call for another session). Which sessions are pinned lives in IndexedDB (S14), so v0.1 carries pin order only (pinned-order row) |
+| ON write path for sections and group-by, online reconcile (P13), P1 capture, PreToolUse guard, PostToolUse hook | S5 passed, so these are unblocked for v0.2; v0.1 carries sidebar-view through OFF + verify |
 | Collapsed groups | Not covered by the first S1 round |
 | Seed-only legacy sidebar keys | Read by the app only for unseeded folders; no effect on existing ones |
 | Native libproc fd scan | The fixed-argv `lsof` path is correct, only slower |

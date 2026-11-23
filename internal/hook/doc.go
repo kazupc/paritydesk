@@ -6,5 +6,5 @@
 // when a recover is needed or the last verify found drift or a sign-in,
 // stays silent outside the desktop app, and never fails the session (exit
 // 0 on every error). PreToolUse (the guard) and PostToolUse (captures) are
-// v0.2, after spike S5.
+// v0.2; spike S5 showed both fire for the tools the app injects.
 package hook
