@@ -70,8 +70,26 @@ func TestEmbeddedManifest(t *testing.T) {
 	if len(sess.Fields["tombstone_time"]) != 0 {
 		t.Error("a tombstone's content is a bare number; tombstone_time must be empty")
 	}
-	if contains(sess.Fields["run_state"], "interruptedByQuitAt") {
-		t.Error("run_state lists a field that was never observed")
+	// Spike S15: the app stamps these at quit and resumes the turn by
+	// itself on next open, so they must never be carried to an account.
+	for _, f := range []string{"interruptedByQuitAt", "interruptedUnseenResume", "interruptedByQuitFor",
+		"cycleClosedAtQuit", "armedWorkAtQuit", "cutTurn", "cutTurnChain"} {
+		if !contains(sess.Fields["resume_mark"], f) {
+			t.Errorf("resume_mark lacks %s", f)
+		}
+	}
+	for _, f := range []string{"interruptedAwaitingPerson", "remoteControlLiveAtUpdateQuit", "stoppedUntilPersonSends",
+		"autoSendsPausedAfterDelete", "isStarred"} {
+		if !contains(sess.Fields["run_state"], f) {
+			t.Errorf("run_state lacks %s", f)
+		}
+	}
+	for _, f := range sess.Fields["resume_mark"] {
+		for role, l := range sess.Fields {
+			if role != "resume_mark" && contains(l, f) {
+				t.Errorf("resume mark %s is also listed in %s", f, role)
+			}
+		}
 	}
 	for _, f := range []string{"chromePermissionMode", "cuAllowedApps", "cuGrantFlags", "sessionPermissionUpdates", "alwaysAllowedReasons",
 		"remoteControlUserEnabled", "artifactsMcpVouchedCalls"} {

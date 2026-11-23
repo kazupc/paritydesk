@@ -36,7 +36,7 @@ opens a network connection.
 | Item | Why it waits |
 |---|---|
 | Artifact sync (beta), `/paritydesk:artifacts` | Gated on spike S5 (do hooks fire for the app-injected tools?); the guard and capture depend on it. Decision recorded here. |
-| Pins through the app's tools (capture, `set_pinned`) | Needs S5 and S6; v0.1 carries pin order offline (pinned-order row) |
+| Pins through the app's tools (capture, `set_pinned`) | S6 is run (one approval per call for another session); still needs S5. Which sessions are pinned lives in IndexedDB (S14), so v0.1 carries pin order only (pinned-order row) |
 | ON write path for sections and group-by, online reconcile (P13), P1 capture, PreToolUse guard, PostToolUse hook | Needs S5; v0.1 carries sidebar-view through OFF + verify |
 | Collapsed groups | Not covered by the first S1 round |
 | Seed-only legacy sidebar keys | Read by the app only for unseeded folders; no effect on existing ones |
@@ -520,10 +520,14 @@ kind, then `recover`, then assert I1–I5). WI-9 and WI-10 (section 1) follow.
    by [ADR 0004](../adr/0004-data-shape-survey.md): on app 6.x a tombstone
    file holds a bare epoch-ms number; anything else falls back to the
    file's mtime.
-4. RENAME_SWAP on FileVault and firmlinked volumes (S7); the journaled
-   two-rename fallback ships either way.
+4. RENAME_SWAP on FileVault and firmlinked volumes (S7). Settled: it
+   works on APFS with FileVault, through the firmlinked path too
+   ([ADR 0003](../adr/0003-online-reconcile.md), second round). The
+   journaled two-rename fallback ships for other volumes.
 5. What the app's worktree sweep does with directories registered only in
-   the other folder (S13); the loss guard ships either way.
+   the other folder (S13). Settled: it can remove a clean worktree it does
+   not know by name, so the merged registry and session records are what
+   protect them. The loss guard ships either way.
 6. Format of the installed bundle's Info.plist and the updater state path
    on current versions; confirmed by a read-only check on a real Mac
    before release.

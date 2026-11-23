@@ -18,6 +18,7 @@ const (
 	RoleAccountBound = "account_bound" // fields kept from the target (D10)
 	RoleGrant        = "grant"         // sessions: security grants, never carried between accounts
 	RoleRunState     = "run_state"     // fields never carried (D8, H11)
+	RoleResumeMark   = "resume_mark"   // sessions: the app's quit-resume marks (S15)
 	RoleMaxTime      = "max_time"      // fields that take the maximum
 	RoleParent       = "parent"        // dotted paths naming a family parent key
 	RoleWorktree     = "worktree"      // sessions: fields that move together as one worktree
@@ -111,6 +112,10 @@ type keyedSpec struct {
 	fixup func(m *merger) error
 	// transform adjusts a Desired item for the entering replica.
 	transform func(key string, d model.Item, cur *model.Item) (model.Item, []model.Change, error)
+	// ignored lists top-level fields that transform keeps from (or clears
+	// for) each replica. A difference only in them is never a conflict:
+	// no side's value is lost, because each replica keeps its own.
+	ignored []string
 }
 
 // sideView is one side's harvested state, prepared for merging.
@@ -478,15 +483,28 @@ func (m *merger) addConflict(k string, winner merge.Side, loserHash, reason stri
 // replaced when that side had not seen it (it differs from the side's
 // base), so the value is kept in the conflict list.
 func (m *merger) canonicalConflict(k string, c model.Item, res *model.Item, sv merge.Version, side merge.Side) {
-	if res != nil && res.Hash == c.Hash {
+	if res != nil && m.same(*res, c) {
 		return
 	}
-	if sv.Base != nil && sv.Base.Hash == c.Hash {
+	if sv.Base != nil && m.same(*sv.Base, c) {
 		return
 	}
 	m.conflicts = append(m.conflicts, model.Conflict{
 		Row: m.spec.row, Key: k, Winner: m.alias(side), LoserHash: c.Hash, Reason: reasonCanonical,
 	})
+}
+
+// same reports whether a and b are equal once the spec's ignored fields
+// are removed.
+func (m *merger) same(a, b model.Item) bool {
+	if a.Hash == b.Hash {
+		return true
+	}
+	if len(m.spec.ignored) == 0 {
+		return false
+	}
+	as, bs := strip(a.Value, m.spec.ignored), strip(b.Value, m.spec.ignored)
+	return as != nil && bs != nil && sameJSON(as, true, bs, true)
 }
 
 // setCanon stores the decision for k and returns the tombstone recorded

@@ -487,3 +487,104 @@ func TestSessionsWorktreeGroup(t *testing.T) {
 		})
 	}
 }
+
+func resumePolicy() Policy {
+	p := sessPolicy()
+	p.Fields["resume_mark"] = []string{"interruptedByQuitAt", "cutTurn"}
+	p.Fields[RoleRunState] = append(p.Fields[RoleRunState], "isStarred")
+	return p
+}
+
+// Spike S15: the app resumes a turn by itself when a session carries a
+// quit-resume mark, so a mark never crosses accounts and the target's own
+// mark goes once the other account moved the session on.
+func TestSessionsResumeMarks(t *testing.T) {
+	marks := `"interruptedByQuitAt":1000,"cutTurn":{"at":1},"isStarred":true`
+	t.Run("leaving side moved on", func(t *testing.T) {
+		newRec := rec(t, 4, marks, 50)
+		targetOwn := rec(t, 5, `"title":"x",`+marks, 10)
+		leavingNewer := rec(t, 5, `"title":"y","interruptedByQuitAt":2000`, 70)
+		in := input(model.RowSessions,
+			snap(model.RowSessions, newRec, leavingNewer), snap(model.RowSessions, targetOwn),
+			snap(model.RowSessions, targetOwn), snap(model.RowSessions, targetOwn),
+			snap(model.RowSessions, targetOwn), resumePolicy())
+		out := mustMerge(t, model.RowSessions, in)
+		for _, f := range []string{"interruptedByQuitAt", "cutTurn", "isStarred"} {
+			if got := field(t, out.Desired.Items[fakeSession(4)], f); got != nil {
+				t.Errorf("new copy carries %s = %v", f, got)
+			}
+		}
+		known := out.Desired.Items[fakeSession(5)]
+		if field(t, known, "title") != "y" {
+			t.Fatalf("leaving edit not carried: %s", known.Value)
+		}
+		for _, f := range []string{"interruptedByQuitAt", "cutTurn"} {
+			if got := field(t, known, f); got != nil {
+				t.Errorf("resume mark %s = %v survived a newer record", f, got)
+			}
+		}
+		if field(t, known, "isStarred") != true {
+			t.Errorf("isStarred not kept from the target: %s", known.Value)
+		}
+	})
+	t.Run("target record is the newest", func(t *testing.T) {
+		old := rec(t, 5, `"title":"x"`, 10)
+		targetNewer := rec(t, 5, `"title":"z",`+marks, 80)
+		in := input(model.RowSessions,
+			snap(model.RowSessions, old), snap(model.RowSessions, old),
+			snap(model.RowSessions, targetNewer), snap(model.RowSessions, old),
+			snap(model.RowSessions, old), resumePolicy())
+		out := mustMerge(t, model.RowSessions, in)
+		known := out.Desired.Items[fakeSession(5)]
+		if field(t, known, "interruptedByQuitAt") != float64(1000) || field(t, known, "cutTurn") == nil {
+			t.Fatalf("target's own current mark dropped: %s", known.Value)
+		}
+	})
+}
+
+// Fields each replica keeps for itself (here isStarred) never make a
+// conflict: neither side's value is lost.
+func TestSessionsKeptFieldsNoConflict(t *testing.T) {
+	t.Run("canonical differs only in a kept field", func(t *testing.T) {
+		canon := rec(t, 5, `"title":"x","isStarred":true`, 10)
+		written := rec(t, 5, `"title":"x"`, 10)
+		edited := rec(t, 5, `"title":"y"`, 20)
+		in := input(model.RowSessions,
+			snap(model.RowSessions, edited), snap(model.RowSessions, written),
+			snap(model.RowSessions, canon), snap(model.RowSessions, canon),
+			snap(model.RowSessions, canon), resumePolicy())
+		out := mustMerge(t, model.RowSessions, in)
+		if len(out.Conflicts) != 0 {
+			t.Fatalf("conflicts %+v", out.Conflicts)
+		}
+		if field(t, out.Desired.Items[fakeSession(5)], "title") != "y" {
+			t.Fatal("edit not carried")
+		}
+	})
+	t.Run("both sides changed a kept field", func(t *testing.T) {
+		base := rec(t, 5, `"title":"x"`, 10)
+		leaving := rec(t, 5, `"title":"x","isStarred":true`, 15)
+		entering := rec(t, 5, `"title":"z","isStarred":false`, 30)
+		in := input(model.RowSessions,
+			snap(model.RowSessions, leaving), snap(model.RowSessions, base),
+			snap(model.RowSessions, entering), snap(model.RowSessions, base),
+			snap(model.RowSessions, base), resumePolicy())
+		out := mustMerge(t, model.RowSessions, in)
+		if len(out.Conflicts) != 0 {
+			t.Fatalf("conflicts %+v", out.Conflicts)
+		}
+	})
+	t.Run("a real lost edit is still a conflict", func(t *testing.T) {
+		base := rec(t, 5, `"title":"x"`, 10)
+		leaving := rec(t, 5, `"title":"x","note":"a"`, 15)
+		entering := rec(t, 5, `"title":"z","note":"b"`, 30)
+		in := input(model.RowSessions,
+			snap(model.RowSessions, leaving), snap(model.RowSessions, base),
+			snap(model.RowSessions, entering), snap(model.RowSessions, base),
+			snap(model.RowSessions, base), resumePolicy())
+		out := mustMerge(t, model.RowSessions, in)
+		if len(out.Conflicts) == 0 {
+			t.Fatal("a field both sides changed outside the merged lists made no conflict")
+		}
+	})
+}

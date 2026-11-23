@@ -107,9 +107,16 @@ the folder swap (P8), parking the leaving folder (P9), one state commit
 | Id | Question | Status |
 |---|---|---|
 | S1 | Do values written while the app is stopped survive the next launch? | Run: they do when written to Local Storage and the config mirror together. |
+| S2 | Does a sync-pending marker make the app push instead of pull? | Run: yes, without a conflict check; v0.1 keeps writing after launch and verifying. |
 | S3 | Does a launchd job started from a Code session survive the quit and quit the app? | Run: yes. |
 | S4 | When does the app write a change to disk? | Run: the config mirror at once, Local Storage later. |
 | S5 | Do hooks fire for the app-injected tools? | Not run; artifact sync and the in-app write path wait for it (v0.2). |
+| S6 | Does `set_pinned` need one approval per call? | Run: yes, for another session in default mode. |
+| S7 | Does `RENAME_SWAP` work on the user's volume? | Run: yes, on APFS with FileVault. |
 | S10 | Which link reopens a given session? | Run: the session link with the local session id. |
+| S13 | Can one account's worktree sweep delete the other's worktrees? | Run: only worktrees it does not know by name; the merged registry and session records cover them. |
+| S14 | Can pinned sessions be read offline? | Run: yes, from a copy of IndexedDB. |
+| S15 | Which mark continues a turn cut off by a quit? | Run: `interruptedByQuitAt` and related fields; never carried, and dropped from the target once the other account moved the session on. |
+| S16 | Are the token cache's entry names plaintext? | Run: no, the cache is one encrypted string. |
 | S17 | Does the app keep an extended attribute on its data folder? | Run: yes. |
 | S18 | Does Claude in Chrome work on every account with one Chrome profile per account? | Run: yes. |

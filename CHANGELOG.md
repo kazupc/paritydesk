@@ -102,6 +102,16 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 
 ### Changed
 
+- Session records never carry the app's quit-resume marks
+  (`interruptedByQuitAt` and the fields read with it, new manifest role
+  `resume_mark`) or the send-hold fields to another account, and keep the
+  target folder's own `isStarred` (spikes S14 and S15). Carried over, the
+  marks would make the app resume one account's turn under the other by
+  itself. The target's own marks are dropped once the other account moved
+  the session on, so a finished turn is not resumed.
+- A difference only in fields each folder keeps for itself (run state,
+  security grants, account-bound fields, resume marks) is no longer
+  reported as a conflict.
 - The compatibility manifest for app 6.x follows a read-only survey of
   the on-disk shapes ([ADR 0004](docs/adr/0004-data-shape-survey.md)):
   session tombstones are a bare epoch-ms number; parent links include

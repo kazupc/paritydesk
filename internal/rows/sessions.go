@@ -46,13 +46,14 @@ func (sessionsModule) Merge(in Input) (Output, error) {
 		row:              model.RowSessions,
 		strictTombstones: true,
 		nativeTombstones: true,
-		fieldMerge:       recordMerger(f[RolePerField], f[RoleMaxTime], f[RoleWorktree]),
+		fieldMerge:       sessionMerger(f[RolePerField], f[RoleMaxTime], f[RoleWorktree], keptPerReplica(f)),
 		excluded:         excl,
 		keepTarget: func(k string, cand, cur *model.Item) bool {
 			return excl(k, cand) || excl(k, cur)
 		},
 		fixup:     familyFixup(f[RoleParent], excl),
 		transform: sessionTransform(withUsedModes(in.Policy, in.Entering.Snapshot, first(f[RolePermission])), f),
+		ignored:   keptPerReplica(f),
 	}
 	out, err := runKeyed(in, spec)
 	if err != nil {
@@ -371,16 +372,27 @@ func sortedKeys(items map[string]model.Item) []string {
 	return out
 }
 
+// keptPerReplica lists the fields each replica keeps for itself: run
+// state, security grants, account-bound fields and the quit-resume marks.
+func keptPerReplica(f map[string][]string) []string {
+	var out []string
+	for _, r := range []string{RoleRunState, RoleGrant, RoleAccountBound, RoleResumeMark} {
+		out = append(out, f[r]...)
+	}
+	return out
+}
+
 // sessionTransform applies the D8/D10 rules to a record written to the
 // entering replica: the permission cap; run-state fields and security
 // grants keep the target's own values (or their absence) and are dropped
 // from copies new to the target; account-bound fields keep the target's
-// own values on records it knows.
+// own values on records it knows; quit-resume marks are kept only when
+// the written record is not newer than the target's own.
 func sessionTransform(pol Policy, f map[string][]string) func(string, model.Item, *model.Item) (model.Item, []model.Change, error) {
 	perm := first(f[RolePermission])
-	runState, bound := f[RoleRunState], f[RoleAccountBound]
+	runState, bound, resume := f[RoleRunState], f[RoleAccountBound], f[RoleResumeMark]
 	cleared := append(append([]string(nil), runState...), f[RoleGrant]...)
-	if perm == "" && len(cleared) == 0 && len(bound) == 0 {
+	if perm == "" && len(cleared) == 0 && len(bound) == 0 && len(resume) == 0 {
 		return nil
 	}
 	return func(k string, d model.Item, cur *model.Item) (model.Item, []model.Change, error) {
@@ -403,6 +415,22 @@ func sessionTransform(pol Policy, f map[string][]string) func(string, model.Item
 		}
 		for _, fld := range bound {
 			if err := keepOrClear(doc, jsonx.Path{fld}, cur, false); err != nil {
+				return d, nil, err
+			}
+		}
+		// The quit-resume marks make the app continue a cut-off turn by
+		// itself (S15). The target's own mark is kept only while its record
+		// is current: once the other account moved the session on, the
+		// turn the mark points to may be finished, so the mark is dropped.
+		advanced := cur != nil && d.Stamp.AppTime > cur.Stamp.AppTime
+		for _, fld := range resume {
+			var err error
+			if advanced {
+				err = doc.del(jsonx.Path{fld})
+			} else {
+				err = keepOrClear(doc, jsonx.Path{fld}, cur, true)
+			}
+			if err != nil {
 				return d, nil, err
 			}
 		}

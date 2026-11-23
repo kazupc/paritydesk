@@ -35,7 +35,9 @@ session_scoped = true
 per_org = true
 probes = ["sessions-dir", "sessions-records", "sessions-idx-version"]
 [row.fields]
-# Field names below were observed read-only on app 6.28899.2 (ADR 0004).
+# Field names below were observed read-only on app 6.28899.2 (ADR 0004),
+# except the run_state and resume_mark names marked as read from the
+# app's code (spikes S14, S15).
 # A record field that no role lists comes from the winning record (D8).
 per_field = ["title", "isArchived", "envScopeId", "startedFromEnvironmentId", "model"]
 # Kept from the target for sessions it already knows (D10); carried on
@@ -49,9 +51,25 @@ account_bound = ["bridgeSessionIds", "chromeTabGroupId", "enabledMcpTools", "rem
 grant = ["chromePermissionMode", "cuAllowedApps", "cuGrantFlags", "sessionPermissionUpdates", "alwaysAllowedReasons",
   "remoteControlUserEnabled", "artifactsMcpVouchedCalls"]
 # Transient run state: never carried (H11). Kept from the target, cleared
-# on copies new to it.
+# on copies new to it. Names after turnBoxMounted were read from the app's
+# code on 6.28899.6 (spikes S14, S15), not seen on disk: the app writes
+# them only in rare states. The cut-turn and send-hold fields
+# (remoteControlLiveAtUpdateQuit, stoppedUntilPersonSends,
+# autoSendsPausedAfterDelete) hold or resume one account's sends.
+# isStarred mirrors the data folder's own pin list, which lives in
+# IndexedDB (S14); the app sends only additions on launch, so a carried
+# true would stay stale.
 run_state = ["interruptedAwaitingPerson", "priorErrorMark", "pendingSystemReminder", "queuedSideSessionNotes",
-  "lastTurnCutShort", "steeredByRemoteClient", "turnBoxMounted"]
+  "lastTurnCutShort", "steeredByRemoteClient", "turnBoxMounted",
+  "remoteControlLiveAtUpdateQuit", "stoppedUntilPersonSends", "autoSendsPausedAfterDelete", "isStarred"]
+# Quit-resume marks (spike S15, read from the app's code on 6.28899.6).
+# The app stamps them when it is quit during a turn and, on next open,
+# sends a continue message by itself; for a local session it never checks
+# whether the turn had ended. Never carried to another account. The
+# target's own marks are kept only while its record is the newest: once
+# the other account moved the session on, they are dropped.
+resume_mark = ["interruptedByQuitAt", "interruptedUnseenResume", "interruptedByQuitFor", "cycleClosedAtQuit",
+  "armedWorkAtQuit", "cutTurn", "cutTurnChain"]
 # Fields whose value says a turn is running or a message is queued. None
 # was observed; busy detection uses main.log and the app's quit veto.
 busy = []

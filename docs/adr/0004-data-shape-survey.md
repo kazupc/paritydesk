@@ -35,6 +35,10 @@ it.
   transient fields that were seen: `interruptedAwaitingPerson`,
   `priorErrorMark`, `pendingSystemReminder`, `queuedSideSessionNotes`,
   `lastTurnCutShort`, `steeredByRemoteClient` and `turnBoxMounted`.
+  *Update (spike S15, app 6.28899.6):* the field does exist. The app
+  writes it only when it is quit while a turn is still open, so no record
+  on the surveyed Mac had it. It is now run state, with the fields read
+  with it; see the S15 entry in [ADR 0003](0003-online-reconcile.md).
 - Run state and busy state are now separate roles. None of the run-state
   fields says that a turn is running (an error mark or a pending reminder
   is not a running turn), so the new `busy` role is empty. Busy detection

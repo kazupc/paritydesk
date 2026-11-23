@@ -25,7 +25,23 @@ func recordMerger(perField, maxTime []string, groups ...[]string) fieldMergeFunc
 		return nil
 	}
 	return func(p pair) (model.Item, bool, bool, error) {
-		return mergeRecord(p, perField, maxTime, gs)
+		return mergeRecord(p, perField, maxTime, gs, nil)
+	}
+}
+
+// sessionMerger is recordMerger for session records: a loser whose only
+// changes are in ignored fields (kept per replica by the transform) is
+// not a conflict.
+func sessionMerger(perField, maxTime, worktree, ignored []string) fieldMergeFunc {
+	var gs [][]string
+	if len(worktree) > 0 {
+		gs = append(gs, worktree)
+	}
+	if len(perField) == 0 && len(maxTime) == 0 && len(gs) == 0 {
+		return nil
+	}
+	return func(p pair) (model.Item, bool, bool, error) {
+		return mergeRecord(p, perField, maxTime, gs, ignored)
 	}
 }
 
@@ -38,7 +54,7 @@ func recordMerger(perField, maxTime []string, groups ...[]string) fieldMergeFunc
 // mirrors the value, its raw bytes. Any failure falls back to the whole
 // winner (ok=false); so does a secret item whose raw bytes cannot follow
 // the merge.
-func mergeRecord(p pair, perField, maxTime []string, groups [][]string) (model.Item, bool, bool, error) {
+func mergeRecord(p pair, perField, maxTime []string, groups [][]string, ignored []string) (model.Item, bool, bool, error) {
 	w, lo := p.win(), p.lose()
 	if !isObject(w.Item.Value) || !isObject(lo.Item.Value) {
 		return model.Item{}, false, false, nil
@@ -53,7 +69,7 @@ func mergeRecord(p pair, perField, maxTime []string, groups [][]string) (model.I
 		}
 		conflict = conflict || c
 	}
-	merged := append(append([]string(nil), perField...), maxTime...)
+	merged := append(append(append([]string(nil), perField...), maxTime...), ignored...)
 	for _, g := range groups {
 		c, err := mergeGroup(d, g, w, lo)
 		if err != nil {
