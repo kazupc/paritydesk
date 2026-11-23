@@ -102,10 +102,11 @@ release:
     order, pin order, sidebar view, window size and position, and a
     session that uses a worktree (it must open without a missing-folder
     error). For the sidebar view, change it on A, switch, and check it on
-    B at launch and again after ten minutes: ADR 0003 tested only pin and
-    group order written to both copies. Record whether B keeps the view
-    paritydesk wrote or Claude replaces it (then `paritydesk verify`
-    exits 50), and record it in ADR 0003 before the README claims it.
+    B at launch and again after ten minutes. Per the second S1 round
+    (ADR 0003), expect sort, group-by and section order to return to B's
+    own values (`paritydesk verify` then exits 50 once and marks them
+    contested) and section collapse to carry. Record what happened in
+    ADR 0003 before the README claims it.
 12. **Claude in Chrome.** In a Code session, use Claude in Chrome on a
     harmless page. Expected: it works. Repeat after switching back.
 13. **Switch from inside a Code session** with `/paritydesk:switch`.

@@ -13,7 +13,7 @@
 name = "6.x"
 min_version = "6.0.0"
 max_version = "6.999999.999"
-tested = ["6.28899.2"]
+tested = ["6.28899.2", "6.28899.6"]
 known_bad = []
 ls_backend = "leveldb"
 compressions = [0, 1]

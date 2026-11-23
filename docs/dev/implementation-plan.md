@@ -38,7 +38,7 @@ opens a network connection.
 | Artifact sync (beta), `/paritydesk:artifacts` | Was gated on spike S5, which passed: hooks fire for the app-injected tools and a PreToolUse deny stops them. Scheduled for v0.2. |
 | Pins through the app's tools (capture, `set_pinned`) | S5 and S6 are run (hooks fire; one approval per call for another session). Which sessions are pinned lives in IndexedDB (S14), so v0.1 carries pin order only (pinned-order row) |
 | ON write path for sections and group-by, online reconcile (P13), P1 capture, PreToolUse guard, PostToolUse hook | S5 passed, so these are unblocked for v0.2; v0.1 carries sidebar-view through OFF + verify |
-| Collapsed groups | Not covered by the first S1 round |
+| Collapsed groups | Device-local in Local Storage `dframe-store` and never synced (S1 second round), so they can be carried offline; not yet built |
 | Seed-only legacy sidebar keys | Read by the app only for unseeded folders; no effect on existing ones |
 | Native libproc fd scan | The fixed-argv `lsof` path is correct, only slower |
 | `profile adopt --from-legacy`, legacy archive import | One-off migration; generic `profile adopt` covers folders |
@@ -532,6 +532,9 @@ kind, then `recover`, then assert I1–I5). WI-9 and WI-10 (section 1) follow.
    on current versions; confirmed by a read-only check on a real Mac
    before release.
 7. Which copy wins when the server and the config mirror disagree (second
-   S1 round); affects contested handling, not the write path.
+   S1 round). Settled from the code: the server, for the fields it syncs
+   per account; Local Storage or the mirror for device-local values
+   ([ADR 0003](../adr/0003-online-reconcile.md)). The existing contested
+   handling covers it.
 8. Whether `go 1.26.0` (rewritten by `go mod tidy` from `go 1.26`) is the
    directive the maintainer wants.

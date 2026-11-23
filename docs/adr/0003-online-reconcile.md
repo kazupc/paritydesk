@@ -39,7 +39,7 @@ The design (D12, D26) says no capability claim goes into the README until a spik
 
 ## Second round (2026-11-23, app 6.28899.6)
 
-S7 was run on the real volume and S16 by a type check of the stored value. S5 and S6 were run in a Code session of the app: S5 with a temporary hook in the Claude Code settings, removed afterwards; S6 with the app's own sidebar tool on that session. The rest were answered by reading the app's code. S14 also used a copy of the data. Each answer drawn from the code was checked by two independent reviewers who tried to refute it. None did, though they corrected details, and those corrections are included below. The app had updated itself from 6.28899.2 to 6.28899.6 between the rounds. A comparison with the 6.6395.1 code found the same logic for S2 and S15.
+S7 was run on the real volume and S16 by a type check of the stored value. S5 and S6 were run in a Code session of the app: S5 with a temporary hook in the Claude Code settings, removed afterwards; S6 with the app's own sidebar tool on that session. The rest were answered by reading the app's code. S14 also used a copy of the data. Each answer drawn from the code was checked by two independent reviewers who tried to refute it. None did, though they corrected details, and those corrections are included below. The app had updated itself from 6.28899.2 to 6.28899.6 between the rounds. A comparison with the 6.6395.1 code found the same logic for S2 and S15. The manifest's 29 shape probes passed on a copy of the 6.28899.6 data for every account and org scope in it (a deliberately broken copy failed 5 of them), so 6.28899.6 is now listed as tested.
 
 | Spike | Question | Result | Effect on paritydesk |
 |---|---|---|---|
@@ -52,6 +52,27 @@ S7 was run on the real volume and S16 by a type check of the stored value. S5 an
 | S15 | Which mark does the app use to continue a turn cut off by a quit? | **`interruptedByQuitAt`**, read with `interruptedAwaitingPerson`, `interruptedUnseenResume` and `interruptedByQuitFor`. They are stamped at quit on sessions whose turn was open and are dropped after 24 h. On the next launch or open, the app sends a fixed "please continue" message by itself, with no prompt. For a local session it never checks whether the turn had really ended. | New role `resume_mark` (`interruptedByQuitAt`, `interruptedUnseenResume`, `interruptedByQuitFor`, `cycleClosedAtQuit`, `armedWorkAtQuit`, `cutTurn`, `cutTurnChain`): never carried to another account, and the target's own marks are dropped once the other account moved the session on (its record is newer), so a finished turn is not resumed. The send-hold fields `stoppedUntilPersonSends`, `autoSendsPausedAfterDelete` and `remoteControlLiveAtUpdateQuit` are run state. Fields that each folder keeps for itself never count as a conflict. Continue-after-switch stays a v0.2 opt-in. |
 | S16 | Are the entry names in `oauth:tokenCacheV2` plaintext? | **No.** The whole cache is serialized as JSON, encrypted with Electron `safeStorage` and stored as one base64 string. Only its type and length were checked; the value was not decoded. | Presence check of the top-level key only (no change). |
 
+### S1, second round: collapsed groups, and which copy wins at launch
+
+Answered from the 6.28899.6 code, each answer checked by two reviewers who tried to refute it (one corrected a table row; the conclusions held). Not yet confirmed with a runtime test in which the server holds a value different from both local copies.
+
+The app keeps the sidebar in three places: Local Storage (`dframe-store` and `LSS-persisted.*`), the config mirror (`preferences.epitaxyPrefs` in `claude_desktop_config.json`, which the renderer reads over IPC and prefers over `LSS-persisted.*`), and, for some fields, the account's server settings row. At launch the renderer hydrates `dframe-store` from Local Storage, seeds only scopes not yet marked `prefsSeeded` from the mirror, then runs the first reconcile with the server, then writes the result back to the mirror.
+
+| Value | Synced to the server | Who wins at launch | An offline write by paritydesk |
+|---|---|---|---|
+| Section sort, group-by, ascending and order (`dframe-code-sections`, `codeSidebarByScope`) | Yes, for the active account and org | The server, when its row has the sections | Replaced at the first reconcile; other orgs' scopes stay until that org is active |
+| `groupByByMode`, `sortByByMode` | Yes | The server, per mode | Replaced |
+| Section collapse (`sections[].collapsed`) | No (reset before upload, kept from local on pull) | Local Storage, when the scope is `prefsSeeded` | Survives |
+| Group collapse (`dframe-store.collapsedGroups`, also `openedGroups`, `collapsedFamilies`) | No | Local Storage; not in the mirror | Survives |
+| Pin order of local items (`code:local_*` and other device-local ids in `pinnedOrder`, mirrored as `dframe-local-slice`) | No | `dframe-store`; the mirror only fills an empty local slice | Survives when both copies are written alike |
+| Pin order of other items | Yes | The server | Replaced |
+| Group order (`code-projects-order.<acct>`) | No | The mirror | Survives when the mirror is written |
+| Custom groups and their order | Yes (local-session assignments stay local) | The server | Replaced, except local-session assignments |
+
+An offline write to a synced field survives only when the account's row has no entry for the store, or its persisted version differs, or a sync-pending marker is set (S2; paritydesk never sets one).
+
+**Effect on paritydesk:** no code change. Each account's sort, group-by and section order come from its own server row, so they cannot be made equal offline: the sidebar-view row writes them, `verify` sees them replaced and records the value as contested, and later switches do not fight it. Local pin order, group order and section collapse do carry. Group collapse is device-local and carryable offline (Local Storage only); carrying it stays a v0.2 item.
+
 ## Not yet run
 
-S1 for `collapsedGroups`, and the question of whether the server or the config mirror wins when they differ, need another round.
+None of the planned spikes. A runtime check of the S1 second round, with the server holding a third value, remains for the release checklist (step 11).

@@ -106,7 +106,7 @@ the folder swap (P8), parking the leaving folder (P9), one state commit
 
 | Id | Question | Status |
 |---|---|---|
-| S1 | Do values written while the app is stopped survive the next launch? | Run: they do when written to Local Storage and the config mirror together. |
+| S1 | Do values written while the app is stopped survive the next launch? | Run: device-local values do (pin order of local items, group order, collapse state); values synced per account (section sort, group-by, order) come back from the server at the first reconcile and are recorded as contested. |
 | S2 | Does a sync-pending marker make the app push instead of pull? | Run: yes, without a conflict check; v0.1 keeps writing after launch and verifying. |
 | S3 | Does a launchd job started from a Code session survive the quit and quit the app? | Run: yes. |
 | S4 | When does the app write a change to disk? | Run: the config mirror at once, Local Storage later. |

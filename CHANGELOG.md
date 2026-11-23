@@ -88,14 +88,14 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 
 - **The sidebar view is synced by default** (`sync.sidebar_view = true`).
   ADR 0003 showed that pin order and group order, written to Local
-  Storage and the config mirror together, survive a relaunch. The
-  sidebar view itself was tested only with the Local Storage copy (which
-  Claude replaced), and the ADR leaves open whether the server or the
-  config mirror wins, so writing the view to both copies is an
-  extrapolation until release-checklist step 11 confirms it. v0.1 writes
-  the view to both copies while Claude is quit and verifies it after
-  launch; values Claude replaces are recorded as drift rather than fought
-  over. Set `sync.sidebar_view = false` to leave the view alone.
+  Storage and the config mirror together, survive a relaunch. Its
+  second S1 round found that section sort, group-by and order are kept
+  per account on Claude's servers and come back at launch, while section
+  collapse is kept on the device. v0.1 writes the view to both local
+  copies while Claude is quit and verifies it after launch; values Claude
+  replaces from the server are recorded as drift and marked contested
+  rather than fought over. Set `sync.sidebar_view = false` to leave the
+  view alone.
 - `app.late_quit_watch` is 10 minutes: after a vetoed quit times out,
   paritydesk keeps watching and relaunches the profile you were on if
   Claude quits late.
@@ -109,6 +109,8 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   marks would make the app resume one account's turn under the other by
   itself. The target's own marks are dropped once the other account moved
   the session on, so a finished turn is not resumed.
+- App 6.28899.6 is listed as tested: the shape probes pass on a copy of
+  its data.
 - A difference only in fields each folder keeps for itself (run state,
   security grants, account-bound fields, resume marks) is no longer
   reported as a conflict.
@@ -236,7 +238,8 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 - The in-app write path for sections and group-by, online reconcile, the
   capture phase, and the PreToolUse and PostToolUse hooks (unblocked by
   spike S5).
-- Collapsed sidebar groups, which the first spike round did not cover.
+- Collapsed sidebar groups: device-local and carryable offline (second S1
+  round), not yet built.
 - Seed-only legacy sidebar keys.
 - A native file-descriptor scan; v0.1 uses `lsof` with fixed arguments.
 - `profile adopt --from-legacy` and legacy archive import.
