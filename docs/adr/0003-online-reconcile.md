@@ -73,6 +73,13 @@ An offline write to a synced field survives only when the account's row has no e
 
 **Effect on paritydesk:** no code change. Each account's sort, group-by and section order come from its own server row, so they cannot be made equal offline: the sidebar-view row writes them, `verify` sees them replaced and records the value as contested, and later switches do not fight it. Local pin order, group order and section collapse do carry. Group collapse is device-local and carryable offline (Local Storage only); carrying it stays a v0.2 item.
 
+### Log patterns on 6.28899.6 (release checklist steps 4 and 6)
+
+Read-only, from `main.log` (masked; no ids recorded):
+
+- Every pattern already in the manifest still matches lines from 6.28899.6: `quit_vetoed`, `turn_ended`, `app_started`, `focused_session`, `bridge_connected`, `unclean_exit` and `active_org`.
+- **turn_started stays empty.** The best candidate is `Mapping internal session {session} to CLI session`, logged when a query starts, for a person's message and for app-driven wakes alike. In 14 sessions every `turn_ended` line was preceded by it. But 13 starts had no end: a turn that ended in an API error (for example a usage limit), a turn the person interrupted, a slash command, and turns still running. With this pattern, such sessions would look busy until their next completed turn. Busy detection keeps relying on the app's own quit veto, and `doctor` keeps saying so. A usable signal would need an end pattern for those cases too.
+
 ## Not yet run
 
 None of the planned spikes. A runtime check of the S1 second round, with the server holding a third value, remains for the release checklist (step 11).

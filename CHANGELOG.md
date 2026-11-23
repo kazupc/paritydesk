@@ -42,7 +42,7 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   ASCII-only text, and a private deny-list check for personal labels.
 - CI on Apple silicon and Intel: `go vet`, `gofmt`, `go test -race`,
   `govulncheck`, with actions pinned by commit.
-- More CI jobs (written, not yet run on GitHub runners): a Linux job that
+- More CI jobs, all passing on GitHub runners: a Linux job that
   runs `go vet` and the race tests of every package that does not need
   macOS; a checks job for `gofmt`, `go vet` for darwin and linux and the
   network-package check (with and without tests); a second macOS test
