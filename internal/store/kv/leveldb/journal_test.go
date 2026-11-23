@@ -19,6 +19,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/syndtr/goleveldb/leveldb"
 	lerrors "github.com/syndtr/goleveldb/leveldb/errors"
@@ -638,7 +639,12 @@ func TestMain(m *testing.M) {
 			os.Exit(1)
 		}
 		fmt.Println("locked")
-		select {}
+		// Sleep, not select{}: a process whose goroutines all block
+		// forever is stopped by the runtime as a deadlock, releasing the
+		// lock at once.
+		for {
+			time.Sleep(time.Hour)
+		}
 	}
 	os.Exit(m.Run())
 }
@@ -661,16 +667,24 @@ func TestOpenWritableRecordLockHeld(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
+	line, err := bufio.NewReader(out).ReadString('\n')
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
 	defer func() {
 		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
+		<-exited
 	}()
-	line, err := bufio.NewReader(out).ReadString('\n')
 	if err != nil || line != "locked\n" {
 		t.Fatalf("lock helper: %q %v", line, err)
 	}
 	before := hashTree(t, e.dir)
 	w, err := e.o.OpenWritable(context.Background(), e.dir)
+	select {
+	case werr := <-exited:
+		exited <- werr
+		t.Fatalf("the lock helper exited before the check ended: %v", werr)
+	default:
+	}
 	if err == nil {
 		w.Close()
 		t.Fatal("OpenWritable opened a database another process holds")
