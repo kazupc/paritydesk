@@ -47,7 +47,6 @@ const (
 	AskUninstall      Msg = "ask.uninstall"
 	AskAlias          Msg = "ask.alias"
 	AskManaged        Msg = "ask.managed"
-	ConfirmExpired    Msg = "confirm.expired"
 	ConfirmNoTTY      Msg = "confirm.no_tty"
 	Declined          Msg = "confirm.declined"
 	ReadOnlyRefused   Msg = "readonly.refused"
@@ -196,7 +195,6 @@ var catalog = map[Msg]string{
 	AskUninstall:      "Remove paritydesk's state? Every data folder is kept. [y/N] ",
 	AskAlias:          "Alias for the account in Claude now (a-z, 0-9, -): ",
 	AskManaged:        "Is the account of %s managed by an employer or client? Preset secrets never cross a managed account's boundary. [y/N] ",
-	ConfirmExpired:    "the confirmation expired; run the command again",
 	ConfirmNoTTY:      "no terminal to ask; run the command in Terminal, or pass --yes",
 	Declined:          "declined; nothing was changed",
 	ReadOnlyRefused:   "this command writes and cannot run in read-only mode",

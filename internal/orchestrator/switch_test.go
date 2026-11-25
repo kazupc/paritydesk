@@ -738,9 +738,8 @@ func TestTargetDefaultsToTheOnlyOtherProfile(t *testing.T) {
 	}
 }
 
-// An answer typed a few minutes after the plan is shown still counts; one
-// typed after InteractiveConfirmTTL does not. With --yes a first sync is
-// still asked once.
+// A terminal answer has no time limit: one typed long after the plan is
+// shown still counts. With --yes a first sync is still asked once.
 func TestSwitchConfirmationWindow(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -750,7 +749,7 @@ func TestSwitchConfirmationWindow(t *testing.T) {
 		asked []ConfirmKind
 	}{
 		{"answered after three minutes", 3 * time.Minute, false, pderr.OK, []ConfirmKind{ConfirmPlan}},
-		{"answered after the window", InteractiveConfirmTTL + time.Second, false, pderr.Declined, []ConfirmKind{ConfirmPlan}},
+		{"answered the next day", 24 * time.Hour, false, pderr.OK, []ConfirmKind{ConfirmPlan}},
 		{"--yes still asks the first sync", 0, true, pderr.OK, []ConfirmKind{ConfirmBaseInvalid}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -767,9 +766,6 @@ func TestSwitchConfirmationWindow(t *testing.T) {
 			}
 			if !slices.Equal(e.ui.asked, tc.asked) {
 				t.Errorf("asked = %v", e.ui.asked)
-			}
-			if tc.code == pderr.Declined && e.app.quits != 0 {
-				t.Errorf("quits = %d", e.app.quits)
 			}
 		})
 	}

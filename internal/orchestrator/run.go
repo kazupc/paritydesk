@@ -606,7 +606,7 @@ func (r *run) lockedChecks(ctx context.Context) error {
 		}
 	}
 	if r.resn.OutsideSwitch && r.kind == state.RunSwitch && !r.opts.Yes && r.opts.ConfirmedPlan == "" {
-		c := Confirmation{Kind: ConfirmOutsideSwitch, Expires: r.o.expiry(),
+		c := Confirmation{Kind: ConfirmOutsideSwitch,
 			Lines: []string{"The active account changed outside paritydesk. paritydesk sync can re-apply the shared state; continue with the switch?"}}
 		if err := r.o.ask(ctx, r.interactive, c); err != nil {
 			return err
@@ -710,7 +710,7 @@ func (r *run) checkBusyP0(ctx context.Context) error {
 	if !r.interactive {
 		return pderr.New(pderr.SessionsBusy, "preflight", fmt.Sprintf("%d Code session(s) are still working", len(busy)))
 	}
-	if err := r.o.ask(ctx, true, Confirmation{Kind: ConfirmBusy, Lines: lines, Expires: r.o.expiry()}); err != nil {
+	if err := r.o.ask(ctx, true, Confirmation{Kind: ConfirmBusy, Lines: lines}); err != nil {
 		return err
 	}
 	for _, id := range busy {
@@ -763,7 +763,7 @@ func (r *run) confirmP2(ctx context.Context) error {
 		return nil
 	}
 	if !r.opts.Yes {
-		c := Confirmation{Kind: ConfirmPlan, Plan: p, Summary: r.res.Summary, Expires: r.o.expiry()}
+		c := Confirmation{Kind: ConfirmPlan, Plan: p, Summary: r.res.Summary}
 		if err := r.o.ask(ctx, r.interactive, c); err != nil {
 			return err
 		}
@@ -777,7 +777,7 @@ func (r *run) confirmP2(ctx context.Context) error {
 		if !r.interactive {
 			return pderr.New(pderr.BaseInvalid, "plan", "a first-sync union needs confirmation")
 		}
-		c := Confirmation{Kind: ConfirmBaseInvalid, Plan: p, Summary: r.res.Summary, Expires: r.o.expiry()}
+		c := Confirmation{Kind: ConfirmBaseInvalid, Plan: p, Summary: r.res.Summary}
 		if err := r.o.ask(ctx, true, c); err != nil {
 			return err
 		}
@@ -804,7 +804,7 @@ func (r *run) waitBusy(ctx context.Context) error {
 			if !grown {
 				return nil
 			}
-			if err := r.o.ask(ctx, true, Confirmation{Kind: ConfirmBusy, Lines: lines, Expires: r.o.expiry()}); err != nil {
+			if err := r.o.ask(ctx, true, Confirmation{Kind: ConfirmBusy, Lines: lines}); err != nil {
 				return err
 			}
 			for _, id := range busy {

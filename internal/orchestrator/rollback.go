@@ -60,7 +60,7 @@ func (o *Orchestrator) Rollback(ctx context.Context, n uint64, propagate bool) (
 	if err != nil {
 		return nil, err
 	}
-	c := Confirmation{Kind: ConfirmRollback, Expires: o.expiry(), Lines: []string{
+	c := Confirmation{Kind: ConfirmRollback, Lines: []string{
 		fmt.Sprintf("Restore generation %d of %s (%d item(s)); items changed since are left as they are.", n, target, len(man.Entries)),
 		fmt.Sprintf("Propagate the restored values to other profiles: %v.", propagate)}}
 	if err := o.ask(ctx, o.interactive(false), c); err != nil {

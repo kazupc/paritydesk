@@ -104,9 +104,6 @@ func (o *Orchestrator) ask(ctx context.Context, interactive bool, c Confirmation
 	if !ok {
 		return pderr.New(pderr.Declined, "confirm", "declined")
 	}
-	if !c.Expires.IsZero() && o.now().After(c.Expires) {
-		return pderr.New(pderr.Declined, "confirm", "the confirmation expired; run the command again")
-	}
 	return nil
 }
 

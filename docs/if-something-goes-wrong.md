@@ -27,11 +27,10 @@ included: unset the variable.
 <a id="declined"></a>
 ## Exit 3: the plan was not confirmed (PD-E3)
 
-Nothing was changed. You answered no, the answer came more than ten
-minutes after the question, or a
-confirmed plan (`--confirmed-plan`) was missing, older than two minutes,
-or smaller than what the switch would do now: a switch never deletes
-more than the plan you confirmed. Run `paritydesk plan` again and confirm
+Nothing was changed. You answered no, or a confirmed plan
+(`--confirmed-plan`) was missing, older than two minutes, or smaller
+than what the switch would do now: a switch never deletes more than the
+plan you confirmed. Run `paritydesk plan` again and confirm
 the new plan.
 
 <a id="app-did-not-quit"></a>

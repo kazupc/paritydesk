@@ -58,13 +58,12 @@ const (
 // Timing contracts.
 const (
 	// ConfirmedPlanTTL bounds how long a plan saved for
-	// `switch --confirmed-plan` stays valid.
+	// `switch --confirmed-plan` stays valid: the detached job applies it
+	// with nobody at hand, so an old plan file is never reused. Terminal
+	// questions have no time limit; what runs after the answer checks the
+	// data again (the final plan against the confirmed one, rollback
+	// leaving items changed since).
 	ConfirmedPlanTTL = 120 * time.Second
-	// InteractiveConfirmTTL bounds how long an answer typed at a terminal
-	// question stays valid. It leaves time to read a plan; after Claude
-	// quits, the final plan is checked against the confirmed one, and
-	// new deletions are asked again.
-	InteractiveConfirmTTL = 10 * time.Minute
 	// DetachedLockWait is how long the detached job retries the run lock.
 	DetachedLockWait = 10 * time.Second
 	// CommitTimeout bounds the uncancellable section (P5 commit to P10)
@@ -81,8 +80,6 @@ type Confirmation struct {
 	Summary *plan.Summary
 	// Lines are extra sanitized lines (busy sessions, identities masked).
 	Lines []string
-	// Expires bounds how long the answer stays valid (InteractiveConfirmTTL).
-	Expires time.Time
 }
 
 // UI is the front end's side of the conversation.

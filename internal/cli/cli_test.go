@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/kazupc/paritydesk/internal/clock"
 	"github.com/kazupc/paritydesk/internal/config"
@@ -310,27 +309,25 @@ func TestConfirmations(t *testing.T) {
 		yes   bool
 		kind  orchestrator.ConfirmKind
 		input string
-		exp   time.Time
 		code  int
 	}{
-		{"tty yes", true, false, orchestrator.ConfirmPlan, "y\n", time.Time{}, 0},
-		{"tty YES", true, false, orchestrator.ConfirmPlan, " YES \n", time.Time{}, 0},
-		{"tty no", true, false, orchestrator.ConfirmPlan, "n\n", time.Time{}, 3},
-		{"tty empty is no", true, false, orchestrator.ConfirmPlan, "\n", time.Time{}, 3},
-		{"tty end of input is no", true, false, orchestrator.ConfirmPlan, "", time.Time{}, 3},
-		{"no tty without --yes", false, false, orchestrator.ConfirmPlan, "y\n", time.Time{}, 2},
-		{"no tty with --yes", false, true, orchestrator.ConfirmPlan, "", time.Time{}, 0},
-		{"--yes does not answer new deletions", false, true, orchestrator.ConfirmNewDestructive, "", time.Time{}, 2},
-		{"new deletions asked on a tty", true, true, orchestrator.ConfirmNewDestructive, "y\n", time.Time{}, 0},
-		{"expired answer", true, false, orchestrator.ConfirmPlan, "y\n", fixedTime.Add(-time.Second), 3},
-		{"answer in time", true, false, orchestrator.ConfirmPlan, "y\n", fixedTime.Add(time.Minute), 0},
+		{"tty yes", true, false, orchestrator.ConfirmPlan, "y\n", 0},
+		{"tty YES", true, false, orchestrator.ConfirmPlan, " YES \n", 0},
+		{"tty no", true, false, orchestrator.ConfirmPlan, "n\n", 3},
+		{"tty empty is no", true, false, orchestrator.ConfirmPlan, "\n", 3},
+		{"tty end of input is no", true, false, orchestrator.ConfirmPlan, "", 3},
+		{"no tty without --yes", false, false, orchestrator.ConfirmPlan, "y\n", 2},
+		{"no tty with --yes", false, true, orchestrator.ConfirmPlan, "", 0},
+		{"--yes does not answer new deletions", false, true, orchestrator.ConfirmNewDestructive, "", 2},
+		{"new deletions asked on a tty", true, true, orchestrator.ConfirmNewDestructive, "y\n", 0},
+		{"a late answer still counts", true, false, orchestrator.ConfirmPlan, "y\n", 0},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newHarness(t)
 			h.tty = tc.tty
 			c := conf
-			c.Kind, c.Expires = tc.kind, tc.exp
+			c.Kind = tc.kind
 			h.svc.confirm = &c
 			args := []string{"switch", "home"}
 			if tc.yes {

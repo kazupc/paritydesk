@@ -584,7 +584,7 @@ func (rc *recovery) pendingAdd(ctx context.Context) error {
 	if f.claudeAlias != "" {
 		return rc.dropPendingAdd(f.claudeAlias)
 	}
-	c := Confirmation{Kind: ConfirmAddBind, Expires: rc.o.expiry(), Lines: []string{
+	c := Confirmation{Kind: ConfirmAddBind, Lines: []string{
 		fmt.Sprintf("Claude now holds account %s; register it as %s?", ids.Mask(string(f.claude.Identity.Account)), pa.Alias)}}
 	if !rc.opts.Yes {
 		if err := rc.o.ask(ctx, rc.o.interactive(false), c); err != nil {
@@ -665,7 +665,7 @@ func (rc *recovery) contradiction(ctx context.Context, f facts, prefer ...ids.Al
 		if !rc.holds(f, name, a) {
 			continue
 		}
-		c := Confirmation{Kind: ConfirmRecover, Expires: rc.o.expiry(),
+		c := Confirmation{Kind: ConfirmRecover,
 			Lines: append(lines, fmt.Sprintf("Move %s (profile %s) into Claude?", name, a))}
 		if !rc.opts.Yes {
 			if err := rc.o.ask(ctx, rc.o.interactive(false), c); err != nil {
@@ -737,7 +737,7 @@ func (rc *recovery) withoutJournal(ctx context.Context) error {
 	if best == "" {
 		return pderr.New(pderr.NeedsRecover, "recover", "no journal and no profile folder to move into place")
 	}
-	c := Confirmation{Kind: ConfirmRecover, Expires: rc.o.expiry(), Lines: []string{
+	c := Confirmation{Kind: ConfirmRecover, Lines: []string{
 		"No journal was found and Claude is missing.", fmt.Sprintf("Move %s (the most recently used profile folder) into Claude?", best)}}
 	if !rc.opts.Yes {
 		if err := rc.o.ask(ctx, rc.o.interactive(false), c); err != nil {

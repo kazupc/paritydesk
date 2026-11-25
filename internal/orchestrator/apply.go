@@ -65,7 +65,7 @@ func (r *run) harvest(ctx context.Context) error {
 		if !r.interactive {
 			return r.abort(ctx, pderr.New(pderr.Declined, "harvest", fmt.Sprintf("the final plan deletes %d item(s) the preview did not; nothing was changed", len(nd))))
 		}
-		c := Confirmation{Kind: ConfirmNewDestructive, Plan: pl.Plan, Summary: r.res.Summary, Expires: r.o.expiry()}
+		c := Confirmation{Kind: ConfirmNewDestructive, Plan: pl.Plan, Summary: r.res.Summary}
 		for _, ch := range nd {
 			c.Lines = append(c.Lines, fmt.Sprintf("%s: %s", ch.Row, ids.Mask(ch.Key)))
 		}

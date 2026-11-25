@@ -72,8 +72,7 @@ func (u *termUI) Interactive() bool { return u.interactive }
 
 // Confirm asks one question. With --yes it answers yes, except for
 // destructive differences found after the preview, which always ask. A
-// non-interactive run without an answer is an error; an answer given
-// after c.Expires is refused.
+// non-interactive run without an answer is an error.
 func (u *termUI) Confirm(ctx context.Context, c orchestrator.Confirmation) (bool, error) {
 	if u.yes && c.Kind != orchestrator.ConfirmNewDestructive {
 		return true, nil
@@ -93,9 +92,6 @@ func (u *termUI) Confirm(ctx context.Context, c orchestrator.Confirmation) (bool
 	ok, err := u.ask(ctx, questionFor(c.Kind))
 	if err != nil {
 		return false, err
-	}
-	if !c.Expires.IsZero() && u.now().After(c.Expires) {
-		return false, pderr.New(pderr.Declined, "confirm", i18n.T(i18n.ConfirmExpired))
 	}
 	return ok, nil
 }

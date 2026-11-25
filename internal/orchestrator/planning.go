@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"time"
 
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/config"
@@ -373,7 +372,6 @@ func (o *Orchestrator) emptyPlan(runID string, s, t sideRef, skipped map[model.R
 }
 
 // expiry returns when a confirmation asked now stops being valid.
-func (o *Orchestrator) expiry() time.Time { return o.now().Add(InteractiveConfirmTTL) }
 
 // staleWarning describes values on which a row's two stored copies
 // disagree. For presets neither copy wins: the presets are not written
