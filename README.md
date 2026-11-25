@@ -39,7 +39,7 @@ A staged Claude update installs when Claude quits (finding 4 of ADR 0003), so v0
 ```
 paritydesk init                         set up for the account in Claude now
 paritydesk profile add <alias>          add another account (finish with recover)
-paritydesk profile adopt <alias> <dir>  register a folder already parked as Claude-<name>
+paritydesk profile adopt <alias> <dir>  register a parked folder by its name, e.g. Claude-work
 paritydesk status                       active profile and anything pending
 paritydesk plan [<alias>]               preview a switch (approximate)
 paritydesk switch [<alias>|-]           switch ("-" is the previous profile)
@@ -54,7 +54,9 @@ paritydesk completion bash|zsh|fish     print a shell completion script
 
 `profile add` quits Claude and relaunches it on an empty folder so you can sign in to the new account. After signing in, run `paritydesk recover` to bind the new account to the profile; until then other commands stop with exit 41.
 
-If you already park folders as `Claude-<name>` with your own script, register each with `paritydesk profile adopt` instead of `profile add`.
+If you already park folders as `Claude-<name>` with your own script, register each with `paritydesk profile adopt` instead of `profile add`; pass the folder's name, not its path.
+
+Without an alias, `plan` and `switch` target the previous profile; before the first switch, the only other profile.
 
 Every command accepts `--json` (one JSON document with `"v":1`), `--plain`, `--no-color`, `--ascii` and `--read-only`. Exit codes and what to do next are listed in [docs/if-something-goes-wrong.md](docs/if-something-goes-wrong.md).
 

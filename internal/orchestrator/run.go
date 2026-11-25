@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -404,8 +405,24 @@ func (r *run) pickTarget() error {
 	to := r.opts.To
 	if to == "" || to == "-" {
 		to = r.root.Previous
-		if to == "" {
-			return pderr.New(pderr.Usage, "switch", "no previous profile; name the profile to switch to")
+	}
+	if to == "" {
+		// No previous profile (before the first switch): the only other
+		// profile is the target; with more, the person names one.
+		var others []string
+		for a, b := range r.resn.Bindings {
+			if b != nil && a != r.S.Profile.Alias {
+				others = append(others, string(a))
+			}
+		}
+		sort.Strings(others)
+		switch len(others) {
+		case 0:
+			return pderr.New(pderr.Usage, "switch", "no other profile to switch to; register one with paritydesk profile add or profile adopt")
+		case 1:
+			to = ids.Alias(others[0])
+		default:
+			return pderr.New(pderr.Usage, "switch", "no previous profile; name the profile to switch to: "+strings.Join(others, ", "))
 		}
 	}
 	t, ok := r.resn.Bindings[to]

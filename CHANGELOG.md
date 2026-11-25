@@ -134,6 +134,9 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 
 ### Fixed
 
+- `plan` and `switch` without an alias before the first switch target
+  the only other profile instead of stopping with exit 2, and a run that
+  stops before planning no longer prints an empty plan.
 - A staged Claude update is no longer reported after it was installed:
   Squirrel leaves its JSON state file behind, so paritydesk now checks
   that the update bundle it names still exists. Before, every switch

@@ -73,10 +73,13 @@ func newRunView(r *orchestrator.Result) runView {
 	default:
 		v.Summary = (*plan.Plan)(nil).Summarize()
 	}
-	v.Lines = render.PlanLines(render.PlanView{
-		From: string(v.From), To: string(v.To), Approximate: v.Approximate,
-		FirstSync: v.NeedsConfirmation, Summary: v.Summary,
-	})
+	// Without a target the run stopped before planning: no plan to show.
+	if v.To != "" {
+		v.Lines = render.PlanLines(render.PlanView{
+			From: string(v.From), To: string(v.To), Approximate: v.Approximate,
+			FirstSync: v.NeedsConfirmation, Summary: v.Summary,
+		})
+	}
 	if len(r.Timings) > 0 {
 		v.TimingsMS = map[string]int64{}
 		for ph, d := range r.Timings {

@@ -716,3 +716,23 @@ func TestOutsideSwitchAsks(t *testing.T) {
 		t.Fatalf("err = %v asked %v", err, e.ui.asked)
 	}
 }
+
+// Before the first switch there is no previous profile; with one other
+// profile, plan and switch take it as the target.
+func TestTargetDefaultsToTheOnlyOtherProfile(t *testing.T) {
+	e := newEnv(t)
+	root := e.st.root(t)
+	root.Previous = ""
+	if err := e.st.Commit(root); err != nil {
+		t.Fatal(err)
+	}
+	res, err := e.orch().Preview(context.Background(), PreviewOptions{})
+	if err != nil || res == nil || res.To != "b" {
+		t.Fatalf("preview = %+v, %v", res, err)
+	}
+	e.ui.interactive = true
+	res, err = e.orch().Switch(context.Background(), SwitchOptions{LogOffset: -1})
+	if err != nil || res.Code != pderr.OK || res.To != "b" {
+		t.Fatalf("switch = %+v, %v", res, err)
+	}
+}
