@@ -426,8 +426,8 @@ func NewRunID(now time.Time) (string, error) {
 // the preview; `switch --confirmed-plan <hash>` names it) under
 // <RunDir>/plans/<hash>.json, mode 0600. Plans hold no contents (Op.Content
 // is never serialized). Load verifies that the stored plan hashes to the
-// requested hash and returns *pderr.Error Declined when it is missing or
-// past ExpiresAt. Save prunes plans older than a day.
+// requested hash and returns *pderr.Error Declined when it is missing.
+// Save prunes plans older than a day.
 type PlanStore struct{ Dir string }
 
 func (s PlanStore) dir() string { return filepath.Join(s.Dir, "plans") }
@@ -489,9 +489,6 @@ func (s PlanStore) Load(hash string, now time.Time) (*plan.Plan, error) {
 	}
 	if p.Hash() != hash {
 		return nil, pderr.New(pderr.Declined, "plans", "the confirmed plan does not match its hash")
-	}
-	if p.ExpiresAt.IsZero() || now.After(p.ExpiresAt) {
-		return nil, pderr.New(pderr.Declined, "plans", "the confirmed plan expired; run paritydesk plan again")
 	}
 	return &p, nil
 }

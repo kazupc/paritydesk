@@ -51,7 +51,7 @@ type IntentName string
 // switch and sync), so there is no "committed" or "launched" intent;
 // launching and verifying happen after the run is closed.
 const (
-	IntentQuit     IntentName = "quit"      // P3 (also the --allow-update quit), before the Apple Event
+	IntentQuit     IntentName = "quit"      // P3 (also the quit for a staged update), before the Apple Event
 	IntentPlanned  IntentName = "planned"   // P5
 	IntentBackedUp IntentName = "backed_up" // P6
 	IntentApplied  IntentName = "applied"   // P7

@@ -82,9 +82,7 @@ func TestCrashRecoverSwitch(t *testing.T) {
 			return err
 		}},
 		{name: "switch with update", setup: func(_ *testing.T, e *env) { e.app.staged = true }, run: func(o *Orchestrator) error {
-			opts := yes("b")
-			opts.AllowUpdate = true
-			_, err := o.Switch(context.Background(), opts)
+			_, err := o.Switch(context.Background(), yes("b"))
 			return err
 		}},
 		{name: "switch with apply failure", setup: func(_ *testing.T, e *env) { e.applier.failAfter = 1 }, run: func(o *Orchestrator) error {

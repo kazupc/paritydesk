@@ -17,18 +17,13 @@ account. The switch itself runs as a detached job outside the app.
    and which one the switch goes to. If `needs_recover` is true, stop and
    tell the user to run `paritydesk recover` in Terminal.
 3. Run `paritydesk plan --json -- <target>`. Show the user every line of
-   `lines` exactly as printed, including the DESTRUCTIVE line. Remember
-   `plan_hash` and `needs_confirmation`.
-4. Ask the user to confirm. Do not continue without an explicit yes. If
-   `needs_confirmation` is true, say that this is a first sync that merges
-   both accounts' data, and continue only if the user confirms that too.
-5. Run exactly (add `--confirm-first-sync` only when step 4 confirmed a
-   first sync):
+   `lines` exactly as printed, including the first-sync line when there is
+   one and the DESTRUCTIVE line. Remember `plan_hash`.
+4. Ask the user once to confirm the plan. Do not continue without an
+   explicit yes. There is no time limit on the answer.
+5. Run exactly:
 
    `paritydesk switch --detach --confirmed-plan "<plan_hash>" --reopen-session "${CLAUDE_SESSION_ID}" -- <target>`
-
-   If the confirmation took longer than two minutes, the job refuses the
-   expired plan; run step 3 again.
 6. End your turn immediately with one short sentence. Do not queue further
    work: the job waits until this turn has ended before quitting Claude,
    and it aborts without quitting if the plan's destructive changes grew

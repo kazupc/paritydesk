@@ -24,7 +24,7 @@ _paritydesk_flags() {
         'recover') echo '--rollback --yes' ;;
         'rollback') echo '--propagate --yes' ;;
         'status') echo '--short' ;;
-        'switch') echo '--accept-worktree-risk --allow-deletions --allow-update --confirm-first-sync --confirmed-plan --detach --json-progress --no-launch --no-reopen --only --reopen-session --skip --yes' ;;
+        'switch') echo '--accept-worktree-risk --allow-deletions --confirm-first-sync --confirmed-plan --detach --json-progress --no-launch --no-reopen --only --reopen-session --skip --yes' ;;
         'sync') echo '--allow-deletions --json-progress --no-launch --yes' ;;
         'uninstall') echo '--keep-backups --keep-state --yes' ;;
     esac

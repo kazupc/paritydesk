@@ -157,7 +157,6 @@ type Plan struct {
 	Target      Target           `json:"target"`
 	Approximate bool             `json:"approximate"`
 	CreatedAt   time.Time        `json:"created_at"`
-	ExpiresAt   time.Time        `json:"expires_at"`
 	Ops         []Op             `json:"ops"`
 	Changes     []model.Change   `json:"changes"`
 	Conflicts   []model.Conflict `json:"conflicts,omitempty"`

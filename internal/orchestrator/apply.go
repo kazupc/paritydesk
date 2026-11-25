@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -117,11 +118,15 @@ func (r *run) validate(ctx context.Context) error {
 	p := r.p5.Plan
 	cfg := d.Config
 	mayCross, allowed := r.o.secrets(r.S.Profile.ManagedByOrg, r.T.Profile.ManagedByOrg)
+	allowDeletions := r.opts.AllowDeletions
+	if r.confirmedByPerson {
+		allowDeletions = math.MaxInt
+	}
 	in := plan.ValidateInput{
 		Plan:   p,
 		Before: beforeCounts(r.p5),
 		Limits: plan.Limits{MaxDeleteFraction: cfg.Limits.MaxDeleteFraction, MaxDeleteMin: cfg.Limits.MaxDeleteMin,
-			AllowDeletions: r.opts.AllowDeletions},
+			AllowDeletions: allowDeletions},
 		DenyPaths:          append(append([]string(nil), r.manifest.Classification.NeverTouched...), r.manifest.Classification.NeverUntilClassified...),
 		DenyLSKeys:         r.manifest.Classification.LSNeverTouched,
 		AllowPaths:         allowedPaths(r.manifest, r.T.Replica),

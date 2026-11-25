@@ -211,7 +211,11 @@ func (o *Orchestrator) compareMirror(in verifyIn, mirror []byte, res *VerifyResu
 		if len(contested) == 0 {
 			continue
 		}
-		res.Drift = append(res.Drift, r)
+		if spec.Contested {
+			res.Replaced = append(res.Replaced, r)
+		} else {
+			res.Drift = append(res.Drift, r)
+		}
 		if !in.record {
 			continue
 		}

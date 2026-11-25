@@ -5,7 +5,6 @@ import (
 	"flag"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/kazupc/paritydesk/internal/config"
 	"github.com/kazupc/paritydesk/internal/i18n"
@@ -85,8 +84,8 @@ func runPlan(ctx context.Context, e *env, fs *flag.FlagSet, args []string) error
 		switch {
 		case !save:
 			p.Line(i18n.T(i18n.PlanNotSaved))
-		case v.ExpiresAt != nil:
-			p.Line(i18n.T(i18n.PlanSaved, "%s"), v.ExpiresAt.Local().Format(time.TimeOnly))
+		default:
+			p.Line(i18n.T(i18n.PlanSaved))
 		}
 	}, resultErr("plan", res.Code, err))
 }
@@ -204,6 +203,7 @@ func runSync(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 // verifyView is the --json document of verify.
 type verifyView struct {
 	Drift          []model.RowID `json:"drift"`
+	Replaced       []model.RowID `json:"replaced"`
 	SignInNeeded   bool          `json:"sign_in_needed"`
 	SessionFocused bool          `json:"session_focused"`
 	PairingOK      bool          `json:"pairing_ok"`
@@ -220,10 +220,13 @@ func runVerify(ctx context.Context, e *env, _ *flag.FlagSet, _ []string) error {
 	if res == nil {
 		return orInternal(err, "verify")
 	}
-	v := verifyView{Drift: res.Drift, SignInNeeded: res.SignInNeeded, SessionFocused: res.SessionFocused,
+	v := verifyView{Drift: res.Drift, Replaced: res.Replaced, SignInNeeded: res.SignInNeeded, SessionFocused: res.SessionFocused,
 		PairingOK: res.PairingOK, BridgeSeen: res.BridgeSeen}
 	if v.Drift == nil {
 		v.Drift = []model.RowID{}
+	}
+	if v.Replaced == nil {
+		v.Replaced = []model.RowID{}
 	}
 	if err == nil {
 		switch {
@@ -235,6 +238,9 @@ func runVerify(ctx context.Context, e *env, _ *flag.FlagSet, _ []string) error {
 	}
 	v.Code = pderr.CodeOf(err)
 	return e.emit(v, func(p *render.Printer) {
+		if len(v.Replaced) > 0 {
+			p.Line(i18n.T(i18n.VerifyReplaced, "%s"), joinRows(v.Replaced))
+		}
 		switch {
 		case len(v.Drift) > 0:
 			p.Line(i18n.T(i18n.VerifyDrift, "%s"), joinRows(v.Drift))

@@ -313,7 +313,6 @@ func switchFlags(fs *flag.FlagSet) {
 	fs.Bool(flagJSONProgress, false, "NDJSON progress on stderr")
 	fs.Int(orchestrator.FlagAllowDeletions, 0, "allow up to N deletions per category past the breaker")
 	fs.Bool(orchestrator.FlagAcceptWorktreeRisk, false, "switch even if a worktree with uncommitted changes loses its registration")
-	fs.Bool(orchestrator.FlagAllowUpdate, false, "let a staged Claude update install, then re-check before syncing")
 	fs.String(orchestrator.FlagReopenSession, "", "Claude Code session id of the invoking session (set by the plugin; empty: no reopen)")
 	fs.String(orchestrator.FlagConfirmedPlan, "", "hash of the plan you confirmed (printed by paritydesk plan --json)")
 	fs.Bool(orchestrator.FlagConfirmFirstSync, false, "confirm the first-sync union that the confirmed plan showed")

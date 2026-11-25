@@ -55,15 +55,12 @@ const (
 	ConfirmAddBind        ConfirmKind = "add-bind" // bind a newly signed-in account to the pending profile add
 )
 
+// StatusInfo marks a progress event that front ends keep in the run log
+// without showing it: nothing for the person to do.
+const StatusInfo = "info"
+
 // Timing contracts.
 const (
-	// ConfirmedPlanTTL bounds how long a plan saved for
-	// `switch --confirmed-plan` stays valid: the detached job applies it
-	// with nobody at hand, so an old plan file is never reused. Terminal
-	// questions have no time limit; what runs after the answer checks the
-	// data again (the final plan against the confirmed one, rollback
-	// leaving items changed since).
-	ConfirmedPlanTTL = 120 * time.Second
 	// DetachedLockWait is how long the detached job retries the run lock.
 	DetachedLockWait = 10 * time.Second
 	// CommitTimeout bounds the uncancellable section (P5 commit to P10)
@@ -105,7 +102,6 @@ type SwitchOptions struct {
 	ReopenCLISession   string
 	AllowDeletions     int
 	AcceptWorktreeRisk bool
-	AllowUpdate        bool // ADR 0003: wait for a staged update, re-probe
 	// LogOffset is main.log's size recorded by the invoking process before
 	// the hand-off (P0, before anything else), so the job's turn-end wait
 	// sees a turn that ended before P3. -1 means unset.
@@ -114,10 +110,13 @@ type SwitchOptions struct {
 	// in the PlanStore by `plan` or by the interactive parent). The job's
 	// P2 loads it and aborts before quitting when its own plan has a
 	// destructive change the confirmed plan did not (plan.NewDestructive),
-	// when the confirmed plan expired, or when it is missing.
+	// or when it is missing. A confirmed plan has no time limit: that
+	// check, made after Claude quits, is what keeps the person's answer
+	// true.
 	ConfirmedPlan string
-	// ConfirmFirstSync confirms a union first sync (invalid bases) that
-	// the confirmed plan showed; without it a non-interactive run exits 21.
+	// ConfirmFirstSync confirms a union first sync (invalid bases) for a
+	// run with --yes; without it such a run exits 21. A confirmed plan
+	// that showed the first-sync line needs no flag.
 	ConfirmFirstSync bool
 }
 
@@ -179,7 +178,13 @@ func New(d Deps) *Orchestrator { return &Orchestrator{d: d} }
 
 // VerifyResult is the outcome of P12.
 type VerifyResult struct {
-	Drift          []model.RowID `json:"drift,omitempty"`
+	// Drift lists rows whose values differ from what was written and that
+	// the manifest does not expect the server to replace.
+	Drift []model.RowID `json:"drift,omitempty"`
+	// Replaced lists contested rows (values the app may keep per account
+	// or device) that changed after paritydesk wrote them. They are
+	// recorded like drift right after a launch but are not an error.
+	Replaced       []model.RowID `json:"replaced,omitempty"`
 	SignInNeeded   bool          `json:"sign_in_needed"`
 	SessionFocused bool          `json:"session_focused"`
 	PairingOK      bool          `json:"pairing_ok"`

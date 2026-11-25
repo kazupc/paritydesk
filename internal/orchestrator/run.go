@@ -35,7 +35,12 @@ type run struct {
 	// previewOnly marks plan-only runs (plan, read-only mode): no update
 	// refusal, nothing quit.
 	previewOnly bool
-	lock        *state.Lock
+	// confirmedByPerson: a person saw the plan's DESTRUCTIVE line and said
+	// yes (at the terminal, or through --confirmed-plan). Deletions found
+	// after the quit are asked again or abort the run, so every deletion
+	// applied was seen; the deletion breaker is then not needed.
+	confirmedByPerson bool
+	lock              *state.Lock
 
 	root     *state.Root
 	bundle   app.BundleIdentity
@@ -291,7 +296,8 @@ func (r *run) locate(ctx context.Context) error {
 	return nil
 }
 
-// checkUpdate handles a staged update (exit 13, or --allow-update).
+// checkUpdate handles a staged update: the switch lets it install, then
+// re-checks the new version before syncing.
 func (r *run) checkUpdate(ctx context.Context, lock bool) error {
 	d := r.d()
 	staged, err := d.App.UpdateStaged(ctx, d.Config.App.BundleID)
@@ -306,9 +312,6 @@ func (r *run) checkUpdate(ctx context.Context, lock bool) error {
 		r.warn(P0Preflight, "a Claude update is staged; it will install when Claude quits")
 		return nil
 	}
-	if !r.opts.AllowUpdate {
-		return pderr.New(pderr.UpdatePending, "preflight", "a Claude update is staged and would install on quit")
-	}
 	if !lock {
 		r.warn(P0Preflight, "a Claude update is staged; it will install when Claude quits")
 		return nil
@@ -316,7 +319,7 @@ func (r *run) checkUpdate(ctx context.Context, lock bool) error {
 	return r.updateQuit(ctx)
 }
 
-// updateQuit lets a staged update install (--allow-update): the quit
+// updateQuit lets a staged update install: the quit
 // intent with QuitByUs is committed first, then the busy wait, the quit,
 // the install wait and a new identity baseline. The probes run afterwards
 // on the new version; P3 quits again if the updater relaunched the app.
@@ -757,9 +760,12 @@ func (r *run) confirmP2(ctx context.Context) error {
 		if nd := plan.NewDestructive(confirmed, p); len(nd) > 0 {
 			return pderr.New(pderr.Declined, "confirmed plan", fmt.Sprintf("the plan now deletes %d item(s) the confirmed plan did not; run paritydesk plan again", len(nd)))
 		}
-		if p.NeedsConfirmation && !r.opts.ConfirmFirstSync {
-			return pderr.New(pderr.BaseInvalid, "confirmed plan", "a first-sync union needs --confirm-first-sync")
+		// A confirmed plan that showed the first-sync line also confirmed
+		// the union (NeedsConfirmation is part of its hash).
+		if p.NeedsConfirmation && !confirmed.NeedsConfirmation && !r.opts.ConfirmFirstSync {
+			return pderr.New(pderr.BaseInvalid, "confirmed plan", "the confirmed plan was not a first sync, but this run is; run paritydesk plan again")
 		}
+		r.confirmedByPerson = true
 		return nil
 	}
 	if !r.opts.Yes {
@@ -767,6 +773,7 @@ func (r *run) confirmP2(ctx context.Context) error {
 		if err := r.o.ask(ctx, r.interactive, c); err != nil {
 			return err
 		}
+		r.confirmedByPerson = true
 		// The plan just confirmed showed the first-sync line, so the
 		// person already agreed to the union: one question is enough.
 		if p.NeedsConfirmation {

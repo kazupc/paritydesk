@@ -28,9 +28,8 @@ included: unset the variable.
 ## Exit 3: the plan was not confirmed (PD-E3)
 
 Nothing was changed. You answered no, or a confirmed plan
-(`--confirmed-plan`) was missing, older than two minutes, or smaller
-than what the switch would do now: a switch never deletes more than the
-plan you confirmed. Run `paritydesk plan` again and confirm
+(`--confirmed-plan`) was missing or smaller than what the switch would do
+now: a switch never deletes more than the plan you confirmed. Run `paritydesk plan` again and confirm
 the new plan.
 
 <a id="app-did-not-quit"></a>
@@ -79,12 +78,12 @@ protects a working session: answer "Cancel" there and paritydesk exits 10
 without changing anything.
 
 <a id="update-pending"></a>
-## Exit 13: a Claude update is staged (PD-E13)
+## Exit 13: a Claude update did not finish installing (PD-E13)
 
-Nothing was changed. The update would install when Claude quits, and the
-switch would relaunch a different version. Run
-`paritydesk switch --allow-update` to let the update install first;
-paritydesk re-checks the new version before it syncs anything.
+Nothing was synced, and Claude was relaunched. A switch lets a staged
+update install when Claude quits and re-checks the new version before it
+syncs anything; this time the update was still installing when the wait
+ended. Wait a minute, then run the command again.
 
 <a id="foreign-tool"></a>
 ## Exit 14: another account-switching tool was detected (PD-E14)
@@ -127,17 +126,21 @@ identities. Fix the folder names, or register the folder with
 
 Nothing was changed. A sync base no longer matches its folder (a folder
 was restored, replaced or seen for the first time), so paritydesk merges
-both sides without deleting anything. Run `paritydesk plan`, then
-`paritydesk switch` in Terminal and confirm; from the plugin, confirm the
-first sync when it asks.
+both sides without deleting anything. This needs a person to see the
+plan: run `paritydesk switch` in Terminal and confirm, or use the plugin.
+Only a run with `--yes` stops here; add `--confirm-first-sync` to it if
+the merge is intended.
 
 <a id="deletion-breaker"></a>
 ## Exit 22: the plan deletes more than the limit (PD-E22)
 
-Nothing was changed. The plan would delete more items in one category
-than `limits.max_delete_fraction` and `limits.max_delete_min` allow. Look
-at `paritydesk plan`. If the deletions are intended, run the switch again
-with `--allow-deletions=N`.
+Nothing was changed. Only a run with `--yes`, where nobody saw the plan,
+checks this: the plan would delete more items in one category than
+`limits.max_delete_fraction` and `limits.max_delete_min` allow. A plan you
+confirm at the terminal or through the plugin has no such limit, because
+you saw its DESTRUCTIVE line. Look at `paritydesk plan`; if the deletions
+are intended, confirm the switch in Terminal or add
+`--allow-deletions=N`.
 
 <a id="worktree-risk"></a>
 ## Exit 23: a worktree with uncommitted changes would lose its registration (PD-E23)
@@ -205,10 +208,16 @@ any copy started with `--user-data-dir`), then run `paritydesk recover`.
 <a id="verify-drift"></a>
 ## Exit 50: values differ from what was written (PD-E50)
 
-Your data is intact. After the relaunch, Claude replaced some values that
-paritydesk had written (for example a sidebar order synced from the
-server). The difference is recorded, so it is not mistaken for your own
-edit on the next switch. `paritydesk verify` shows which rows drifted.
+Your data is intact. After the relaunch, Claude replaced values that
+paritydesk had written in a row the compatibility manifest does not
+expect Claude to replace. The difference is recorded, so it is not
+mistaken for your own edit on the next switch. `paritydesk verify` shows
+which rows drifted.
+
+Rows Claude also keeps per account or per device (the sidebar's group
+order, pin order and view) are expected to change after a launch. They
+are recorded the same way, `verify` lists them as changed, and the exit
+code stays 0.
 
 Only the check that a run makes after its own launch, or the first
 `paritydesk verify` within 15 minutes of that run, records drift. A later

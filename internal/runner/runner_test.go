@@ -341,9 +341,9 @@ func TestInsideApp(t *testing.T) {
 func testPlan(now time.Time) *plan.Plan {
 	return &plan.Plan{
 		Version: plan.Version, From: "a", Target: plan.Target{Alias: "b"},
-		CreatedAt: now, ExpiresAt: now.Add(2 * time.Minute),
-		Ops:     []plan.Op{{Kind: plan.OpWriteFile, Row: model.RowSessions, Path: "x.json", Content: []byte("secret"), PostHash: "h"}},
-		Changes: []model.Change{{Row: model.RowSessions, Kind: model.ChangeDeleted, Key: "k"}},
+		CreatedAt: now,
+		Ops:       []plan.Op{{Kind: plan.OpWriteFile, Row: model.RowSessions, Path: "x.json", Content: []byte("secret"), PostHash: "h"}},
+		Changes:   []model.Change{{Row: model.RowSessions, Kind: model.ChangeDeleted, Key: "k"}},
 	}
 }
 
@@ -376,8 +376,8 @@ func TestPlanStore(t *testing.T) {
 	}
 
 	declined := func(err error) bool { return pderr.CodeOf(err) == pderr.Declined }
-	if _, err := s.Load(h, now.Add(3*time.Minute)); !declined(err) {
-		t.Errorf("expired: %v", err)
+	if _, err := s.Load(h, now.Add(3*time.Hour)); err != nil {
+		t.Errorf("an old plan: %v", err)
 	}
 	if _, err := s.Load(strings.Repeat("0", 64), now); !declined(err) {
 		t.Errorf("missing: %v", err)

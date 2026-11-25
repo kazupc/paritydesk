@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"math"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -29,7 +30,7 @@ func TestSwitchHappyPath(t *testing.T) {
 	if res.Code != pderr.OK || res.From != "a" || res.To != "b" || res.Generation != 1 {
 		t.Fatalf("result = %+v", res)
 	}
-	wantPhases := []Phase{P0Preflight, P2Preview, P3Quit, P4Quiesce, P5Harvest, P6Backup, P7Apply, P8Swap, P9Park, P10Commit, P11Launch}
+	wantPhases := []Phase{P0Preflight, P2Preview, P3Quit, P4Quiesce, P5Harvest, P6Backup, P7Apply, P8Swap, P9Park, P10Commit, P11Launch, P12Verify}
 	if got := e.ui.phases(); !slices.Equal(got, wantPhases) {
 		t.Errorf("phases = %v, want %v", got, wantPhases)
 	}
@@ -230,20 +231,19 @@ func TestTurnEndedBeforeP3(t *testing.T) {
 }
 
 func TestStagedUpdate(t *testing.T) {
-	t.Run("refused without --allow-update", func(t *testing.T) {
+	t.Run("installs without a flag", func(t *testing.T) {
 		e := newEnv(t)
 		e.app.staged = true
-		_, err := e.orch().Switch(context.Background(), yes("b"))
-		if codeOf(t, err) != pderr.UpdatePending || e.app.quits != 0 {
-			t.Fatalf("err = %v", err)
+		res, err := e.orch().Switch(context.Background(), yes("b"))
+		if err != nil || res.Code != pderr.OK || e.account(ids.DefaultFolder) != acctB {
+			t.Fatalf("res = %+v, err = %v", res, err)
 		}
+		e.checkInvariants("update without flag")
 	})
 	t.Run("updater relaunches the app, P3 quits again", func(t *testing.T) {
 		e := newEnv(t)
 		e.app.staged, e.app.updRelaunch = true, true
-		opts := yes("b")
-		opts.AllowUpdate = true
-		res, err := e.orch().Switch(context.Background(), opts)
+		res, err := e.orch().Switch(context.Background(), yes("b"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -260,7 +260,7 @@ func TestStagedUpdate(t *testing.T) {
 		e.app.staged = true
 		e.ui.interactive = true
 		e.ui.answers[ConfirmPlan] = false
-		_, err := e.orch().Switch(context.Background(), SwitchOptions{To: "b", AllowUpdate: true, LogOffset: -1})
+		_, err := e.orch().Switch(context.Background(), SwitchOptions{To: "b", LogOffset: -1})
 		if codeOf(t, err) != pderr.Declined {
 			t.Fatalf("err = %v", err)
 		}
@@ -529,21 +529,24 @@ func TestConfirmedPlans(t *testing.T) {
 			t.Error("switch did not complete")
 		}
 	})
-	t.Run("first sync without the flag exits 21", func(t *testing.T) {
+	t.Run("a confirmed first-sync plan needs no flag", func(t *testing.T) {
 		e := newEnv(t)
 		pv, _ := e.orch().Preview(context.Background(), PreviewOptions{To: "b", Save: true})
-		_, err := e.orch().Switch(context.Background(), SwitchOptions{To: "b", FromRunner: true, ConfirmedPlan: pv.PlanHash, LogOffset: 10})
-		if codeOf(t, err) != pderr.BaseInvalid || e.app.quits != 0 {
-			t.Fatalf("err = %v", err)
+		if !pv.Plan.NeedsConfirmation {
+			t.Fatal("not a first sync")
+		}
+		res, err := e.orch().Switch(context.Background(), SwitchOptions{To: "b", FromRunner: true, ConfirmedPlan: pv.PlanHash, LogOffset: 10})
+		if err != nil || res.Code != pderr.OK {
+			t.Fatalf("res = %+v, err = %v", res, err)
 		}
 	})
-	t.Run("expired plan exits 3", func(t *testing.T) {
+	t.Run("a confirmed plan has no time limit", func(t *testing.T) {
 		e := newEnv(t)
 		pv, _ := e.orch().Preview(context.Background(), PreviewOptions{To: "b", Save: true})
-		e.clk.Advance(3 * time.Minute)
-		_, err := e.orch().Switch(context.Background(), SwitchOptions{To: "b", FromRunner: true, ConfirmedPlan: pv.PlanHash, ConfirmFirstSync: true, LogOffset: 10})
-		if codeOf(t, err) != pderr.Declined || e.app.quits != 0 {
-			t.Fatalf("err = %v", err)
+		e.clk.Advance(3 * time.Hour)
+		res, err := e.orch().Switch(context.Background(), SwitchOptions{To: "b", FromRunner: true, ConfirmedPlan: pv.PlanHash, LogOffset: 10})
+		if err != nil || res.Code != pderr.OK {
+			t.Fatalf("res = %+v, err = %v", res, err)
 		}
 	})
 	t.Run("grown destructive set exits 3 before quitting", func(t *testing.T) {
@@ -769,4 +772,41 @@ func TestSwitchConfirmationWindow(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The deletion breaker guards only runs where nobody saw the DESTRUCTIVE
+// line: --yes. A plan a person confirmed (at the terminal or through
+// --confirmed-plan) is validated without a deletion limit.
+func TestBreakerOnlyWithoutAPerson(t *testing.T) {
+	t.Run("--yes keeps the limit", func(t *testing.T) {
+		e := newEnv(t)
+		opts := yes("b")
+		opts.ConfirmFirstSync = true
+		if _, err := e.orch().Switch(context.Background(), opts); err != nil {
+			t.Fatal(err)
+		}
+		if e.valid.last.Limits.AllowDeletions != 0 {
+			t.Errorf("allow = %d", e.valid.last.Limits.AllowDeletions)
+		}
+	})
+	t.Run("a terminal yes lifts it", func(t *testing.T) {
+		e := newEnv(t)
+		e.ui.interactive = true
+		if _, err := e.orch().Switch(context.Background(), SwitchOptions{To: "b", LogOffset: -1}); err != nil {
+			t.Fatal(err)
+		}
+		if e.valid.last.Limits.AllowDeletions != math.MaxInt {
+			t.Errorf("allow = %d", e.valid.last.Limits.AllowDeletions)
+		}
+	})
+	t.Run("a confirmed plan lifts it", func(t *testing.T) {
+		e := newEnv(t)
+		pv, _ := e.orch().Preview(context.Background(), PreviewOptions{To: "b", Save: true})
+		if _, err := e.orch().Switch(context.Background(), SwitchOptions{To: "b", FromRunner: true, ConfirmedPlan: pv.PlanHash, LogOffset: 10}); err != nil {
+			t.Fatal(err)
+		}
+		if e.valid.last.Limits.AllowDeletions != math.MaxInt {
+			t.Errorf("allow = %d", e.valid.last.Limits.AllowDeletions)
+		}
+	})
 }

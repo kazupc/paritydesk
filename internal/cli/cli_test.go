@@ -75,7 +75,7 @@ func TestJobArgsParse(t *testing.T) {
 		{
 			To: "work", Yes: true, Only: []model.Category{model.CatSessions}, Skip: []model.Category{model.CatWindow},
 			NoLaunch: true, NoReopen: true, ReopenCLISession: "00000000-0000-4000-8000-000000000001",
-			AllowDeletions: 2, AcceptWorktreeRisk: true, AllowUpdate: true, LogOffset: 10,
+			AllowDeletions: 2, AcceptWorktreeRisk: true, LogOffset: 10,
 			ConfirmedPlan: strings.Repeat("ab", 32), ConfirmFirstSync: true,
 		},
 		{To: "", LogOffset: -1},

@@ -24,7 +24,7 @@ func samplePlan() *Plan {
 
 func TestHashIgnoresRunTimesFolderAndContent(t *testing.T) {
 	a, b := samplePlan(), samplePlan()
-	b.RunID, b.CreatedAt, b.ExpiresAt, b.Target.Folder, b.Approximate = "run-b", time.Unix(9, 0), time.Unix(9, 0), "/y", true
+	b.RunID, b.CreatedAt, b.Target.Folder, b.Approximate = "run-b", time.Unix(9, 0), "/y", true
 	b.Ops[0].Content = []byte("two")
 	if a.Hash() != b.Hash() {
 		t.Fatal("hash depends on excluded fields")

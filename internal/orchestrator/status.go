@@ -452,7 +452,7 @@ func (dr *doctor) update(ctx context.Context) {
 	case err != nil:
 		dr.add("update", "warn", "could not check for a staged update")
 	case staged:
-		dr.add("update", "warn", "a Claude update is staged; switch with --allow-update to let it install")
+		dr.add("update", "warn", "a Claude update is staged; the next switch lets it install, then re-checks the new version")
 	default:
 		dr.add("update", "ok", "no staged update")
 	}

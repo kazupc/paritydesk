@@ -897,9 +897,6 @@ func (p *fakePlans) Load(hash string, now time.Time) (*plan.Plan, error) {
 	if err := json.Unmarshal(b, &pl); err != nil {
 		return nil, err
 	}
-	if now.After(pl.ExpiresAt) {
-		return nil, pderr.New(pderr.Declined, "plans", "expired")
-	}
 	return &pl, nil
 }
 

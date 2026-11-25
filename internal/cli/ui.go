@@ -62,7 +62,9 @@ func (u *termUI) Progress(ev orchestrator.Event) {
 		if b, err := render.Document(ev); err == nil {
 			_, _ = u.p.Out.Write(b)
 		}
-	case !u.quiet:
+	case u.quiet, ev.Status == orchestrator.StatusInfo:
+		// Kept in the run log only.
+	default:
 		u.p.Line("%s", i18n.T(i18n.Progress, render.Sanitize(string(ev.Phase), 8), render.Sanitize(ev.Status, 8), ev.Message))
 	}
 }

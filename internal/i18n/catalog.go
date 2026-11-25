@@ -111,6 +111,7 @@ const (
 
 	VerifyOK       Msg = "verify.ok"
 	VerifyDrift    Msg = "verify.drift"
+	VerifyReplaced Msg = "verify.replaced"
 	VerifySignIn   Msg = "verify.sign_in"
 	VerifyFocused  Msg = "verify.focused"
 	VerifyBridge   Msg = "verify.bridge"
@@ -253,11 +254,12 @@ var catalog = map[Msg]string{
 	SwitchGeneration:  "Backup generation: %d",
 	SwitchJobResult:   "The background job's result file could not be written; paritydesk doctor cleans up the job later.",
 	SyncDone:          "Synced profile %s.",
-	PlanSaved:         "Plan saved for --confirmed-plan; it expires at %s.",
+	PlanSaved:         "Plan saved for --confirmed-plan.",
 	PlanNotSaved:      "Read-only mode: the plan was not saved.",
 
-	VerifyOK:       "Verify: Claude kept every value paritydesk wrote.",
+	VerifyOK:       "Verify: nothing unexpected after launch.",
 	VerifyDrift:    "Verify: Claude replaced values in: %s",
+	VerifyReplaced: "Verify: Claude or you changed these since the switch; nothing to do: %s",
 	VerifySignIn:   "Verify: the active profile needs a sign-in with its own account.",
 	VerifyFocused:  "Verify: the invoking session was reopened.",
 	VerifyBridge:   "Verify: Claude in Chrome connected after the launch.",

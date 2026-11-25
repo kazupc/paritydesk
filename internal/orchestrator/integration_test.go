@@ -361,12 +361,13 @@ func TestIntegrationVerifyReportsRestoredStore(t *testing.T) {
 	if err := os.WriteFile(cfgPath, out, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// pinned-order is contested: reported as replaced, not an error.
 	res, err := New(w.deps()).Verify(ctx)
-	if pderr.CodeOf(err) != pderr.VerifyDrift {
+	if err != nil {
 		t.Fatalf("verify after the restore: %v", err)
 	}
-	if !slices.Contains(res.Drift, model.RowPinnedOrder) {
-		t.Fatalf("drift %v", res.Drift)
+	if !slices.Contains(res.Replaced, model.RowPinnedOrder) || len(res.Drift) != 0 {
+		t.Fatalf("replaced %v drift %v", res.Replaced, res.Drift)
 	}
 }
 
@@ -503,8 +504,8 @@ func TestIntegrationLateVerifyKeepsUserEdit(t *testing.T) {
 	edited := slices.Clone(pins)
 	slices.Reverse(edited)
 	w.setPins(ids.DefaultFolder, edited)
-	if _, err := New(w.deps()).Verify(ctx); pderr.CodeOf(err) != pderr.VerifyDrift {
-		t.Fatalf("verify after the edit: %v", err)
+	if res, err := New(w.deps()).Verify(ctx); err != nil || len(res.Replaced) == 0 {
+		t.Fatalf("verify after the edit: %+v, %v", res, err)
 	}
 	for _, to := range []ids.Alias{"a", "b"} {
 		w.app.running = true

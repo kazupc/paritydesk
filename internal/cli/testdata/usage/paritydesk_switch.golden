@@ -5,7 +5,6 @@ Switch to another profile
 flags:
   --accept-worktree-risk       switch even if a worktree with uncommitted changes loses its registration
   --allow-deletions int        allow up to N deletions per category past the breaker
-  --allow-update               let a staged Claude update install, then re-check before syncing
   --confirm-first-sync         confirm the first-sync union that the confirmed plan showed
   --confirmed-plan string      hash of the plan you confirmed (printed by paritydesk plan --json)
   --detach                     run as a detached launchd job

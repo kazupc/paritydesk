@@ -198,14 +198,9 @@ func hasItem(s *model.RowSnapshot, key string) bool {
 	return ok
 }
 
-// verifyP12 runs P12 after a launch, for detached and non-interactive
-// runs (an interactive terminal is told to run paritydesk verify).
+// verifyP12 runs P12 after a launch.
 func (r *run) verifyP12(ctx context.Context) error {
 	if !r.launched {
-		return nil
-	}
-	if r.interactive {
-		r.o.progress(P12Verify, "ok", "run paritydesk verify within 15 minutes to confirm the values after launch")
 		return nil
 	}
 	defer r.phase(P12Verify, "verifying")()

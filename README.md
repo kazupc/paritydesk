@@ -25,7 +25,7 @@ paritydesk claims a capability only after a runtime spike on the real app backs 
 
 v0.1 is designed to carry Code sessions, backlog and scheduled tasks, environments, the sidebar's group order, pin order and view, selected app preferences, window size, worktree registrations and, if you opt in, MCP servers, in both directions with the newest change winning. Each item becomes a claim here only once the release checklist has confirmed it on a real Mac. See the [CHANGELOG](CHANGELOG.md) for what is deferred to v0.2.
 
-A staged Claude update installs when Claude quits (finding 4 of ADR 0003), so v0.1 is designed to look for one before quitting and stop (exit 13) unless you pass `--allow-update`. That check has not yet been run against the real app (release checklist, step 20).
+A staged Claude update installs when Claude quits (finding 4 of ADR 0003), so a switch lets it install first and checks the new version before it syncs anything. That path has not yet been run against the real app (release checklist, step 20).
 
 ## What it will never do
 

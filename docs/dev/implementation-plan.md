@@ -63,7 +63,7 @@ fact is applied.
 | Quit is vetoed while any session is working; a queued message restarts work; a vetoed quit can still happen later if the user picks "Wait for Claude". | P0 lists busy sessions (session records plus main.log turn lines); P3 waits until nothing is busy before sending the quit; after a vetoed timeout the run keeps watching (`late_quit_watch`) and relaunches the leaving profile if the app quits late. In-app switches first wait for the invoking session's turn to end, from a log offset recorded before the hand-off. |
 | SIGTERM is not a clean quit. | No signal is ever sent to the app. There is no `--force-quit`. The detached job never boots itself out (launchd would SIGTERM it). |
 | Chrome's native messaging host, the updater and the crash handler live in the bundle but are not the app. | `app.IsAppProcess` excludes them from the app's process set. |
-| A staged update installs on quit. | P0 refuses with exit 13 unless `--allow-update`: quit intent and `QuitByUs` first, wait for the install, new identity baseline and probes, P3 again if the updater relaunched the app; an abort relaunches (I4). |
+| A staged update installs on quit. | P0 lets it install: quit intent and `QuitByUs` first, wait for the install, new identity baseline and probes, P3 again if the updater relaunched the app; an abort relaunches (I4). |
 | The resume link is `claude://claude.ai/epitaxy/<local session id>`; it is confirmed by a focus line in `main.log`. | `app.SessionURL` (implemented) rebuilds it from an id matching `^local_[0-9a-f-]{36}$`; `app.Argv` accepts only that exact form; P11 opens it only if the session exists in the entering replica; P12 looks for the focus signal. |
 | An xattr on the data folder survives restarts. | `fsx.MarkerXattr` marker ties bases to folders. |
 | Claude in Chrome follows the Chrome profile's sign-in, not the folder. | `init`, `profile add` and the README explain one Chrome profile per account; `doctor` reports whether the recent Claude log shows an extension connecting, `verify` whether one connected after the launch, and explain the setup when it did not. |
@@ -160,7 +160,7 @@ P0  record main.log offset (LogOffset) first, while the invoking turn runs
          --yes; runner.Reap, then Submit(SwitchOptions.JobArgs); return
     take the run lock (the job retries for DetachedLockWait)
     load config, state; open run -> 41 unless recover; data-root binding
-    locate bundle (identity tuple); staged update? -> 13 (or --allow-update)
+    locate bundle (identity tuple); staged update? -> quit, wait for the install, re-probe
     scan folders -> identities, markers -> profile.Resolve(hints: active
       org from main.log) (20 on mismatch; PendingAdd -> 41)
     manifest + probes per folder + kv CheckFormat on S and T copies
@@ -235,7 +235,7 @@ cleanly (relaunching S if it quit the app). From the P5 commit to P10, and
 on every abort, rollback and relaunch path, it uses
 `context.WithoutCancel(ctx)` with `CommitTimeout`.
 
-`--allow-update`: at P0, with a staged update, the run records the quit
+Staged update: at P0 the run records the quit
 intent and `QuitByUs` before the quit (data `reason=update`), waits for the
 busy list, quits, waits with `WaitUpdateInstalled`, re-runs `Locate` (new
 baseline for P5 and P11) and the probes on the new version, and continues;

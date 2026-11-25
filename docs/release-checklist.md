@@ -104,8 +104,8 @@ release:
     error). For the sidebar view, change it on A, switch, and check it on
     B at launch and again after ten minutes. Per the second S1 round
     (ADR 0003), expect sort, group-by and section order to return to B's
-    own values (`paritydesk verify` then exits 50 once and marks them
-    contested) and section collapse to carry. Record what happened in
+    own values (`paritydesk verify` lists them as changed, exits 0 and
+    marks them contested) and section collapse to carry. Record what happened in
     ADR 0003 before the README claims it.
 12. **Claude in Chrome.** In a Code session, use Claude in Chrome on a
     harmless page. Expected: it works. Repeat after switching back.
@@ -157,8 +157,8 @@ release:
 19. **Worktree guard.** Leave uncommitted changes in a worktree that
     only the leaving account registers, then switch. Expected: exit 23.
 20. **Update gate.** With a Claude update downloaded, `paritydesk
-    switch`. Expected: exit 13; with `--allow-update`, a clean run on
-    the new version.
+    switch`. Expected: Claude quits, the update installs, and the run
+    finishes cleanly on the new version.
 21. **SessionStart hook.** With a run left open (step 18 before
     recovering), start a new Code session. Expected: exactly one line
     asking you to run `paritydesk recover`. With nothing pending: no

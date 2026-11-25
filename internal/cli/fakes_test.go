@@ -33,7 +33,7 @@ func fakePlan() *plan.Plan {
 	return &plan.Plan{
 		Version: 1, RunID: "run-0001", From: "work",
 		Target:      plan.Target{Alias: "home", Folder: "Claude-home"},
-		Approximate: true, CreatedAt: fixedTime, ExpiresAt: fixedTime.Add(orchestrator.ConfirmedPlanTTL),
+		Approximate: true, CreatedAt: fixedTime,
 		Ops: []plan.Op{{Kind: plan.OpWriteFile, Row: model.RowSessions, Path: "claude-code-sessions/x.json", PreHash: "a", PostHash: "b"}},
 		Changes: []model.Change{
 			{Row: model.RowSessions, Kind: model.ChangeAdded, Key: "local_" + fakeUUID(1)},

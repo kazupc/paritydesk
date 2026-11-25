@@ -179,8 +179,8 @@ func TestPlanJSONFields(t *testing.T) {
 	if doc.DestructiveDigest != p.DestructiveDigest() || doc.DestructiveDigest == "" {
 		t.Errorf("destructive_digest %q", doc.DestructiveDigest)
 	}
-	if doc.NeedsConfirmation == nil || doc.ExpiresAt == nil || !doc.ExpiresAt.Equal(p.ExpiresAt) {
-		t.Errorf("needs_confirmation or expires_at missing: %s", out)
+	if doc.NeedsConfirmation == nil {
+		t.Errorf("needs_confirmation missing: %s", out)
 	}
 	if doc.Saved == nil || !*doc.Saved || !h.svc.previewOpts.Save {
 		t.Errorf("plan was not saved: %s", out)

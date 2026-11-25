@@ -134,6 +134,26 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 
 ### Fixed
 
+- Fewer stops that protected nothing:
+  - A staged Claude update no longer stops a switch with exit 13: the
+    switch lets it install and re-checks the new version before syncing
+    (what `--allow-update` did; the flag is gone). Exit 13 now means the
+    install did not finish in time.
+  - A plan saved for `--confirmed-plan` has no time limit (`expires_at`
+    is gone from `plan --json`); the check after the quit still refuses
+    deletions the confirmed plan did not show.
+  - The deletion breaker (exit 22) applies only to `--yes` runs. A plan a
+    person confirmed, at the terminal or through `--confirmed-plan`, was
+    seen with its DESTRUCTIVE line.
+  - A confirmed plan that showed the first-sync line needs no
+    `--confirm-first-sync`; the plugin asks once.
+  - A switch from Terminal verifies after the launch by itself instead
+    of asking you to run `paritydesk verify`.
+  - Values Claude keeps per account or device (contested rows: group
+    order, pin order, sidebar view) that change after a launch are
+    listed as `replaced` and recorded, without exit 50.
+  - A stale Local Storage copy that the config mirror overrides is noted
+    in the run log only, not on screen.
 - Terminal questions have no time limit. The P2 answer expired two
   minutes after the plan was shown, so reading the plan could end in
   exit 3 after answering yes. What runs after an answer checks the data

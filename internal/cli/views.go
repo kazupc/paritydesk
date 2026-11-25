@@ -2,7 +2,6 @@ package cli
 
 import (
 	"sort"
-	"time"
 
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/ids"
@@ -24,7 +23,6 @@ type runView struct {
 	DestructiveDigest string           `json:"destructive_digest"`
 	NeedsConfirmation bool             `json:"needs_confirmation"`
 	Approximate       bool             `json:"approximate"`
-	ExpiresAt         *time.Time       `json:"expires_at,omitempty"`
 	Saved             *bool            `json:"saved,omitempty"`
 	Generation        uint64           `json:"generation,omitempty"`
 	Code              pderr.Code       `json:"code"`
@@ -60,10 +58,6 @@ func newRunView(r *orchestrator.Result) runView {
 		}
 		v.NeedsConfirmation = p.NeedsConfirmation
 		v.Approximate = p.Approximate
-		if !p.ExpiresAt.IsZero() {
-			t := p.ExpiresAt.UTC()
-			v.ExpiresAt = &t
-		}
 	}
 	switch {
 	case r.Summary != nil:

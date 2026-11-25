@@ -173,7 +173,13 @@ func (o *Orchestrator) mergeRow(ctx context.Context, in planInput, r model.RowID
 	}
 	for _, snap := range []*model.RowSnapshot{sSnap, tSnap} {
 		if snap != nil && len(snap.Stale) > 0 {
-			o.progress(P2Preview, "warn", staleWarning(r, len(snap.Stale)))
+			// A stale Local Storage copy that the mirror overrides needs
+			// nothing from the person: it goes to the run log only.
+			status := StatusInfo
+			if r == model.RowEnvironments {
+				status = "warn"
+			}
+			o.progress(P2Preview, status, staleWarning(r, len(snap.Stale)))
 		}
 	}
 	w := &rowWork{
@@ -320,7 +326,7 @@ func (o *Orchestrator) composePlan(ctx context.Context, in planInput, pl *planne
 	p := &plan.Plan{
 		Version: plan.Version, RunID: in.RunID, From: in.S.Alias,
 		Target:      plan.Target{Alias: in.T.Alias, Replica: in.T.Replica, Folder: in.T.Folder},
-		Approximate: in.Approximate, CreatedAt: now, ExpiresAt: now.Add(ConfirmedPlanTTL),
+		Approximate: in.Approximate, CreatedAt: now,
 		Skipped: in.Skipped,
 	}
 	var edits []plan.Edit
@@ -367,11 +373,9 @@ func (o *Orchestrator) emptyPlan(runID string, s, t sideRef, skipped map[model.R
 	return &plan.Plan{
 		Version: plan.Version, RunID: runID, From: s.Alias,
 		Target:    plan.Target{Alias: t.Alias, Replica: t.Replica, Folder: t.Folder},
-		CreatedAt: now, ExpiresAt: now.Add(ConfirmedPlanTTL), Skipped: skipped,
+		CreatedAt: now, Skipped: skipped,
 	}
 }
-
-// expiry returns when a confirmation asked now stops being valid.
 
 // staleWarning describes values on which a row's two stored copies
 // disagree. For presets neither copy wins: the presets are not written
