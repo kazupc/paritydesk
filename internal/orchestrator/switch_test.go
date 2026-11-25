@@ -30,7 +30,7 @@ func TestSwitchHappyPath(t *testing.T) {
 	if res.Code != pderr.OK || res.From != "a" || res.To != "b" || res.Generation != 1 {
 		t.Fatalf("result = %+v", res)
 	}
-	wantPhases := []Phase{P0Preflight, P2Preview, P3Quit, P4Quiesce, P5Harvest, P6Backup, P7Apply, P8Swap, P9Park, P10Commit, P11Launch, P12Verify}
+	wantPhases := []Phase{P0Preflight, P2Preview, P3Quit, P4Quiesce, P5Harvest, P6Backup, P7Apply, P8Swap, P9Park, P10Commit, P11Launch}
 	if got := e.ui.phases(); !slices.Equal(got, wantPhases) {
 		t.Errorf("phases = %v, want %v", got, wantPhases)
 	}
@@ -49,6 +49,10 @@ func TestSwitchHappyPath(t *testing.T) {
 	root := e.st.root(t)
 	if root.Active != "b" || root.Previous != "a" || root.Epoch != 1 || len(root.Generations) != 1 {
 		t.Errorf("root = active %s previous %s epoch %d gens %d", root.Active, root.Previous, root.Epoch, len(root.Generations))
+	}
+	// A terminal switch hands the post-launch check to a background job.
+	if len(e.det.submitted) != 1 || e.det.submitted[0][0] != "verify" || e.det.submitted[0][1] != "--after-run="+res.RunID {
+		t.Errorf("submitted = %v", e.det.submitted)
 	}
 	// The plan question shows the first-sync line, so it is the only one.
 	if !slices.Equal(e.ui.asked, []ConfirmKind{ConfirmPlan}) {
@@ -828,4 +832,22 @@ func TestSwitchBackIsNotAFirstSync(t *testing.T) {
 		t.Fatalf("switch back is a first sync: %+v, %v", pv, err)
 	}
 	e.checkInvariants("switch back")
+}
+
+// The background check of a run records nothing once a newer run (or an
+// open one) took over.
+func TestVerifyAfterIgnoresAnOlderRun(t *testing.T) {
+	e := newEnv(t)
+	if _, err := e.orch().Switch(context.Background(), yes("b")); err != nil {
+		t.Fatal(err)
+	}
+	before := e.st.root(t).LastVerify
+	res, err := e.orch().VerifyAfter(context.Background(), "older-run-0001")
+	if err != nil || res == nil {
+		t.Fatalf("res = %+v, err = %v", res, err)
+	}
+	after := e.st.root(t).LastVerify
+	if (before == nil) != (after == nil) || (after != nil && after.RunID != before.RunID) {
+		t.Errorf("last verify changed: %+v -> %+v", before, after)
+	}
 }

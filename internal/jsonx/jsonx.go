@@ -440,6 +440,26 @@ func HasTopLevelKey(doc []byte, key string) (bool, error) {
 	return found, err
 }
 
+// TopLevelMembers validates doc, which must be an object, and returns its
+// top-level members' raw values by key. One pass replaces a Get per key
+// when many top-level keys of a large document are looked at.
+func TopLevelMembers(doc []byte) (map[string]json.RawMessage, error) {
+	if err := Validate(doc); err != nil {
+		return nil, err
+	}
+	p := &parser{b: doc}
+	p.ws()
+	ms, err := members(doc, p.i)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]json.RawMessage, len(ms))
+	for _, m := range ms {
+		out[m.key] = json.RawMessage(doc[m.valStart:m.valEnd])
+	}
+	return out, nil
+}
+
 func topLevel(doc []byte, key string) ([]byte, bool, error) {
 	p := &parser{b: doc}
 	p.ws()

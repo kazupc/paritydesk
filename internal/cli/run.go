@@ -211,12 +211,25 @@ type verifyView struct {
 	Code           pderr.Code    `json:"code"`
 }
 
-func runVerify(ctx context.Context, e *env, _ *flag.FlagSet, _ []string) error {
+func runVerify(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 	svc, err := e.service(ctx, e.newUI(false, false))
 	if err != nil {
 		return err
 	}
-	res, err := svc.Verify(ctx)
+	var res *orchestrator.VerifyResult
+	after := getString(fs, orchestrator.FlagAfterRun)
+	if after != "" {
+		if !runner.ValidRunID(after) {
+			return usageErrorf("--%s is not a run id", orchestrator.FlagAfterRun)
+		}
+		res, err = svc.VerifyAfter(ctx, after)
+		// The background job writes its result so the runner can reap it.
+		if id := e.sys.getenv(runner.EnvRunID); runner.ValidRunID(id) {
+			_ = writeJobResult(e, id, &orchestrator.Result{Code: pderr.CodeOf(err)})
+		}
+	} else {
+		res, err = svc.Verify(ctx)
+	}
 	if res == nil {
 		return orInternal(err, "verify")
 	}

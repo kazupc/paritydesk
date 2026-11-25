@@ -81,6 +81,21 @@ func (o SwitchOptions) JobArgs(g JobGlobals) []string {
 	return append(a, "--", to)
 }
 
+// FlagAfterRun names the run a background verify checks.
+const FlagAfterRun = "after-run"
+
+// VerifyJobArgs returns the arguments of the background verify job for
+// runID, with the inherited global path flags.
+func VerifyJobArgs(runID string, g JobGlobals) []string {
+	a := []string{"verify", "--" + FlagAfterRun + "=" + runID}
+	for _, f := range [][2]string{{FlagConfig, g.Config}, {FlagStateDir, g.StateDir}, {FlagAppSupportDir, g.AppSupportDir}} {
+		if f[1] != "" {
+			a = append(a, "--"+f[0]+"="+f[1])
+		}
+	}
+	return a
+}
+
 func joinCategories[T ~string](cs []T) string {
 	s := make([]string, len(cs))
 	for i, c := range cs {

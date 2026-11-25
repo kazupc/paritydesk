@@ -128,6 +128,11 @@ func (r *run) recordProfiles() {
 		return
 	}
 	s := r.profileState(r.S.Profile.Alias)
+	// The leaving replica's org was known for this run (from the log while
+	// it was active); a parked folder of an account in several orgs
+	// cannot tell it, so it is kept here.
+	s.Replica = r.S.Replica
+	s.Replicas = appendReplica(s.Replicas, r.S.Replica)
 	if r.sMarked {
 		s.MarkerBase = r.p5.Plan.Hash()
 	}
@@ -201,10 +206,20 @@ func hasItem(s *model.RowSnapshot, key string) bool {
 	return ok
 }
 
-// verifyP12 runs P12 after a launch.
+// verifyP12 runs P12 after a launch. A terminal run hands the check to a
+// detached job, so the terminal is free as soon as Claude is up; the
+// SessionStart hook reports what the job finds. If the job cannot be
+// started, the run checks here.
 func (r *run) verifyP12(ctx context.Context) error {
 	if !r.launched {
 		return nil
+	}
+	if r.interactive && !r.opts.FromRunner && r.o.d.Detach != nil {
+		g := JobGlobals{Config: r.o.d.Paths.ConfigFile, StateDir: r.o.d.Paths.StateDir, AppSupportDir: r.o.d.Paths.SupportDir}
+		if _, err := r.o.d.Detach.Submit(ctx, VerifyJobArgs(r.res.RunID, g)); err == nil {
+			r.o.progress(P12Verify, "ok", "Claude is up; the values are checked in the background (paritydesk verify shows the result)")
+			return nil
+		}
 	}
 	defer r.phase(P12Verify, "verifying")()
 	_, err := r.o.verifyCore(ctx, verifyIn{

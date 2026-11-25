@@ -3,6 +3,7 @@ package profile
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/kazupc/paritydesk/internal/config"
 	"github.com/kazupc/paritydesk/internal/ids"
@@ -251,8 +252,40 @@ func (r *resolver) replica(alias ids.Alias, f *Folder, active bool) model.Replic
 		rep.Org = orgs[0]
 	case len(orgs) > 1 && active && containsOrg(orgs, r.hints.ActiveOrg):
 		rep.Org = r.hints.ActiveOrg
+	case len(orgs) > 1 && (!active || r.hints.ActiveOrg == ""):
+		// An account in several orgs, in a parked folder (or active with
+		// no log hint; a hint naming another org means that org is new
+		// here, so it stays unknown): the org its last run used. That is the recorded
+		// replica, or, for state written before replicas of a leaving
+		// profile were recorded, the one org this alias has bases for.
+		rep.Org = r.lastOrg(alias, acct, orgs)
 	}
 	return rep
+}
+
+// lastOrg returns the org of alias's last run among orgs, or "".
+func (r *resolver) lastOrg(alias ids.Alias, acct ids.AccountID, orgs []ids.OrgID) ids.OrgID {
+	ps := r.state(alias)
+	if ps != nil && ps.Replica.Account == acct && containsOrg(orgs, ps.Replica.Org) {
+		return ps.Replica.Org
+	}
+	if r.root == nil {
+		return ""
+	}
+	var found ids.OrgID
+	for _, o := range orgs {
+		prefix := string(alias) + "/" + model.Replica{Account: acct, Org: o}.Key() + "/"
+		for k := range r.root.Bases {
+			if strings.HasPrefix(k, prefix) {
+				if found != "" && found != o {
+					return ""
+				}
+				found = o
+				break
+			}
+		}
+	}
+	return found
 }
 
 func containsOrg(orgs []ids.OrgID, o ids.OrgID) bool {

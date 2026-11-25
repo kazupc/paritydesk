@@ -284,11 +284,31 @@ func TestResolve(t *testing.T) {
 				t.Fatalf("active replica = %+v", r.Active.Replica)
 			}
 		}},
-		{"hint ignored for a parked folder", func(w *world) {
+		{"hint ignored for a parked folder; its recorded org wins", func(w *world) {
 			w.folders["Claude-home"].Replicas = []model.Replica{rep(2, 20), rep(2, 21)}
-			w.hints.ActiveOrg = org(20)
+			w.hints.ActiveOrg = org(21)
+		}, func(t *testing.T, r *Resolution) {
+			if r.Bindings["home"].Replica != rep(2, 20) {
+				t.Fatalf("home replica = %+v", r.Bindings["home"].Replica)
+			}
+		}},
+		{"parked folder with several orgs and no record", func(w *world) {
+			w.folders["Claude-home"].Replicas = []model.Replica{rep(2, 20), rep(2, 21)}
+			w.root.Profiles["home"].Replica = model.Replica{Account: acct(2)}
 		}, func(t *testing.T, r *Resolution) {
 			if r.Bindings["home"].Replica.Org != "" {
+				t.Fatalf("home replica = %+v", r.Bindings["home"].Replica)
+			}
+		}},
+		{"parked folder, legacy state: the org with bases", func(w *world) {
+			w.folders["Claude-home"].Replicas = []model.Replica{rep(2, 20), rep(2, 21)}
+			w.root.Profiles["home"].Replica = model.Replica{Account: acct(2)}
+			for k := range w.root.Bases {
+				delete(w.root.Bases, k)
+			}
+			w.root.Bases["home/"+rep(2, 21).Key()+"/sessions"] = "ref"
+		}, func(t *testing.T, r *Resolution) {
+			if r.Bindings["home"].Replica != rep(2, 21) {
 				t.Fatalf("home replica = %+v", r.Bindings["home"].Replica)
 			}
 		}},

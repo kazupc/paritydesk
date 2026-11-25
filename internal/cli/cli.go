@@ -44,6 +44,7 @@ var hiddenFlags = map[string]bool{
 	"plugin-version":            true,
 	orchestrator.FlagFromRunner: true,
 	orchestrator.FlagLogOffset:  true,
+	orchestrator.FlagAfterRun:   true,
 }
 
 func (g *globalFlags) register(fs *flag.FlagSet) {
@@ -358,7 +359,9 @@ func root() *command {
 			fs.Bool(orchestrator.FlagNoLaunch, false, "do not relaunch Claude")
 			fs.Bool(flagJSONProgress, false, "NDJSON progress on stderr")
 		}, runSync),
-		leaf("verify", "", "Check that the app kept what the last run wrote", 0, 0, nil, runVerify),
+		leaf("verify", "", "Check that the app kept what the last run wrote", 0, 0, func(fs *flag.FlagSet) {
+			fs.String(orchestrator.FlagAfterRun, "", "run id a background check verifies (set by paritydesk)")
+		}, runVerify),
 		leaf("recover", "", "Finish or undo an interrupted run", 0, 0, func(fs *flag.FlagSet) {
 			fs.Bool("rollback", false, "undo the interrupted run instead of completing it")
 			yesFlag(fs)

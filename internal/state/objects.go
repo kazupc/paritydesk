@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sync"
+	"syscall"
 
 	"github.com/kazupc/paritydesk/internal/model"
 )
@@ -90,6 +92,84 @@ func (s *Store) GetSnapshot(ref Ref) (*model.RowSnapshot, error) {
 	if !ref.valid() {
 		return nil, ErrBadRef
 	}
+	// Objects are content-addressed, so a parsed one stays right for the
+	// life of the process while its file is unchanged (same inode, size and
+	// modification time, so tampering is still caught); a switch reads the
+	// same bases at P2 and P5. Callers get their own maps, as they may edit
+	// what they get; item values are never mutated in place.
+	path := filepath.Join(s.objectsDir(), string(ref))
+	st, statOK := objectStat(path)
+	snapMu.Lock()
+	cached, ok := snapCache[ref]
+	snapMu.Unlock()
+	if ok && statOK && cached.st == st {
+		return shallowClone(cached.snap), nil
+	}
+	snap, err := s.readSnapshot(ref)
+	if err != nil {
+		return nil, err
+	}
+	if st2, ok := objectStat(path); statOK && ok && st2 == st {
+		snapMu.Lock()
+		if len(snapCache) >= snapCacheLimit {
+			snapCache = map[Ref]snapEntry{}
+		}
+		snapCache[ref] = snapEntry{st: st, snap: shallowClone(snap)}
+		snapMu.Unlock()
+	}
+	return snap, nil
+}
+
+type snapEntry struct {
+	st   fileStat
+	snap *model.RowSnapshot
+}
+
+type fileStat struct {
+	size, mtime int64
+	ino         uint64
+}
+
+func objectStat(path string) (fileStat, bool) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return fileStat{}, false
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return fileStat{}, false
+	}
+	return fileStat{size: fi.Size(), mtime: fi.ModTime().UnixNano(), ino: uint64(st.Ino)}, true
+}
+
+// shallowClone copies a snapshot's maps and slices but shares item values.
+func shallowClone(s *model.RowSnapshot) *model.RowSnapshot {
+	c := *s
+	if s.Items != nil {
+		c.Items = make(map[string]model.Item, len(s.Items))
+		for k, v := range s.Items {
+			c.Items[k] = v
+		}
+	}
+	if s.Tombstones != nil {
+		c.Tombstones = make(map[string]model.Tombstone, len(s.Tombstones))
+		for k, v := range s.Tombstones {
+			c.Tombstones[k] = v
+		}
+	}
+	c.Order = append([]string(nil), s.Order...)
+	c.Stale = append([]string(nil), s.Stale...)
+	return &c
+}
+
+const snapCacheLimit = 256
+
+var (
+	snapMu    sync.Mutex
+	snapCache = map[Ref]snapEntry{}
+)
+
+func (s *Store) readSnapshot(ref Ref) (*model.RowSnapshot, error) {
 	b, err := os.ReadFile(filepath.Join(s.objectsDir(), string(ref)))
 	if err != nil {
 		return nil, fmt.Errorf("state: read object %s: %w", ref, err)

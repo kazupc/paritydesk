@@ -158,6 +158,11 @@ type Service interface {
 	Preview(ctx context.Context, opts PreviewOptions) (*Result, error)
 	Sync(ctx context.Context, opts SyncOptions) (*Result, error)
 	Verify(ctx context.Context) (*VerifyResult, error)
+	// VerifyAfter is the background check a terminal switch hands off:
+	// it waits for Claude to settle without holding the run lock, then
+	// records only if runID is still the latest run into the active
+	// profile and no run is open.
+	VerifyAfter(ctx context.Context, runID string) (*VerifyResult, error)
 	Recover(ctx context.Context, opts RecoverOptions) (*RecoverResult, error)
 	Rollback(ctx context.Context, n uint64, propagate bool) (*RollbackResult, error)
 	Rebase(ctx context.Context) error

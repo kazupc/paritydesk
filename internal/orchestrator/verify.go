@@ -36,6 +36,8 @@ type verifyIn struct {
 	record bool
 	// rows limits the comparison to these rows (nil: every enabled row).
 	rows []model.RowID
+	// settled: the caller already waited for Claude to settle.
+	settled bool
 }
 
 // Verify runs P12 for the last run: waits for LOCK and a stable config
@@ -105,7 +107,7 @@ func (o *Orchestrator) verifyCore(ctx context.Context, in verifyIn) (*VerifyResu
 			break
 		}
 	}
-	if !o.waitSettled(ctx, claude, mirrorName) {
+	if !in.settled && !o.waitSettled(ctx, claude, mirrorName) {
 		o.progress(P12Verify, "warn", "Claude did not settle in time; verifying what is there")
 	}
 	mirror, _, err := readContained(claude, mirrorName)
@@ -327,4 +329,55 @@ func (o *Orchestrator) activeIdentityIs(ctx context.Context, a ids.AccountID) bo
 		}
 	}
 	return false
+}
+
+// VerifyAfter waits for Claude to settle, then verifies the run runID
+// under the run lock. It records nothing, and reports nothing, when a run
+// is open or a newer run has entered the active profile since: that run
+// checks for itself.
+func (o *Orchestrator) VerifyAfter(ctx context.Context, runID string) (*VerifyResult, error) {
+	d := o.d
+	b, err := d.App.Locate(ctx, d.Config.App.BundleID)
+	if err != nil {
+		return nil, pderr.Wrap(pderr.CompatRefused, "verify", err)
+	}
+	m, _, err := d.Compat.Manifest(ctx, b.Version)
+	if err != nil || m == nil {
+		return nil, pderr.New(pderr.CompatRefused, "verify", "no compatibility manifest covers this Claude version")
+	}
+	mirrorName := sources.DesktopConfigFile
+	for _, r := range model.AllRows {
+		if spec, ok := m.Row(r); ok && spec.MirrorFile != "" {
+			mirrorName = spec.MirrorFile
+			break
+		}
+	}
+	if !o.waitSettled(ctx, o.claudePath(), mirrorName) {
+		o.progress(P12Verify, "warn", "Claude did not settle in time; verifying what is there")
+	}
+	if !d.ReadOnly {
+		l, err := d.State.Lock(ctx, DetachedLockWait)
+		if err != nil {
+			return nil, err
+		}
+		defer releaseLock(l)
+	}
+	root, err := o.loadRoot()
+	if err != nil {
+		return nil, err
+	}
+	last, ok := lastRunInto(root, root.Active)
+	if root.Run != nil || !ok || last.RunID != runID || root.Profiles[root.Active] == nil {
+		return &VerifyResult{PairingOK: true}, nil
+	}
+	var from int64
+	if n, err := d.App.LogSize(); err == nil && n > verifyLogTail {
+		from = n - verifyLogTail
+	}
+	in := verifyIn{
+		root: root, alias: root.Active, replica: root.Profiles[root.Active].Replica,
+		manifest: m, sig: m.Signals, from: from, runID: runID, settled: true,
+		record: o.now().Sub(last.At) <= verifyRecordWindow && (root.LastVerify == nil || root.LastVerify.RunID != runID),
+	}
+	return o.verifyCore(ctx, in)
 }

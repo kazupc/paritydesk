@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/kazupc/paritydesk/internal/jsonx"
 	"github.com/kazupc/paritydesk/internal/model"
@@ -16,12 +17,59 @@ import (
 // top-level shape as val (so every edit can be applied to both), else nil.
 type editDoc struct {
 	val, raw []byte
+	// Top-level members of val and raw, and of the last item copyFrom
+	// read, parsed once: a session record can be hundreds of kilobytes
+	// and the transform looks at dozens of its top-level fields, most of
+	// which are absent or equal on both sides. nil means not parsed (or
+	// stale after an edit).
+	valTop, rawTop map[string]json.RawMessage
+	from           *byte // identity of the item the from* maps describe
+	fromVal        map[string]json.RawMessage
+	fromRaw        map[string]json.RawMessage
 }
 
+// topOf returns doc's top-level members, or nil if doc is not a valid
+// object (the slow path then handles it).
+func topOf(doc []byte) map[string]json.RawMessage {
+	if len(doc) == 0 {
+		return nil
+	}
+	m, err := jsonx.TopLevelMembers(doc)
+	if err != nil {
+		return nil
+	}
+	return m
+}
+
+// sameTop reports whether key is absent from both maps or holds the same
+// bytes in both. A nil map is unknown: never the same.
+func sameTop(a, b map[string]json.RawMessage, key string) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	av, aok := a[key]
+	bv, bok := b[key]
+	return aok == bok && (!aok || bytes.Equal(av, bv))
+}
+
+func (d *editDoc) tops() {
+	if d.valTop == nil {
+		d.valTop = memoTop(d.val)
+	}
+	if d.raw != nil && d.rawTop == nil {
+		d.rawTop = memoTop(d.raw)
+	}
+}
+
+func (d *editDoc) edited() { d.valTop, d.rawTop = nil, nil }
+
+// newEditDoc starts from the item's own bytes: every edit builds a new
+// slice (jsonx splices into a fresh buffer), so the item is never changed,
+// and the parsed top-level members of its value can be reused.
 func newEditDoc(it model.Item) *editDoc {
-	d := &editDoc{val: append([]byte(nil), it.Value...)}
+	d := &editDoc{val: it.Value}
 	if mirrors(it.Value, it.Raw) {
-		d.raw = append([]byte(nil), it.Raw...)
+		d.raw = it.Raw
 	}
 	return d
 }
@@ -76,6 +124,21 @@ func isObject(v []byte) bool {
 func getAt(doc []byte, path jsonx.Path) (json.RawMessage, bool) {
 	if len(doc) == 0 {
 		return nil, false
+	}
+	// The first segment comes from the document's top-level members,
+	// parsed once per document (memoTop); the rest of the path is looked
+	// up in that member alone.
+	if len(path) > 0 {
+		if top := memoTop(doc); top != nil {
+			v, ok := top[path[0]]
+			if !ok {
+				return nil, false
+			}
+			if len(path) == 1 {
+				return v, true
+			}
+			doc, path = v, path[1:]
+		}
 	}
 	v, err := jsonx.Get(doc, path)
 	if err != nil {
@@ -154,6 +217,7 @@ func deletePath(doc []byte, path jsonx.Path) ([]byte, error) {
 
 // set writes the same value at path in val and raw (non-secret values).
 func (d *editDoc) set(path jsonx.Path, v json.RawMessage) error {
+	d.edited()
 	var err error
 	if d.val, err = setPath(d.val, path, v); err != nil {
 		return fmt.Errorf("rows: set %s: %w", strings.Join(path, "."), err)
@@ -168,6 +232,14 @@ func (d *editDoc) set(path jsonx.Path, v json.RawMessage) error {
 
 // del removes path from val and raw.
 func (d *editDoc) del(path jsonx.Path) error {
+	if len(path) == 1 {
+		d.tops()
+		absent := map[string]json.RawMessage{}
+		if sameTop(d.valTop, absent, path[0]) && (d.raw == nil || sameTop(d.rawTop, absent, path[0])) {
+			return nil
+		}
+	}
+	d.edited()
 	var err error
 	if d.val, err = deletePath(d.val, path); err != nil {
 		return fmt.Errorf("rows: delete %s: %w", strings.Join(path, "."), err)
@@ -183,6 +255,20 @@ func (d *editDoc) del(path jsonx.Path) error {
 // copyFrom makes path hold what it holds in from (or removes it), taking
 // the raw counterpart from from's raw bytes so secrets stay consistent.
 func (d *editDoc) copyFrom(path jsonx.Path, from model.Item) error {
+	if len(path) == 1 && len(from.Value) > 0 {
+		if d.from != &from.Value[0] {
+			d.from, d.fromVal, d.fromRaw = &from.Value[0], memoTop(from.Value), nil
+			if mirrors(from.Value, from.Raw) {
+				d.fromRaw = memoTop(from.Raw)
+			}
+		}
+		d.tops()
+		rawSame := d.raw == nil || sameTop(d.rawTop, d.fromRaw, path[0])
+		if sameTop(d.valTop, d.fromVal, path[0]) && rawSame {
+			return nil
+		}
+	}
+	d.edited()
 	v, ok := getAt(from.Value, path)
 	var err error
 	if ok {
@@ -283,3 +369,45 @@ func marshalList(xs []string) (json.RawMessage, error) {
 	}
 	return jsonx.Marshal(xs)
 }
+
+// memoTop returns doc's top-level members, parsed once per document for
+// the life of the process (documents are never mutated in place: edits
+// build new slices). Large session records are looked at for dozens of
+// fields by several merge steps; re-parsing each time dominated planning.
+// nil means doc is not a valid object. The memo is cleared when it grows
+// past memoLimit entries, so a long-lived process stays bounded.
+func memoTop(doc []byte) map[string]json.RawMessage {
+	if len(doc) < memoMinSize {
+		return topOf(doc)
+	}
+	k := memoKey{p: &doc[0], n: len(doc)}
+	memoMu.Lock()
+	m, ok := memo[k]
+	memoMu.Unlock()
+	if ok {
+		return m
+	}
+	m = topOf(doc)
+	memoMu.Lock()
+	if len(memo) >= memoLimit {
+		memo = map[memoKey]map[string]json.RawMessage{}
+	}
+	memo[k] = m
+	memoMu.Unlock()
+	return m
+}
+
+type memoKey struct {
+	p *byte
+	n int
+}
+
+const (
+	memoLimit   = 50000
+	memoMinSize = 4096 // smaller documents parse faster than a lookup is worth
+)
+
+var (
+	memoMu sync.Mutex
+	memo   = map[memoKey]map[string]json.RawMessage{}
+)

@@ -562,3 +562,36 @@ func TestOtherAccountsNeverRead(t *testing.T) {
 		}
 	}
 }
+
+// A record read again in the same process is reused only while its file
+// is unchanged; an edit (new bytes, new mtime) is read afresh.
+func TestReadReusesOnlyUnchangedRecords(t *testing.T) {
+	m := testkit.Manifest(t)
+	spec := testkit.Rich("Claude", 1)
+	spec.Replica = rep
+	folder := testkit.NewDataRoot(t).AddFolder(t, spec)
+	c := rc(t, m, folder, model.RowSessions)
+	first := read(t, sessions.Sessions{}, c)
+	again := read(t, sessions.Sessions{}, c)
+	k := testkit.FakeSession(1)
+	if first.Items[k].Hash != again.Items[k].Hash {
+		t.Fatal("unchanged record read differently")
+	}
+	p := filepath.Join(sessDir(folder), k+".json")
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited := strings.Replace(string(b), "futureField", "futureFieldEdited", 1)
+	if err := os.WriteFile(p, []byte(edited), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(time.Minute)
+	if err := os.Chtimes(p, later, later); err != nil {
+		t.Fatal(err)
+	}
+	after := read(t, sessions.Sessions{}, c)
+	if !strings.Contains(string(after.Items[k].Value), "futureFieldEdited") {
+		t.Fatal("edited record served from the cache")
+	}
+}

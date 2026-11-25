@@ -147,6 +147,13 @@ func (f *fakeService) Sync(_ context.Context, o orchestrator.SyncOptions) (*orch
 	return f.runResult(p), nil
 }
 
+func (f *fakeService) VerifyAfter(context.Context, string) (*orchestrator.VerifyResult, error) {
+	if err := f.record("verify-after"); err != nil {
+		return nil, err
+	}
+	return f.verify, nil
+}
+
 func (f *fakeService) Verify(context.Context) (*orchestrator.VerifyResult, error) {
 	if err := f.record("verify"); err != nil {
 		return nil, err

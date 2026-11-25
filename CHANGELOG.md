@@ -134,6 +134,21 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 
 ### Fixed
 
+- Planning is about 20 times faster. On a test Mac with about 750 session
+  records of up to 600 KB each, one plan took 82 s and a switch planned
+  twice; it now takes about 4 s, and the second plan of a switch about
+  1 s. The session transform parsed each large record once per field it
+  touched; top-level members are now parsed once per document and edits
+  that change nothing are skipped. Records and shape probes are read on
+  all CPUs, and records and state objects whose files did not change are
+  reused within the run.
+- A terminal switch hands the post-launch check to a background job, so
+  the terminal is free as soon as Claude is up; the SessionStart hook
+  reports what the check finds.
+- An account in several organizations, parked, resolves to the
+  organization of its last run. Before, its org was unknown and every
+  per-organization row (sessions among them) was skipped (degraded mode).
+  A switch now also records the leaving profile's replica.
 - A switch also writes the leaving folder's marker. P5 records that
   folder's harvested rows as its bases, but only the entering folder got a
   marker, so the first switch back was a second first-sync union that

@@ -7,9 +7,13 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/ids"
@@ -108,17 +112,14 @@ func (Sessions) Read(ctx context.Context, rc sources.ReadContext) (*model.RowSna
 	}
 	act := activityField(rc.Spec)
 	tmps := map[string]string{}
+	var recs []record
 	for _, e := range ents {
 		name := e.Name()
 		if !e.Type().IsRegular() {
 			continue
 		}
 		if id, ok := sources.RecordID(name); ok {
-			it, err := readRecord(rc, string(id), name, act)
-			if err != nil {
-				return nil, err
-			}
-			snap.Items[it.Key] = it
+			recs = append(recs, record{key: string(id), name: name})
 		} else if k, ok := tmpKey(name); ok {
 			tmps[k] = name
 		} else if k, ok := tombstoneKey(name); ok {
@@ -131,6 +132,13 @@ func (Sessions) Read(ctx context.Context, rc sources.ReadContext) (*model.RowSna
 			}
 			snap.Tombstones[k] = model.Tombstone{Key: k, At: at}
 		}
+	}
+	items, err := readRecords(ctx, rc, recs, act)
+	if err != nil {
+		return nil, err
+	}
+	for _, it := range items {
+		snap.Items[it.Key] = it
 	}
 	for k, name := range tmps {
 		if it, ok := readCandidate(rc, k, name, act); ok {
@@ -508,3 +516,99 @@ func sameSet(a, b []string) bool {
 	}
 	return true
 }
+
+type record struct{ key, name string }
+
+// readRecords reads the records on all CPUs. Each is parsed and hashed
+// in full (records reach hundreds of kilobytes), so a folder of a few
+// hundred sessions is CPU-bound. The first error wins; the order of the
+// result does not matter (the caller keys it).
+func readRecords(ctx context.Context, rc sources.ReadContext, recs []record, act string) ([]model.Item, error) {
+	out := make([]model.Item, len(recs))
+	errs := make([]error, len(recs))
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for w := 0; w < min(runtime.NumCPU(), len(recs)); w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				out[i], errs[i] = readRecordCached(rc, recs[i].key, recs[i].name, act)
+			}
+		}()
+	}
+	for i := range recs {
+		if ctx.Err() != nil {
+			break
+		}
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	for _, err := range errs {
+		if err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// readRecordCached reads a record, reusing the item parsed earlier in this
+// process when the file is unchanged: same device, inode, size and
+// modification time before and after that read. A switch plans twice,
+// before and after Claude quits, and most records are untouched between
+// the two. After a folder swap the same path names other inodes, so a
+// stale entry is never reused.
+func readRecordCached(rc sources.ReadContext, key, name, act string) (model.Item, error) {
+	path := filepath.Join(rc.Folder, filepath.FromSlash(sources.SessionRel(rc.Replica, name)))
+	before, ok := statKey(path, key, act)
+	if ok {
+		recMu.Lock()
+		it, hit := recCache[before]
+		recMu.Unlock()
+		if hit {
+			return it, nil
+		}
+	}
+	it, err := readRecord(rc, key, name, act)
+	if err != nil || !ok {
+		return it, err
+	}
+	if after, ok := statKey(path, key, act); ok && after == before {
+		recMu.Lock()
+		if len(recCache) >= recCacheLimit {
+			recCache = map[recKey]model.Item{}
+		}
+		recCache[before] = it
+		recMu.Unlock()
+	}
+	return it, nil
+}
+
+type recKey struct {
+	path, key, act string
+	dev, ino       uint64
+	size, mtime    int64
+}
+
+func statKey(path, key, act string) (recKey, bool) {
+	fi, err := os.Lstat(path)
+	if err != nil || !fi.Mode().IsRegular() {
+		return recKey{}, false
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return recKey{}, false
+	}
+	return recKey{path: path, key: key, act: act, dev: uint64(st.Dev), ino: uint64(st.Ino), size: fi.Size(), mtime: fi.ModTime().UnixNano()}, true
+}
+
+const recCacheLimit = 20000
+
+var (
+	recMu    sync.Mutex
+	recCache = map[recKey]model.Item{}
+)

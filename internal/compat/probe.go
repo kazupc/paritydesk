@@ -8,7 +8,9 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/kazupc/paritydesk/internal/jsonx"
 	"github.com/kazupc/paritydesk/internal/localstorage"
@@ -134,19 +136,46 @@ func probeJSONShape(folder, target string, jp jsonx.Path, typ string) (bool, str
 	if bad != "" {
 		return false, bad
 	}
-	for _, f := range files {
-		b, present, bad := readProbeFile(f)
-		if bad != "" {
-			return false, bad
-		}
-		if !present {
-			continue
-		}
-		if ok, d := shapeAt(b, jp, typ); !ok {
+	// Session records are many and large: check them on all CPUs. The
+	// first failure in file order is reported, as a serial loop would.
+	details := make([]string, len(files))
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for w := 0; w < min(runtime.NumCPU(), len(files)); w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				details[i] = shapeOfFile(files[i], jp, typ)
+			}
+		}()
+	}
+	for i := range files {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+	for _, d := range details {
+		if d != "" {
 			return false, d
 		}
 	}
 	return true, detailOK
+}
+
+// shapeOfFile returns "" when f is absent or has the shape, else why not.
+func shapeOfFile(f string, jp jsonx.Path, typ string) string {
+	b, present, bad := readProbeFile(f)
+	if bad != "" {
+		return bad
+	}
+	if !present {
+		return ""
+	}
+	if ok, d := shapeAt(b, jp, typ); !ok {
+		return d
+	}
+	return ""
 }
 
 // probeIdentity checks one top-level member of config.json without

@@ -494,6 +494,8 @@ never_touched = [
   "Partitions/**",
   "buddy-tokens.json",
   "TransportSecurity",
+  # The app writes TransportSecurity through a hidden temporary file.
+  ".*.TransportSecurity.*",
   "Network Persistent State",
   "SharedStorage*",
   "InterestGroups*",
