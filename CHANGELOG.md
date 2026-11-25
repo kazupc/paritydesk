@@ -99,6 +99,11 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 - `app.late_quit_watch` is 10 minutes: after a vetoed quit times out,
   paritydesk keeps watching and relaunches the profile you were on if
   Claude quits late.
+- A compatibility manifest for Claude 7.x, tested on 7.37095.0: the 6.x
+  probes and log patterns still hold; the new session fields
+  `titleSetAtMs` (max time) and `writtenRepositories` (per field) are
+  merged, and eight new top-level entries are never touched until
+  classified.
 
 ### Changed
 
@@ -129,6 +134,12 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 
 ### Fixed
 
+- A staged Claude update is no longer reported after it was installed:
+  Squirrel leaves its JSON state file behind, so paritydesk now checks
+  that the update bundle it names still exists. Before, every switch
+  after an app update stopped with exit 13.
+- `doctor`'s Claude in Chrome check says it reads the recent Claude log,
+  which may reach back before the last launch.
 - A quit that Claude refuses (AppleScript error -128, as AppKit answers
   when the app cancels termination) or does not answer in time (-1712)
   is now waited on like the "still working" dialog, watched for a late

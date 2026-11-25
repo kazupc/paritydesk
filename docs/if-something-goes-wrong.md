@@ -72,8 +72,8 @@ Nothing was changed. A switch quits Claude, which would interrupt the
 listed sessions. Wait until they finish, then run the command again.
 
 paritydesk can list busy sessions only when the compatibility manifest
-has a confirmed `turn_started` log pattern. The manifest for Claude 6.x
-has none yet, so v0.1 does not exit 12 and `paritydesk doctor` reports
+has a confirmed `turn_started` log pattern. The manifests for Claude 6.x
+and 7.x have none yet, so v0.1 does not exit 12 and `paritydesk doctor` reports
 busy detection as unavailable. Until then only Claude's own quit dialog
 protects a working session: answer "Cancel" there and paritydesk exits 10
 without changing anything.
@@ -94,7 +94,7 @@ other's view. `paritydesk doctor` names what it found. Stop using one of
 them; paritydesk can adopt the other tool's parked folders by identity
 with `paritydesk profile adopt`.
 
-The compatibility manifest for Claude 6.x lists no other tool's
+The compatibility manifests for Claude 6.x and 7.x list no other tool's
 footprints yet, so v0.1 does not detect other tools and does not exit
 14. `paritydesk init` still lists parked `Claude-*` folders that hold an
 account no profile registers, and suggests `paritydesk profile adopt`

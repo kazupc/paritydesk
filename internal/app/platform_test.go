@@ -474,3 +474,46 @@ func TestNewDarwinWiresParts(t *testing.T) {
 		t.Fatalf("commands %v", run.templates())
 	}
 }
+
+// Squirrel leaves its JSON state behind after a successful install; only
+// a state whose update bundle still exists is a staged update.
+func TestUpdateStagedLeftoverState(t *testing.T) {
+	home := t.TempDir()
+	stateDir := filepath.Join(home, "Library", "Caches", testBundle+".ShipIt")
+	bundle := filepath.Join(stateDir, "update.abc", "Example.app")
+	if err := os.MkdirAll(bundle, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	b := &plistBundle{procs: procFunc(func() []Process { return nil }), clock: clock.NewFake(t0), home: home, name: "Example"}
+	write := func(s string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(stateDir, "ShipItState.plist"), []byte(s), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state := func(u string) string {
+		return `{"bundleIdentifier":"` + testBundle + `","updateBundleURL":"` + u + `","useUpdateBundleName":true}`
+	}
+	for _, c := range []struct {
+		name, state string
+		want        bool
+	}{
+		{"bundle present", state("file://" + bundle + "/"), true},
+		{"bundle gone", state("file://" + filepath.Join(stateDir, "update.gone", "Example.app") + "/"), false},
+		{"bundle outside the state dir", state("file:///Applications/Example.app/"), true},
+		{"not a file URL", state("https://example.invalid/x"), true},
+		{"no bundle URL", `{"bundleIdentifier":"x"}`, true},
+		{"not JSON", "x", true},
+	} {
+		write(c.state)
+		got, err := b.UpdateStaged(t.Context(), testBundle)
+		if err != nil || got != c.want {
+			t.Errorf("%s: staged=%v err=%v, want %v", c.name, got, err, c.want)
+		}
+	}
+	// A leftover state does not hold WaitUpdateInstalled.
+	write(state("file://" + filepath.Join(stateDir, "update.gone", "Example.app") + "/"))
+	if err := b.WaitUpdateInstalled(t.Context(), testBundle, time.Second); err != nil {
+		t.Fatal(err)
+	}
+}

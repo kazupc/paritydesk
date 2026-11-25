@@ -1,0 +1,631 @@
+# Compatibility manifest for Claude desktop 7.x.
+#
+# Started as a copy of 6.x.toml. On 7.37095.0 every 6.x probe passed on two
+# data folders and every filled-in log pattern still matched (ADR 0003).
+# Differences from 6.x: session records gained titleSetAtMs and
+# writtenRepositories, and eight new top-level entries are listed under
+# never_until_classified.
+#
+# Values are key names, file names and log text as they appear on disk on a
+# tested Mac (ADR 0003); never byte offsets or identifiers from the app
+# bundle. Templates: {acct} and {org} are the replica's account and
+# organization UUIDs. Session-scoped files are relative to
+# claude-code-sessions/{acct}/{org}; other files to the data folder.
+#
+# Field lists (fields.<role>) are the only place row modules learn on-disk
+# field names. An empty list means "not observed yet": the module falls
+# back to its default rule.
+
+name = "7.x"
+min_version = "7.0.0"
+max_version = "7.999999.999"
+tested = ["7.37095.0"]
+known_bad = []
+ls_backend = "leveldb"
+compressions = [0, 1]
+
+# Folder names under the data root that a profile may never use.
+reserved_folders = ["Claude", "Claude-3p"]
+
+# The app promotes these files at startup without validating them (D30);
+# paritydesk never creates or writes a file whose name matches.
+tmp_recovery_globs = ["local_*.json.tmp"]
+
+# ---------------------------------------------------------------- rows
+
+[[row]]
+row = "sessions"
+write_path = "off"
+files = ["local_*.json", "deleted_*", "archived-sessions.idx"]
+session_scoped = true
+per_org = true
+probes = ["sessions-dir", "sessions-records", "sessions-idx-version"]
+[row.fields]
+# Field names below were observed read-only on app 6.28899.2 (ADR 0004),
+# except the run_state and resume_mark names marked as read from the
+# app's code (spikes S14, S15).
+# A record field that no role lists comes from the winning record (D8).
+# writtenRepositories (7.x) lists the repositories a session wrote to.
+per_field = ["title", "isArchived", "envScopeId", "startedFromEnvironmentId", "model", "writtenRepositories"]
+# Kept from the target for sessions it already knows (D10); carried on
+# copies new to the target.
+account_bound = ["bridgeSessionIds", "chromeTabGroupId", "enabledMcpTools", "remoteMcpServersConfig",
+  "toolSurfaceSnapshot", "publishedArtifacts"]
+# Security grants: never carried between accounts. The target's own value
+# is kept, and a copy new to the target gets none. The remote-control
+# opt-in and the calls the user vouched for are opt-ins of one account,
+# so they are grants too.
+grant = ["chromePermissionMode", "cuAllowedApps", "cuGrantFlags", "sessionPermissionUpdates", "alwaysAllowedReasons",
+  "remoteControlUserEnabled", "artifactsMcpVouchedCalls"]
+# Transient run state: never carried (H11). Kept from the target, cleared
+# on copies new to it. Names after turnBoxMounted were read from the app's
+# code on 6.28899.6 (spikes S14, S15), not seen on disk: the app writes
+# them only in rare states. The cut-turn and send-hold fields
+# (remoteControlLiveAtUpdateQuit, stoppedUntilPersonSends,
+# autoSendsPausedAfterDelete) hold or resume one account's sends.
+# isStarred mirrors the data folder's own pin list, which lives in
+# IndexedDB (S14); the app sends only additions on launch, so a carried
+# true would stay stale.
+run_state = ["interruptedAwaitingPerson", "priorErrorMark", "pendingSystemReminder", "queuedSideSessionNotes",
+  "lastTurnCutShort", "steeredByRemoteClient", "turnBoxMounted",
+  "remoteControlLiveAtUpdateQuit", "stoppedUntilPersonSends", "autoSendsPausedAfterDelete", "isStarred"]
+# Quit-resume marks (spike S15, read from the app's code on 6.28899.6).
+# The app stamps them when it is quit during a turn and, on next open,
+# sends a continue message by itself; for a local session it never checks
+# whether the turn had ended. Never carried to another account. The
+# target's own marks are kept only while its record is the newest: once
+# the other account moved the session on, they are dropped.
+resume_mark = ["interruptedByQuitAt", "interruptedUnseenResume", "interruptedByQuitFor", "cycleClosedAtQuit",
+  "armedWorkAtQuit", "cutTurn", "cutTurnChain"]
+# Fields whose value says a turn is running or a message is queued. None
+# was observed; busy detection uses main.log and the app's quit veto.
+busy = []
+# titleSetAtMs (7.x) stamps the last title change, so it follows the
+# newest title rather than the record that wins.
+max_time = ["lastActivityAt", "lastFocusedAt", "titleSetAtMs"]
+# Fork and routine family links (dotted paths into nested objects).
+# rewindEdges[].parent is not listed: it links turns inside one record's
+# own history (ADR 0004).
+parent = ["forkedFromSessionId", "spawnedFrom.sessionId", "startChain.firstSessionId"]
+# A session's worktree: these fields move together as one unit in field
+# merges, so a record never pairs one side's worktree with the other
+# side's working directory. cwd is in the group because it is the
+# session's working directory; whether the app sets it to the worktree
+# path is not yet confirmed (release checklist step 19). worktree_path is
+# the absolute path the loss guard checks.
+worktree = ["worktreeName", "worktreePath", "branch", "sourceBranch", "cwd"]
+worktree_path = ["worktreePath"]
+# Fields holding environment ids, rewritten through the preset remap (row 8).
+env_ref = ["envScopeId", "startedFromEnvironmentId"]
+# The permission-mode field, carried only when the target permits the mode.
+permission = ["permissionMode"]
+# The field sync.exclude project-path globs are matched against (present
+# in every observed record).
+project_path = ["cwd"]
+# A tombstone deleted_<uuid> holds a bare JSON number: its time in epoch
+# ms. Empty: the number is the time, else the file's mtime. Members listed
+# here would be read from an object form instead.
+tombstone_time = []
+
+[[row]]
+row = "tasks"
+write_path = "off"
+files = ["backlog/tasks.json", "scheduled-tasks.json"]
+session_scoped = true
+per_org = true
+probes = ["tasks-backlog", "tasks-backlog-version", "tasks-scheduled", "tasks-scheduled-skips"]
+[row.fields]
+# Backlog items carry filedAt and suggestedAt. Scheduled task items were
+# not observed (ADR 0004).
+max_time = ["filedAt", "suggestedAt"]
+# sync.exclude applies to tasks too: a task whose project path matches an
+# exclude glob, or whose originating session is an excluded session id,
+# never leaves its profile.
+project_path = ["cwd"]
+session_ref = ["originSessionId"]
+
+[[row]]
+row = "waiting-input"
+write_path = "off"
+# A directory; observed empty.
+files = ["waiting-input"]
+session_scoped = true
+per_org = true
+
+[[row]]
+row = "environments"
+write_path = "off"
+# The presets item persisted.ccd-session-presets.{acct} (version 4) and
+# the file ccd-session-presets.json byAccount.{acct}, which mirrors it
+# when state.fileMirrored is true: then the file is read first, otherwise
+# the Local Storage copy. A differing copy is reported stale, both are
+# edited together, and presets are not written while they disagree. The per-org item
+# persisted.ccd-session-presets.{acct}.{org} is never touched.
+ls_keys = ["persisted.ccd-session-presets.{acct}", "persisted.ccd-started-environments"]
+files = ["ccd-session-presets.json"]
+persist_version = 4
+probes = ["presets-wrapper", "presets-version", "presets-by-account", "presets-file-account",
+  "started-environments", "started-environments-version"]
+[row.limits]
+max_presets = 200
+max_bytes = 524288
+[row.fields]
+per_field = ["settings"]
+# Presets carry createdAt and lastUsedAt; there is no update time.
+max_time = ["lastUsedAt", "createdAt"]
+# The preset name used for the unique same-name fallback match (M5).
+name = ["name"]
+# Not observed in settings; kept so env values stay secret if they appear.
+secret = ["settings.env", "env"]
+
+[[row]]
+row = "group-order"
+write_path = "off-verify"
+contested = true
+ls_keys = ["LSS-persisted.code-projects-order.{acct}"]
+mirror_file = "claude_desktop_config.json"
+mirror_paths = [["preferences", "epitaxyPrefs", "code-projects-order.{acct}"]]
+probes = ["group-order-mirror", "group-order-ls"]
+
+[[row]]
+row = "sidebar-view"
+write_path = "off-verify"
+contested = true
+per_org = true
+ls_keys = ["LSS-persisted.dframe-code-sections", "dframe-store"]
+mirror_file = "claude_desktop_config.json"
+mirror_paths = [["preferences", "epitaxyPrefs", "dframe-code-sections", "{acct}/{org}"]]
+# dframe-store's persisted version on app 6.28899.2. The app also keeps
+# dframe-store.backup.v1, which paritydesk never writes.
+persist_version = 1
+probes = ["sections-mirror", "sections-ls", "sidebar-store-key", "sidebar-store-version"]
+
+[[row]]
+row = "pinned-order"
+write_path = "off-verify"
+contested = true
+ls_keys = ["LSS-persisted.dframe-local-slice", "dframe-store"]
+mirror_file = "claude_desktop_config.json"
+mirror_paths = [["preferences", "epitaxyPrefs", "dframe-local-slice", "pinnedOrder"]]
+persist_version = 1
+probes = ["pinned-mirror", "pinned-ls", "pinned-store-version"]
+
+[[row]]
+row = "app-prefs"
+write_path = "off"
+files = ["claude_desktop_config.json"]
+probes = ["app-prefs"]
+
+[[row]]
+row = "window-state"
+write_path = "off"
+files = ["window-state.json"]
+probes = ["window-state"]
+
+[[row]]
+row = "mcp-servers"
+write_path = "off"
+files = ["claude_desktop_config.json"]
+probes = ["mcp-servers"]
+[row.fields]
+secret = ["env"]
+
+[[row]]
+row = "worktrees"
+write_path = "off"
+# worktrees is keyed by worktree name (schemaVersion 2).
+files = ["git-worktrees.json"]
+probes = ["worktrees", "worktrees-schema"]
+[row.fields]
+# Trust and creation grants of one account: never carried between
+# accounts. The target's own value is kept, a copy new to it gets none.
+grant = ["autoTrusted", "creationGrant"]
+# Leases are run state of the folder that took them.
+run_state = ["leasedBy", "leaseCleared"]
+# An entry's directory; a same-name entry with another path never
+# replaces the target's own entry.
+worktree_path = ["path"]
+
+# ---------------------------------------------------------------- probes
+#
+# Probes read names and shapes only. file, dir and ls-key need the target
+# to exist. json-shape, ls-shape, persist-version, idx-version and
+# json-version pass when the target is absent; json-shape and ls-shape
+# also pass when the path is absent. A present target with another shape
+# or version fails. A target with "*" checks every matching file.
+# config.json is read by a top-level span scan only. Version probes are
+# not critical: a failed one skips its row, which is enough to keep writes
+# safe (ADR 0004).
+
+[[probe]]
+id = "identity-config"
+kind = "file"
+target = "config.json"
+critical = true
+
+[[probe]]
+id = "identity-account"
+kind = "json-shape"
+target = "config.json"
+path = ["lastKnownAccountUuid"]
+type = "string"
+critical = true
+
+[[probe]]
+id = "sessions-dir"
+kind = "dir"
+target = "claude-code-sessions/{acct}/{org}"
+critical = true
+
+[[probe]]
+id = "sessions-records"
+kind = "json-shape"
+target = "claude-code-sessions/{acct}/{org}/local_*.json"
+path = []
+type = "object"
+critical = true
+
+[[probe]]
+id = "sessions-idx-version"
+kind = "idx-version"
+target = "claude-code-sessions/{acct}/{org}/archived-sessions.idx"
+version = 1
+critical = true
+
+[[probe]]
+id = "tasks-backlog"
+row = "tasks"
+kind = "json-shape"
+target = "claude-code-sessions/{acct}/{org}/backlog/tasks.json"
+path = ["items"]
+type = "array"
+
+[[probe]]
+id = "tasks-backlog-version"
+row = "tasks"
+kind = "json-version"
+target = "claude-code-sessions/{acct}/{org}/backlog/tasks.json"
+path = ["version"]
+version = 1
+
+[[probe]]
+id = "tasks-scheduled"
+row = "tasks"
+kind = "json-shape"
+target = "claude-code-sessions/{acct}/{org}/scheduled-tasks.json"
+path = ["scheduledTasks"]
+type = "array"
+
+[[probe]]
+id = "tasks-scheduled-skips"
+row = "tasks"
+kind = "json-shape"
+target = "claude-code-sessions/{acct}/{org}/scheduled-tasks.json"
+path = ["recordedSkips"]
+type = "object"
+
+[[probe]]
+id = "presets-wrapper"
+row = "environments"
+kind = "ls-shape"
+target = "persisted.ccd-session-presets.{acct}"
+path = ["state", "presets"]
+type = "array"
+
+[[probe]]
+id = "presets-version"
+row = "environments"
+kind = "persist-version"
+target = "persisted.ccd-session-presets.{acct}"
+version = 4
+
+[[probe]]
+id = "presets-by-account"
+row = "environments"
+kind = "json-shape"
+target = "ccd-session-presets.json"
+path = ["byAccount"]
+type = "object"
+
+[[probe]]
+id = "presets-file-account"
+row = "environments"
+kind = "json-shape"
+target = "ccd-session-presets.json"
+path = ["byAccount", "{acct}", "presets"]
+type = "array"
+
+[[probe]]
+id = "started-environments"
+row = "environments"
+kind = "ls-shape"
+target = "persisted.ccd-started-environments"
+path = ["state", "bySessionId"]
+type = "object"
+
+[[probe]]
+id = "started-environments-version"
+row = "environments"
+kind = "persist-version"
+target = "persisted.ccd-started-environments"
+version = 1
+
+[[probe]]
+id = "group-order-mirror"
+row = "group-order"
+kind = "json-shape"
+target = "claude_desktop_config.json"
+path = ["preferences", "epitaxyPrefs", "code-projects-order.{acct}"]
+type = "array"
+
+[[probe]]
+id = "group-order-ls"
+row = "group-order"
+kind = "ls-shape"
+target = "LSS-persisted.code-projects-order.{acct}"
+path = ["value"]
+type = "array"
+
+[[probe]]
+id = "sections-mirror"
+row = "sidebar-view"
+kind = "json-shape"
+target = "claude_desktop_config.json"
+path = ["preferences", "epitaxyPrefs", "dframe-code-sections", "{acct}/{org}"]
+type = "object"
+
+[[probe]]
+id = "sections-ls"
+row = "sidebar-view"
+kind = "ls-shape"
+target = "LSS-persisted.dframe-code-sections"
+path = ["value"]
+type = "object"
+
+[[probe]]
+id = "sidebar-store-key"
+row = "sidebar-view"
+kind = "ls-key"
+target = "dframe-store"
+
+[[probe]]
+id = "sidebar-store-version"
+row = "sidebar-view"
+kind = "persist-version"
+target = "dframe-store"
+version = 1
+
+[[probe]]
+id = "pinned-mirror"
+row = "pinned-order"
+kind = "json-shape"
+target = "claude_desktop_config.json"
+path = ["preferences", "epitaxyPrefs", "dframe-local-slice", "pinnedOrder"]
+type = "array"
+
+[[probe]]
+id = "pinned-ls"
+row = "pinned-order"
+kind = "ls-shape"
+target = "LSS-persisted.dframe-local-slice"
+path = ["value", "pinnedOrder"]
+type = "array"
+
+[[probe]]
+id = "pinned-store-version"
+row = "pinned-order"
+kind = "persist-version"
+target = "dframe-store"
+version = 1
+
+[[probe]]
+id = "app-prefs"
+row = "app-prefs"
+kind = "json-shape"
+target = "claude_desktop_config.json"
+path = ["preferences"]
+type = "object"
+
+# mcpServers may be absent (it was on the surveyed Mac); absent passes.
+[[probe]]
+id = "mcp-servers"
+row = "mcp-servers"
+kind = "json-shape"
+target = "claude_desktop_config.json"
+path = ["mcpServers"]
+type = "object"
+
+[[probe]]
+id = "worktrees"
+row = "worktrees"
+kind = "json-shape"
+target = "git-worktrees.json"
+path = ["worktrees"]
+type = "object"
+
+[[probe]]
+id = "worktrees-schema"
+row = "worktrees"
+kind = "json-version"
+target = "git-worktrees.json"
+path = ["schemaVersion"]
+version = 2
+
+[[probe]]
+id = "window-state"
+row = "window-state"
+kind = "json-shape"
+target = "window-state.json"
+path = []
+type = "object"
+
+# ---------------------------------------------------------------- classification
+#
+# Top-level entries of a data folder (globs, slash-separated). The fixed
+# floor in package denylist applies on top of never_touched. An entry no
+# list names is treated as never touched: plan validation allows file
+# writes only below synced, and doctor lists unclassified names so this
+# file can be updated. synced may use {acct} and {org}; they are expanded
+# for the entering replica, so writes never reach another account's
+# session directory.
+
+[classification]
+never_touched = [
+  "config.json",
+  "Cookies",
+  "Cookies-journal",
+  "Network/**",
+  "Login Data",
+  "Login Data-journal",
+  "Login Data For Account",
+  "Login Data For Account-journal",
+  "Web Data",
+  "Web Data-journal",
+  "Trust Tokens",
+  "Trust Tokens-journal",
+  "Local State",
+  "Session Storage/**",
+  "IndexedDB/**",
+  "ant-did",
+  "ant-device-registry.json",
+  "ccd-ids.json",
+  "remote-control-state.json",
+  "plan-usage-history.json",
+  "Partitions/**",
+  "buddy-tokens.json",
+  "TransportSecurity",
+  "Network Persistent State",
+  "SharedStorage*",
+  "InterestGroups*",
+  "DIPS*",
+  "Extension State/**",
+  "WebStorage/**",
+  "ca-bundle.pem",
+  "extensions-blocklist.json",
+]
+never_until_classified = [
+  "ssh-remote-server-state.json",
+  "chrome-import-sites.json",
+  "cowork-enabled-cli-ops.json",
+  "claude-code-spare/**",
+  "claude-code-vm/**",
+  "cowork-memory-resets.json",
+  "git-shadow/**",
+  "last-good-load.json",
+  "remote-file-download-parts.json",
+  "scratch-workspaces/**",
+  "side-session-notes/**",
+  "terminal-shell-integration/**",
+  "vm-support-probe.json",
+  "worktree-dep-seed/**",
+  # New on 7.x; device-local by their names, not yet examined.
+  "Claude Extensions/**",
+  "Claude Extensions Settings/**",
+  "Extensions Update Cache/**",
+  "dxt-staging/**",
+  "uv-runtime/**",
+  "downloads-under-way/**",
+  "artifact-apps-installed.json",
+  "last-run-marks.json",
+]
+cache = [
+  "Cache/**",
+  "Code Cache/**",
+  "GPUCache/**",
+  "GPUPersistentCache/**",
+  "DawnGraphiteCache/**",
+  "GraphiteDawnCache/**",
+  "DawnWebGPUCache/**",
+  "Crashpad/**",
+  "Shared Dictionary/**",
+  "blob_storage/**",
+  "plugin-list/**",
+  "spaces-present/**",
+  "local-agent-mode-sessions/skills-plugin/**",
+  "VideoDecodeStats/**",
+  "fcache",
+  "shared_proto_db/**",
+  "preview-last-frames/**",
+  "sentry/**",
+  "declarative_performance_observer.db",
+  "declarative_performance_observer.db-journal",
+]
+synced = [
+  "claude-code-sessions/{acct}/{org}/**",
+  "Local Storage/**",
+  "claude_desktop_config.json",
+  "ccd-session-presets.json",
+  "git-worktrees.json",
+  "window-state.json",
+]
+other = [
+  "local-agent-mode-sessions/**",
+  "mcp-user-tool-toggles.json",
+  "Preferences",
+  "vm_bundles/**",
+  "claude-code/**",
+]
+# Local Storage items paritydesk never writes, whatever a row declares:
+# the app's backup of dframe-store, the per-org presets item (observed, not
+# understood) and items that look account-bound.
+ls_never_touched = [
+  "dframe-store.backup.*",
+  "persisted.ccd-session-presets.*.*",
+  "ccd-session-store",
+  "ccd-sync-*",
+]
+
+# ---------------------------------------------------------------- app preferences
+#
+# Every key under preferences in claude_desktop_config.json that the
+# app-prefs allow-list may name. ui_state and other may be synced;
+# security and internal_state are rejected by config validation.
+
+[pref_tags]
+sidebarMode = "ui_state"
+keepAwakeEnabled = "other"
+ccAutoArchiveInactiveDays = "other"
+ccAutoArchiveOnPrClose = "internal_state"
+coworkModelAutoFallbackByAccount = "internal_state"
+epitaxyPrefs = "internal_state"
+
+# ---------------------------------------------------------------- permission acknowledgements
+#
+# Session permission mode -> the preferences (in
+# claude_desktop_config.json, booleans or per-account maps) that
+# acknowledge it. No preference has been confirmed to acknowledge a mode
+# on a tested Mac, so the table is empty: a mode other than "default" is
+# carried to a session new to the target only when the target's own
+# records already use it. Release checklist step 6 confirms the names.
+
+[permission_acks]
+
+# ---------------------------------------------------------------- main.log signals
+#
+# Go regexps over main.log lines, only from text observed on a tested Mac
+# (ADR 0003, ADR 0004). {session} is replaced by the quoted, validated
+# local session id. Empty means not observed: callers fall back. No line
+# names a session when a turn starts, so turn_started stays empty. No
+# record field means a turn is running either (the sessions busy role is
+# empty), so v0.1 cannot list busy sessions: only the app's own quit veto
+# protects them, and doctor reports busy detection as unavailable.
+
+[signals]
+quit_vetoed = 'beforeQuit: vetoed by before-quit interceptor'
+turn_started = ''
+turn_ended = '\[Stop hook\] Query completed for session {session}\b'
+app_started = '\[startup-perf\] main window shown [0-9]+ ms after launch'
+focused_session = 'setFocusedSession: sessionId={session}\b'
+bridge_connected = 'Chrome extension connected to bridge'
+pairing_disabled = ''
+unclean_exit = 'Previous run did not exit cleanly'
+login_required = ''
+active_org = '\[(?:CCD)?ScheduledTasks\] Initialized \{ accountId: \x27(?P<account>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\x27, orgId: \x27(?P<org>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\x27 \}'
+native_multi_account = ''
+
+# ---------------------------------------------------------------- other tools
+#
+# [[footprint]] entries identify other account-switching tools (D28,
+# exit 14). None has been confirmed for 6.x, so the list is empty and v0.1
+# detects no other tool. init lists parked Claude-* folders that hold an
+# account no profile registers and suggests profile adopt for them.

@@ -458,7 +458,9 @@ func (dr *doctor) update(ctx context.Context) {
 	}
 }
 
-// bridge reports whether Claude in Chrome connected after the last launch.
+// bridge reports whether the tail of the Claude log holds a Claude in
+// Chrome connection line. It reads the last verifyLogTail bytes, which
+// may reach back before the last launch.
 func (dr *doctor) bridge(ctx context.Context, sig compat.Signals) {
 	d := dr.o.d
 	var from int64
@@ -472,11 +474,11 @@ func (dr *doctor) bridge(ctx context.Context, sig compat.Signals) {
 	}
 	for _, e := range evs {
 		if e == app.EvBridgeConnected {
-			dr.add("chrome-bridge", "ok", "Claude in Chrome connected after the last launch")
+			dr.add("chrome-bridge", "ok", "the recent Claude log shows a Claude in Chrome connection")
 			return
 		}
 	}
-	dr.add("chrome-bridge", "warn", "no Claude in Chrome connection line was found in the Claude log since the last launch. "+
+	dr.add("chrome-bridge", "warn", "no Claude in Chrome connection line was found in the recent Claude log. "+
 		"The extension follows the Chrome profile's sign-in, not the Claude folder: use one Chrome profile per account. "+
 		"If Claude in Chrome works, the log line may have changed in this Claude version (release checklist step 6)")
 }

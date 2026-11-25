@@ -30,10 +30,24 @@ func TestEmbeddedManifest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ms) != 1 || ms[0].Name != "6.x" {
+	if len(ms) != 2 || ms[0].Name != "6.x" || ms[1].Name != "7.x" {
 		t.Fatalf("manifests %v", ms)
 	}
-	m := ms[0]
+	for _, m := range ms {
+		t.Run(m.Name, func(t *testing.T) { checkEmbedded(t, m) })
+	}
+	// 7.x session records gained titleSetAtMs and writtenRepositories.
+	sess, _ := ms[1].Row(model.RowSessions)
+	if !contains(sess.Fields["max_time"], "titleSetAtMs") || !contains(sess.Fields["per_field"], "writtenRepositories") {
+		t.Errorf("7.x sessions fields %v", sess.Fields)
+	}
+	if !contains(ms[1].Tested, "7.37095.0") {
+		t.Errorf("7.x tested %v", ms[1].Tested)
+	}
+}
+
+// checkEmbedded checks what every embedded manifest must hold.
+func checkEmbedded(t *testing.T, m *compat.Manifest) {
 	for _, r := range model.AllRows {
 		s, ok := m.Row(r)
 		if !ok {
@@ -181,7 +195,7 @@ func TestEmbeddedManifest(t *testing.T) {
 	if len(m.Classification.Cache) == 0 || len(m.Classification.Synced) == 0 {
 		t.Error("cache or synced classification empty")
 	}
-	if !contains(m.TmpRecoveryGlobs, "local_*.json.tmp") || !contains(m.Tested, "6.28899.2") {
+	if !contains(m.TmpRecoveryGlobs, "local_*.json.tmp") || len(m.Tested) == 0 {
 		t.Error("tmp globs or tested list")
 	}
 	for k, v := range m.PrefTags {
@@ -361,10 +375,10 @@ func TestOverrides(t *testing.T) {
 		{"other name over the same range", strings.Replace(strings.Replace(strings.Replace(base, `name = "6.x"`, `name = "local"`, 1),
 			`min_version = "6.0.0"`, `min_version = "5.0.0"`, 1), `  "Cookies",`+"\n", "", 1), false, nil},
 		{"bad json-version probe", strings.Replace(base, "path = [\"schemaVersion\"]\nversion = 2", "path = [\"schemaVersion\"]\nversion = 0", 1), false, nil},
-		{"new manifest", strings.Replace(strings.Replace(base, `name = "6.x"`, `name = "7.x"`, 1),
-			`min_version = "6.0.0"`+"\n"+`max_version = "6.999999.999"`, `min_version = "7.0.0"`+"\n"+`max_version = "7.999999.999"`, 1), true,
+		{"new manifest", strings.Replace(strings.Replace(base, `name = "6.x"`, `name = "8.x"`, 1),
+			`min_version = "6.0.0"`+"\n"+`max_version = "6.999999.999"`, `min_version = "8.0.0"`+"\n"+`max_version = "8.999999.999"`, 1), true,
 			func(t *testing.T, ms []*compat.Manifest) {
-				if len(ms) != 2 || ms[1].Name != "7.x" {
+				if len(ms) != 3 || ms[2].Name != "8.x" {
 					t.Errorf("manifests %d", len(ms))
 				}
 			}},
@@ -383,7 +397,7 @@ func TestOverrides(t *testing.T) {
 			}
 		})
 	}
-	if ms, err := compat.Load(filepath.Join(t.TempDir(), "absent")); err != nil || len(ms) != 1 {
+	if ms, err := compat.Load(filepath.Join(t.TempDir(), "absent")); err != nil || len(ms) != 2 {
 		t.Fatalf("missing override dir: %v", err)
 	}
 }
@@ -406,7 +420,10 @@ func TestSelect(t *testing.T) {
 		{"6", true, false, false},
 		{"6.999999.999", true, false, false},
 		{"6.1000000.0", false, false, false},
-		{"7.0.0", false, false, false},
+		{"7.0.0", true, false, false},
+		{"7.37095.0", true, true, false},
+		{"7.1000000.0", false, false, false},
+		{"8.0.0", false, false, false},
 		{"5.99.99", false, false, false},
 		{"6.x", false, false, true},
 		{"06.1", false, false, true},

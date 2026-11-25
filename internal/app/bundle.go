@@ -3,11 +3,13 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -196,17 +198,59 @@ func (b *plistBundle) statePath(bundleID string) string {
 	return filepath.Join(b.home, "Library", "Caches", bundleID+"."+updaterName, updaterStateFile)
 }
 
-// staged reports whether the updater state file exists.
+// staged reports whether an update waits to be installed. Squirrel
+// leaves its state file behind after a successful install, so the file
+// alone is not enough: when it is JSON naming a file:// update bundle
+// inside the state directory and that bundle is gone, the update was
+// installed. Any other content counts as staged.
 func (b *plistBundle) staged(bundleID string) (bool, error) {
-	_, err := os.Lstat(b.statePath(bundleID))
+	path := b.statePath(bundleID)
+	f, err := os.Open(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("app: updater state: %w", err)
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, maxPlistSize))
+	if err != nil {
+		return false, fmt.Errorf("app: updater state: %w", err)
+	}
+	bundle, ok := updateBundlePath(data, filepath.Dir(path))
+	if !ok {
+		return true, nil
+	}
+	_, err = os.Lstat(bundle)
 	switch {
 	case err == nil:
 		return true, nil
 	case errors.Is(err, fs.ErrNotExist):
 		return false, nil
 	default:
-		return false, fmt.Errorf("app: updater state: %w", err)
+		return false, fmt.Errorf("app: updater bundle: %w", err)
 	}
+}
+
+// updateBundlePath returns the update bundle a JSON updater state names,
+// when it is a file:// URL inside dir.
+func updateBundlePath(data []byte, dir string) (string, bool) {
+	var st struct {
+		UpdateBundleURL string `json:"updateBundleURL"`
+	}
+	if json.Unmarshal(data, &st) != nil || st.UpdateBundleURL == "" {
+		return "", false
+	}
+	u, err := url.Parse(st.UpdateBundleURL)
+	if err != nil || u.Scheme != "file" || u.Host != "" || !filepath.IsAbs(u.Path) {
+		return "", false
+	}
+	p := filepath.Clean(u.Path)
+	rel, err := filepath.Rel(dir, p)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, "../") {
+		return "", false
+	}
+	return p, true
 }
 
 // updaterRunning reports whether the bundle's updater process runs.

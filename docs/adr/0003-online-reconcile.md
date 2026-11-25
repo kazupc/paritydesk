@@ -35,7 +35,7 @@ The design (D12, D26) says no capability claim goes into the README until a spik
 - **Preflight:** refuse to switch while a ShipIt update is staged, unless `--allow-update` is given, in which case wait for the install and re-run the shape probes on the new version.
 - **Relaunch (P11):** reopen the invoking session with `claude://claude.ai/epitaxy/<id>`, rebuilt from a validated id (`^local_[0-9a-f-]{36}$`), and confirm it with `setFocusedSession` in main.log.
 - **Identity marker (S17):** the xattr marker is used.
-- **Claude in Chrome (G1):** paritydesk cannot keep one extension signed in to two accounts. The supported setup is **one Chrome profile per Claude account**, each with Claude in Chrome signed in to that account and kept open (S18 passed). The README and `init` explain it. `doctor` reports whether an extension connected to the active account's bridge after the last launch (`Chrome extension connected to bridge` in main.log) and explains the setup when it did not.
+- **Claude in Chrome (G1):** paritydesk cannot keep one extension signed in to two accounts. The supported setup is **one Chrome profile per Claude account**, each with Claude in Chrome signed in to that account and kept open (S18 passed). The README and `init` explain it. `doctor` reports whether the recent main.log shows an extension connecting to the bridge (`Chrome extension connected to bridge`) and explains the setup when it did not.
 
 ## Second round (2026-11-23, app 6.28899.6)
 
@@ -79,6 +79,18 @@ Read-only, from `main.log` (masked; no ids recorded):
 
 - Every pattern already in the manifest still matches lines from 6.28899.6: `quit_vetoed`, `turn_ended`, `app_started`, `focused_session`, `bridge_connected`, `unclean_exit` and `active_org`.
 - **turn_started stays empty.** The best candidate is `Mapping internal session {session} to CLI session`, logged when a query starts, for a person's message and for app-driven wakes alike. In 14 sessions every `turn_ended` line was preceded by it. But 13 starts had no end: a turn that ended in an API error (for example a usage limit), a turn the person interrupted, a slash command, and turns still running. With this pattern, such sessions would look busy until their next completed turn. Busy detection keeps relying on the app's own quit veto, and `doctor` keeps saying so. A usable signal would need an end pattern for those cases too.
+
+## App 7.37095.0 (2026-11-25)
+
+The app updated from 6.28899.6 to 7.37095.0 during the release checklist. Read-only, on the two data folders of the test Mac:
+
+- Every 6.x probe passes on both folders (29 each), and the active organization is still found in `main.log`.
+- The log patterns `turn_ended`, `app_started`, `focused_session` and `active_org` match lines written by 7.37095.0. `bridge_connected`, `quit_vetoed` and `unclean_exit` had no occasion to appear yet; release checklist steps 10 and 20 exercise them.
+- Session records gained two fields: `titleSetAtMs`, a millisecond time stamped when the title changes (now `max_time`, so it follows the newest title), and `writtenRepositories`, a list of repository names (now `per_field`). `interruptedByQuitAt`, read from the app's code in S15, now appears on disk.
+- Eight new top-level entries (`Claude Extensions`, `Claude Extensions Settings`, `Extensions Update Cache`, `dxt-staging`, `uv-runtime`, `downloads-under-way`, `artifact-apps-installed.json`, `last-run-marks.json`) are listed as never touched until classified.
+- After the install, Squirrel left `ShipItState.plist` (JSON) in place while its update bundle was gone. paritydesk read the file alone as a staged update and would have refused every switch with exit 13; it now checks that the named update bundle still exists.
+
+The manifest `7.x.toml` records this; `6.x.toml` is unchanged.
 
 ## Not yet run
 
