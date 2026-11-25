@@ -134,6 +134,10 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 
 ### Fixed
 
+- A switch also writes the leaving folder's marker. P5 records that
+  folder's harvested rows as its bases, but only the entering folder got a
+  marker, so the first switch back was a second first-sync union that
+  carried no deletions.
 - Fewer stops that protected nothing:
   - A staged Claude update no longer stops a switch with exit 13: the
     switch lets it install and re-checks the new version before syncing

@@ -397,6 +397,7 @@ func (r *run) applyPlan(ctx context.Context) error {
 	if err != nil {
 		return r.rollbackT(ctx, pderr.Wrap(pderr.ApplyRolledBack, "apply", err))
 	}
+	r.markLeaving()
 	return r.o.done(r.root, P7Apply, state.IntentApplied)
 }
 
@@ -648,3 +649,21 @@ func (r *run) park(ctx context.Context) error {
 
 // maskedAccount shows a binding's account masked.
 func maskedAccount(b *profile.Binding) string { return ids.Mask(string(b.Replica.Account)) }
+
+// markLeaving writes the leaving folder's marker. P5 recorded that
+// folder's harvested rows as its bases, and nothing writes to it after
+// the quit, so the marker vouches for them: the next switch back merges
+// with valid bases instead of a second first-sync union. A failed write
+// only leaves those bases invalid (a union next time); the run goes on.
+func (r *run) markLeaving() {
+	if r.kind == state.RunSync || r.gen == 0 || r.sPath == r.tPath {
+		return
+	}
+	d := r.d()
+	m := model.Marker{Version: 1, Alias: r.S.Profile.Alias, Replica: r.S.Replica, Generation: r.gen, BaseHash: r.p5.Plan.Hash()}
+	if err := d.WriteMarker(d.FS, r.sPath, m); err != nil {
+		r.warn(P7Apply, "the leaving folder's marker could not be written; the next switch back merges without deleting")
+		return
+	}
+	r.sMarked = true
+}

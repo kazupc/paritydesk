@@ -40,7 +40,9 @@ type run struct {
 	// after the quit are asked again or abort the run, so every deletion
 	// applied was seen; the deletion breaker is then not needed.
 	confirmedByPerson bool
-	lock              *state.Lock
+	// sMarked: the leaving folder got its marker at P7 (markLeaving).
+	sMarked bool
+	lock    *state.Lock
 
 	root     *state.Root
 	bundle   app.BundleIdentity

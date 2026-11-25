@@ -810,3 +810,22 @@ func TestBreakerOnlyWithoutAPerson(t *testing.T) {
 		}
 	})
 }
+
+// After one switch both profiles have valid bases: the leaving folder got
+// a marker too, so switching back is not a second first sync.
+func TestSwitchBackIsNotAFirstSync(t *testing.T) {
+	e := newEnv(t)
+	e.ui.interactive = true
+	if _, err := e.orch().Switch(context.Background(), SwitchOptions{To: "b", LogOffset: -1}); err != nil {
+		t.Fatal(err)
+	}
+	m, err := readMarker(e.fs, e.root+"/Claude-a")
+	if err != nil || m == nil || m.Alias != "a" || m.Generation != 1 {
+		t.Fatalf("leaving marker = %+v, %v", m, err)
+	}
+	pv, err := e.orch().Preview(context.Background(), PreviewOptions{To: "a"})
+	if err != nil || pv.Plan == nil || pv.Plan.NeedsConfirmation {
+		t.Fatalf("switch back is a first sync: %+v, %v", pv, err)
+	}
+	e.checkInvariants("switch back")
+}

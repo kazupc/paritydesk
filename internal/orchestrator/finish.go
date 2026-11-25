@@ -128,6 +128,9 @@ func (r *run) recordProfiles() {
 		return
 	}
 	s := r.profileState(r.S.Profile.Alias)
+	if r.sMarked {
+		s.MarkerBase = r.p5.Plan.Hash()
+	}
 	s.LiveEpoch = root.Epoch
 	if id, err := r.d().FS.ID(r.sPath); err == nil {
 		s.FolderID = id
