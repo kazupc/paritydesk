@@ -134,6 +134,9 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 
 ### Fixed
 
+- A first sync no longer plans deletions of the target's stale
+  "started environment" entries for sessions it had already removed:
+  only a session the merge removes takes its entry with it.
 - `plan` and `switch` without an alias before the first switch target
   the only other profile instead of stopping with exit 2, and a run that
   stops before planning no longer prints an empty plan.

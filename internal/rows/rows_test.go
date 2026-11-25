@@ -359,19 +359,29 @@ func TestPostMerge(t *testing.T) {
 			Changes:         []model.Change{{Row: row, Kind: model.ChangeUpdated, Key: startedPrefix + dead}},
 		}
 	}
-	ses := sessionsOut(t, live)
-	withTombs(ses.Desired, model.Tombstone{Key: dead, At: 5})
+	// removedNow: this merge deletes the session from the target.
+	removedNow := sessionsOut(t, live)
+	withTombs(removedNow.Desired, model.Tombstone{Key: dead, At: 5})
+	removedNow.Changes = []model.Change{{Row: model.RowSessions, Kind: model.ChangeDeleted, Key: dead}}
+	// alreadyGone: the target had removed the session before; its stale
+	// entry stays in Desired, so a first sync deletes nothing.
+	alreadyGone := sessionsOut(t, live)
+	withTombs(alreadyGone.Desired, model.Tombstone{Key: dead, At: 5})
 	tests := []struct {
-		name   string
-		outs   func(e *Output) map[model.RowID]*Output
-		remove bool
+		name        string
+		outs        func(e *Output) map[model.RowID]*Output
+		remove      bool // from Desired, reported as a deletion
+		removeState bool // from Canonical and the leaving overlay
 	}{
-		{"tombstoned session drops started", func(e *Output) map[model.RowID]*Output {
-			return map[model.RowID]*Output{row: e, model.RowSessions: ses}
-		}, true},
+		{"session removed now drops started", func(e *Output) map[model.RowID]*Output {
+			return map[model.RowID]*Output{row: e, model.RowSessions: removedNow}
+		}, true, true},
+		{"session already gone keeps the target's entry", func(e *Output) map[model.RowID]*Output {
+			return map[model.RowID]*Output{row: e, model.RowSessions: alreadyGone}
+		}, false, true},
 		{"missing sessions row is ignored", func(e *Output) map[model.RowID]*Output {
 			return map[model.RowID]*Output{row: e}
-		}, false},
+		}, false, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -379,8 +389,11 @@ func TestPostMerge(t *testing.T) {
 			if err := PostMerge(tc.outs(e)); err != nil {
 				t.Fatal(err)
 			}
-			for _, s := range []*model.RowSnapshot{e.Desired, e.Canonical, e.LeavingOverlay} {
-				if _, ok := s.Items[startedPrefix+dead]; ok == tc.remove {
+			if _, ok := e.Desired.Items[startedPrefix+dead]; ok == tc.remove {
+				t.Fatalf("desired started/<dead> present = %v", ok)
+			}
+			for _, s := range []*model.RowSnapshot{e.Canonical, e.LeavingOverlay} {
+				if _, ok := s.Items[startedPrefix+dead]; ok == tc.removeState {
 					t.Fatalf("started/<dead> present = %v", ok)
 				}
 			}

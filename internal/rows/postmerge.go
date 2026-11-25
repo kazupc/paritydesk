@@ -12,8 +12,11 @@ import (
 // fixes cross-row effects that a single module cannot see: it removes
 // environments items "started/<session id>" (from Desired, Canonical and
 // both overlays) whose session is absent or tombstoned in the sessions
-// row's Desired, and reports each removal as a change. Rows missing from
-// outs are left alone.
+// row's Desired, and reports each removal as a change. In Desired it
+// removes only entries new to the target and entries of sessions this
+// merge deletes; an entry the target already holds for a session it had
+// already removed stays, as the app left it. Rows missing from outs are
+// left alone.
 //
 // The started-environments map is one Local Storage item for the whole
 // data folder, while the sessions row reads only the replica's own
@@ -38,6 +41,21 @@ func PostMerge(outs map[model.RowID]*Output) error {
 		_, ok := ses.Desired.Items[id]
 		return ok
 	}
+	// The entering replica keeps a stale entry it already holds for a
+	// session it had already removed: only a session this merge removes
+	// takes its entry with it, so a first sync deletes nothing.
+	removedNow := map[string]bool{}
+	for _, c := range ses.Changes {
+		if c.Kind == model.ChangeDeleted {
+			removedNow[c.Key] = true
+		}
+	}
+	newToTarget := map[string]bool{}
+	for _, c := range env.Changes {
+		if c.Kind == model.ChangeAdded || c.Kind == model.ChangeRestored {
+			newToTarget[c.Key] = true
+		}
+	}
 	removed := map[string]bool{}
 	for _, s := range []*model.RowSnapshot{env.Desired, env.Canonical, env.LeavingOverlay, env.EnteringOverlay} {
 		if s == nil {
@@ -46,6 +64,9 @@ func PostMerge(outs map[model.RowID]*Output) error {
 		for k := range s.Items {
 			id, ok := strings.CutPrefix(k, startedPrefix)
 			if !ok || alive(id) {
+				continue
+			}
+			if s == env.Desired && !newToTarget[k] && !removedNow[id] {
 				continue
 			}
 			delete(s.Items, k)
