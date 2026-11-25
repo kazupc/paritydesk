@@ -117,6 +117,8 @@ func runSwitch(ctx context.Context, e *env, fs *flag.FlagSet, args []string) err
 			p.Line(i18n.T(i18n.SwitchDetached, "%s"), v.Run)
 		case v.QuitPending:
 			p.Line(i18n.T(i18n.SwitchQuitPending))
+		case v.Code == pderr.Declined:
+			// The plan was shown with the question; the error says the rest.
 		default:
 			p.Lines(v.Lines)
 			if v.Code == pderr.OK || v.Code == pderr.SwapOnly || v.Code == pderr.Degraded {

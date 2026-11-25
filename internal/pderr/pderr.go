@@ -94,7 +94,7 @@ type Entry struct {
 var catalog = []Entry{
 	{OK, "Done.", "Everything.", "", ""},
 	{Usage, "The command line was not understood.", "Nothing was changed.", "paritydesk help", "usage"},
-	{Declined, "You declined the plan.", "Nothing was changed.", "", "declined"},
+	{Declined, "The plan was not confirmed.", "Nothing was changed.", "", "declined"},
 	{AppDidNotQuit, "Claude did not quit.", "Nothing was changed. Claude was not forced to quit; if it asked whether to quit, your answer there decides.", "Finish or stop the running work in Claude, then run the command again.", "app-did-not-quit"},
 	{RunLockBusy, "Another paritydesk run is in progress.", "Nothing was changed by this run.", "paritydesk status", "run-lock-busy"},
 	{SessionsBusy, "Code sessions are still working.", "Nothing was changed.", "Wait for the sessions to finish, then run the command again.", "sessions-busy"},

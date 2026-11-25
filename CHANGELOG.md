@@ -134,6 +134,11 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 
 ### Fixed
 
+- An answer typed at a terminal question stays valid for ten minutes
+  instead of two, so reading the plan no longer ends in exit 3 after
+  answering yes. A first sync asks once: the plan question already shows
+  the first-sync line (`--yes` still asks it). Exit 3 now reads "The plan
+  was not confirmed", and a declined switch does not print the plan again.
 - A first sync no longer plans deletions of the target's stale
   "started environment" entries for sessions it had already removed:
   only a session the merge removes takes its entry with it.

@@ -910,6 +910,7 @@ type fakeUI struct {
 	lines       [][]string
 	events      []Event
 	onEvent     func(Event)
+	onConfirm   func(Confirmation)
 }
 
 func (u *fakeUI) Progress(ev Event) {
@@ -922,6 +923,9 @@ func (u *fakeUI) Progress(ev Event) {
 func (u *fakeUI) Confirm(_ context.Context, c Confirmation) (bool, error) {
 	u.asked = append(u.asked, c.Kind)
 	u.lines = append(u.lines, c.Lines)
+	if u.onConfirm != nil {
+		u.onConfirm(c)
+	}
 	if !u.interactive {
 		return false, errors.New("not interactive")
 	}

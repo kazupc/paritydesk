@@ -767,6 +767,11 @@ func (r *run) confirmP2(ctx context.Context) error {
 		if err := r.o.ask(ctx, r.interactive, c); err != nil {
 			return err
 		}
+		// The plan just confirmed showed the first-sync line, so the
+		// person already agreed to the union: one question is enough.
+		if p.NeedsConfirmation {
+			r.opts.ConfirmFirstSync = true
+		}
 	}
 	if p.NeedsConfirmation && !r.opts.ConfirmFirstSync {
 		if !r.interactive {

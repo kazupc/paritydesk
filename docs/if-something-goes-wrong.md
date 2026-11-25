@@ -25,9 +25,10 @@ recovery drill) also exits 2, for every command, `status` and `recover`
 included: unset the variable.
 
 <a id="declined"></a>
-## Exit 3: the plan was declined (PD-E3)
+## Exit 3: the plan was not confirmed (PD-E3)
 
-Nothing was changed. You answered no, the question timed out, or a
+Nothing was changed. You answered no, the answer came more than ten
+minutes after the question, or a
 confirmed plan (`--confirmed-plan`) was missing, older than two minutes,
 or smaller than what the switch would do now: a switch never deletes
 more than the plan you confirmed. Run `paritydesk plan` again and confirm

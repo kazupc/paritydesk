@@ -49,7 +49,8 @@ func TestSwitchHappyPath(t *testing.T) {
 	if root.Active != "b" || root.Previous != "a" || root.Epoch != 1 || len(root.Generations) != 1 {
 		t.Errorf("root = active %s previous %s epoch %d gens %d", root.Active, root.Previous, root.Epoch, len(root.Generations))
 	}
-	if !slices.Contains(e.ui.asked, ConfirmPlan) || !slices.Contains(e.ui.asked, ConfirmBaseInvalid) {
+	// The plan question shows the first-sync line, so it is the only one.
+	if !slices.Equal(e.ui.asked, []ConfirmKind{ConfirmPlan}) {
 		t.Errorf("asked = %v", e.ui.asked)
 	}
 	if e.app.quits != 1 || e.app.launches != 1 {
@@ -734,5 +735,42 @@ func TestTargetDefaultsToTheOnlyOtherProfile(t *testing.T) {
 	res, err = e.orch().Switch(context.Background(), SwitchOptions{LogOffset: -1})
 	if err != nil || res.Code != pderr.OK || res.To != "b" {
 		t.Fatalf("switch = %+v, %v", res, err)
+	}
+}
+
+// An answer typed a few minutes after the plan is shown still counts; one
+// typed after InteractiveConfirmTTL does not. With --yes a first sync is
+// still asked once.
+func TestSwitchConfirmationWindow(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		wait  time.Duration
+		yes   bool
+		code  pderr.Code
+		asked []ConfirmKind
+	}{
+		{"answered after three minutes", 3 * time.Minute, false, pderr.OK, []ConfirmKind{ConfirmPlan}},
+		{"answered after the window", InteractiveConfirmTTL + time.Second, false, pderr.Declined, []ConfirmKind{ConfirmPlan}},
+		{"--yes still asks the first sync", 0, true, pderr.OK, []ConfirmKind{ConfirmBaseInvalid}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t)
+			e.ui.interactive = true
+			e.ui.onConfirm = func(Confirmation) { e.clk.Advance(tc.wait) }
+			res, err := e.orch().Switch(context.Background(), SwitchOptions{To: "b", Yes: tc.yes, LogOffset: -1})
+			got := pderr.CodeOf(err)
+			if err == nil && res != nil {
+				got = res.Code
+			}
+			if got != tc.code {
+				t.Fatalf("code = %v (%v)", got, err)
+			}
+			if !slices.Equal(e.ui.asked, tc.asked) {
+				t.Errorf("asked = %v", e.ui.asked)
+			}
+			if tc.code == pderr.Declined && e.app.quits != 0 {
+				t.Errorf("quits = %d", e.app.quits)
+			}
+		})
 	}
 }
