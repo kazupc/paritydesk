@@ -13,6 +13,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/fsx"
 	"github.com/kazupc/paritydesk/internal/gen"
 	"github.com/kazupc/paritydesk/internal/hook"
+	"github.com/kazupc/paritydesk/internal/online"
 	"github.com/kazupc/paritydesk/internal/orchestrator"
 	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/state"
@@ -49,6 +50,15 @@ type system struct {
 	quiet func(ctx context.Context, e *env) (release func(), err error)
 	// hookDeps builds the SessionStart hook's dependencies.
 	hookDeps func(ctx context.Context, e *env, pluginVersion string) (hook.Deps, error)
+	// toolDeps builds the PreToolUse and PostToolUse hooks' dependencies.
+	toolDeps func(ctx context.Context, e *env) (hook.ToolDeps, error)
+	// online builds the environment of the `online` commands.
+	online func(ctx context.Context, e *env) (*onlineEnv, error)
+	// onlineCancel builds the minimal online service `online cancel`
+	// needs: the online folder and its lock, nothing that reads the
+	// config, the state or the app (the emergency stop must work when
+	// they cannot be read).
+	onlineCancel func(ctx context.Context, e *env) (*online.Service, error)
 	// rules returns the reserved folder names and preference tags of the
 	// embedded compat manifests, for config.Validate.
 	rules func(e *env) (reserved []string, prefTags map[string]string, err error)
@@ -57,16 +67,19 @@ type system struct {
 // realSystem returns the production system.
 func realSystem() *system {
 	return &system{
-		getenv:     os.Getenv,
-		home:       os.UserHomeDir,
-		executable: resolvedExecutable,
-		isTerminal: isTerminal,
-		now:        time.Now,
-		service:    realService,
-		gens:       realGens,
-		quiet:      realQuiet,
-		hookDeps:   realHookDeps,
-		rules:      realRules,
+		getenv:       os.Getenv,
+		home:         os.UserHomeDir,
+		executable:   resolvedExecutable,
+		isTerminal:   isTerminal,
+		now:          time.Now,
+		service:      realService,
+		gens:         realGens,
+		quiet:        realQuiet,
+		hookDeps:     realHookDeps,
+		toolDeps:     realToolDeps,
+		online:       realOnline,
+		onlineCancel: realOnlineCancel,
+		rules:        realRules,
 	}
 }
 

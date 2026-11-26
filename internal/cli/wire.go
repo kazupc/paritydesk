@@ -19,6 +19,8 @@ import (
 	"github.com/kazupc/paritydesk/internal/fsx"
 	"github.com/kazupc/paritydesk/internal/gen"
 	"github.com/kazupc/paritydesk/internal/hook"
+	"github.com/kazupc/paritydesk/internal/ids"
+	"github.com/kazupc/paritydesk/internal/online"
 	"github.com/kazupc/paritydesk/internal/orchestrator"
 	"github.com/kazupc/paritydesk/internal/plan"
 	"github.com/kazupc/paritydesk/internal/profile"
@@ -140,6 +142,10 @@ func buildDeps(ctx context.Context, g *globalFlags, in wireInput) (orchestrator.
 		return orchestrator.Deps{}, err
 	}
 	isApp := locatedIsApp(plat, cfg.App.BundleID)
+	var ol orchestrator.Online
+	if cfg.Online.Reconcile != config.OnlineReconcileOff {
+		ol = onlineService(in.Paths.SupportDir, ops, cfg, compat.OnlineSpec{})
+	}
 	exec := in.Exec
 	if exec == nil {
 		exec = app.ExecRunner{}
@@ -176,8 +182,146 @@ func buildDeps(ctx context.Context, g *globalFlags, in wireInput) (orchestrator.
 		Plans:    runner.PlanStore{Dir: in.Paths.RunDir},
 		UI:       in.UI,
 		Crash:    flt.crash,
+		Online:   ol,
 		ReadOnly: readOnly,
 	}, nil
+}
+
+// onlineService returns the online layer over <supportDir>/online, with
+// the online lock in <supportDir>/locks and the built-in providers
+// (probe, sidebar; the pins and artifacts units add theirs). spec is the
+// manifest's [online] table when known (the orchestrator passes its own
+// to Build and Publish).
+func onlineService(supportDir string, ops fsx.Ops, cfg *config.Config, spec compat.OnlineSpec) *online.Service {
+	store := online.NewStore(supportDir, ops)
+	store.Lock = onlineLocker(supportDir)
+	return &online.Service{Store: store, Config: cfg.Online, Clock: clock.System{}, Mono: online.SystemMono{},
+		Providers: online.Registry(), Settings: online.NewSettings(spec, cfg.Online)}
+}
+
+// onlineLocker takes <supportDir>/locks/online.lock (flock), never the
+// run lock. It always uses the platform's own Ops: the lock file is not
+// state, and the commands that lock refuse read-only mode first.
+func onlineLocker(supportDir string) func(ctx context.Context, wait time.Duration) (func(), error) {
+	return func(ctx context.Context, wait time.Duration) (func(), error) {
+		dir := filepath.Join(supportDir, "locks")
+		ls, err := state.Open(dir, filepath.Join(dir, online.LockName), fsx.Default(), clock.System{})
+		if err != nil {
+			return nil, err
+		}
+		l, err := ls.Lock(ctx, wait)
+		if err != nil {
+			return nil, err
+		}
+		return func() { _ = l.Release() }, nil
+	}
+}
+
+// defaultSupportDir is the support directory the plugin's shim and hooks
+// know.
+func defaultSupportDir(home string) string {
+	return filepath.Join(home, "Library", "Application Support", "paritydesk")
+}
+
+// realToolDeps builds the PreToolUse and PostToolUse hooks' dependencies
+// for the default support directory only (the shim knows only that one):
+// the online folder through a create-only FS, the guard mode from the
+// config (defaults when it cannot be read) and the providers' policies.
+// No process scan, no state, no manifest, no main.log.
+func realToolDeps(_ context.Context, e *env) (hook.ToolDeps, error) {
+	home, err := e.sys.home()
+	if err != nil {
+		return hook.ToolDeps{}, err
+	}
+	paths := config.ResolvePaths(home, e.sys.getenv, config.Overrides{})
+	sd := defaultSupportDir(home)
+	if err := checkTestPaths(home, sd); err != nil {
+		return hook.ToolDeps{}, err
+	}
+	cfg, _, err := loadConfig(paths.ConfigFile)
+	if err != nil {
+		cfg = config.Default()
+	}
+	dir := filepath.Join(sd, online.DirName)
+	store := online.NewStore(sd, online.CreateOnly(fsx.Default(), dir))
+	return hook.ToolDeps{Store: store, Mode: online.GuardMode(cfg.Online.Guard), Mono: online.SystemMono{},
+		Clock: clock.System{}, Providers: online.Registry()}, nil
+}
+
+// realOnline builds the `online` commands' environment: config, a
+// lock-free view of root.json, the online service, and the installed
+// Claude's manifest, main.log and process table.
+func realOnline(ctx context.Context, e *env) (*onlineEnv, error) {
+	paths, home, err := e.paths()
+	if err != nil {
+		return nil, err
+	}
+	if err := checkTestPaths(home, paths.StateDir, paths.SupportDir); err != nil {
+		return nil, err
+	}
+	cfg, exists, err := loadConfig(paths.ConfigFile)
+	if err != nil {
+		return nil, err
+	}
+	dataRoot := filepath.Clean(config.ExpandHome(home, cfg.App.DataRoot))
+	st, err := state.Open(paths.StateDir, state.LockFile(paths.SupportDir, dataRoot), fsx.ReadOnly(fsx.Default()), clock.System{})
+	if err != nil {
+		return nil, err
+	}
+	ops := fsx.Default()
+	if e.readOnly() {
+		ops = fsx.ReadOnly(ops)
+	}
+	o := &onlineEnv{root: st.Load, defaultDir: filepath.Clean(paths.SupportDir) == defaultSupportDir(home),
+		insideApp: func(context.Context) (bool, error) { return false, nil },
+		replica:   func(context.Context, time.Time) online.ReplicaObs { return online.ReplicaObs{} },
+		activeOrg: func(context.Context, ids.AccountID) (ids.OrgID, bool) { return "", false }}
+	if exists {
+		o.cfg = cfg
+	}
+	var sig compat.Signals
+	if plat, perr := app.NewDarwin(app.DarwinConfig{Home: home, BundleID: cfg.App.BundleID, OpenFileScan: app.ScanMode(cfg.App.OpenFileScan)}); perr == nil {
+		lctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		if b, lerr := plat.Locate(lctx, cfg.App.BundleID); lerr == nil {
+			if ms, merr := compat.Load(filepath.Join(paths.SupportDir, "compat.d")); merr == nil {
+				if m, _, serr := (compat.Gate{Manifests: ms}).Manifest(lctx, b.Version); serr == nil && m != nil {
+					o.spec, sig = m.Online, m.Signals
+				}
+			}
+		}
+		cancel()
+		det := runner.Detacher{Procs: plat.Procs, IsApp: locatedIsApp(plat, cfg.App.BundleID)}
+		o.insideApp = det.InsideApp
+		o.replica = func(ctx context.Context, since time.Time) online.ReplicaObs {
+			rep, known, err := plat.LastReplica(ctx, sig, since)
+			if err != nil || !known {
+				return online.ReplicaObs{}
+			}
+			return online.ReplicaObs{Known: true, Replica: rep}
+		}
+		o.activeOrg = func(ctx context.Context, a ids.AccountID) (ids.OrgID, bool) {
+			org, ok, err := plat.ActiveOrg(ctx, sig, a, time.Time{})
+			return org, ok && err == nil
+		}
+	}
+	o.svc = onlineService(paths.SupportDir, ops, cfg, o.spec)
+	return o, nil
+}
+
+// realOnlineCancel builds the online service of `online cancel` from the
+// resolved paths only: no config, state, manifest or process scan, so
+// the emergency stop works with a broken config file.
+func realOnlineCancel(_ context.Context, e *env) (*online.Service, error) {
+	paths, home, err := e.paths()
+	if err != nil {
+		return nil, err
+	}
+	if err := checkTestPaths(home, paths.SupportDir); err != nil {
+		return nil, err
+	}
+	store := online.NewStore(paths.SupportDir, fsx.Default())
+	store.Lock = onlineLocker(paths.SupportDir)
+	return &online.Service{Store: store, Clock: clock.System{}, Mono: online.SystemMono{}}, nil
 }
 
 // checkTestPaths applies fsx.CheckTestPath to every non-empty path.
@@ -251,7 +395,11 @@ func realHookDeps(_ context.Context, e *env, pluginVersion string) (hook.Deps, e
 	if err != nil {
 		return hook.Deps{}, err
 	}
-	d := hook.Deps{State: st, PluginVersion: pluginVersion, BinaryVersion: versionString()}
+	d := hook.Deps{State: st, PluginVersion: pluginVersion, BinaryVersion: versionString(), Mode: cfg.Online.Reconcile}
+	if paths.SupportDir == defaultSupportDir(home) {
+		dir := filepath.Join(paths.SupportDir, online.DirName)
+		d.Online = online.NewStore(paths.SupportDir, online.CreateOnly(fsx.Default(), dir))
+	}
 	plat, err := app.NewDarwin(app.DarwinConfig{Home: home, BundleID: cfg.App.BundleID, OpenFileScan: app.ScanMode(cfg.App.OpenFileScan)})
 	if err != nil {
 		return d, nil // silent: InsideApp stays nil

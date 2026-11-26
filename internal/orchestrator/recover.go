@@ -84,7 +84,9 @@ func (o *Orchestrator) Recover(ctx context.Context, opts RecoverOptions) (*Recov
 	}
 	rc.root = root
 	rc.locate(cctx)
+	rc.confirmOnline(cctx)
 	err = rc.dispatch(cctx)
+	rc.cleanupOnline(cctx)
 	rc.res.Active = rc.root.Active
 	return rc.res, err
 }
@@ -454,6 +456,9 @@ func (rc *recovery) finishP10(ctx context.Context) error {
 		root.Epoch++
 		ps.LiveEpoch = root.Epoch
 		root.Active, root.Previous = t, run.From
+	}
+	if rc.republishOnline(ctx) {
+		rc.note("the changes for inside Claude are queued again")
 	}
 	return rc.closeRun(ctx, "completed the interrupted run; "+string(t)+" is active")
 }

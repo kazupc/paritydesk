@@ -4,10 +4,11 @@
 
 _paritydesk_subs() {
     case "$1" in
-        '') echo 'backups completion config doctor generations help history init log plan profile rebase recover rollback status switch sync uninstall verify version' ;;
+        '') echo 'backups completion config doctor generations help history init log online plan profile rebase recover rollback status switch sync uninstall verify version' ;;
         'backups') echo 'prune purge' ;;
         'config') echo 'path show validate' ;;
         'generations') echo 'list show' ;;
+        'online') echo 'cancel status' ;;
         'profile') echo 'add adopt list remove rename' ;;
     esac
 }

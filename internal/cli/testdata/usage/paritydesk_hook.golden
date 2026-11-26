@@ -3,6 +3,8 @@ usage: paritydesk hook <event>
 Internal: entry point of the plugin's hooks
 
 commands:
+  post-tool-use PostToolUse hook
+  pre-tool-use PreToolUse hook
   session-start SessionStart hook
 
 global flags:

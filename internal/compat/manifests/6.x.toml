@@ -713,6 +713,10 @@ account_changed_hint = []
 
 # v0.2 anchor: tables online
 
+# The online layer is not confirmed on 6.x: no online steps.
+[online]
+enabled = false
+
 # v0.2 anchor: tables pins
 
 # v0.2 anchor: tables artifacts

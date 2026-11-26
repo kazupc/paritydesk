@@ -1,0 +1,6 @@
+stored             reported     sessions routines pinned manual
+date               date         write    write    write  write
+folder             project      write    -        -      -
+none               none         write    write    write  write
+savedEnvironment   environment  -        -        -      -
+status             state        write    write    write  write

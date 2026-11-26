@@ -21,6 +21,8 @@ type PlanView struct {
 	// and BusyWait how long the switch waits for them.
 	Busy     []BusyLine
 	BusyWait time.Duration
+	// Online is what the switch applies inside Claude afterwards.
+	Online *OnlinePlanView
 }
 
 // PlanLines returns the human summary of a plan: a header, one line per
@@ -51,6 +53,7 @@ func PlanLines(v PlanView) []string {
 	// v0.2 anchor: plan scratch
 
 	// v0.2 anchor: plan online
+	lines = append(lines, onlineLines(v)...)
 
 	// v0.2 anchor: plan artifacts
 

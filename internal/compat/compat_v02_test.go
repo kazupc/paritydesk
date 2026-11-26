@@ -106,6 +106,8 @@ none = "none"
 folder = "project"
 [online.sidebar.group_by]
 sessions = ["date", "project", "state", "none"]
+routines = ["date", "state", "none"]
+pinned = ["date", "state", "none"]
 manual = ["date", "state", "none"]
 
 [online.responses]
@@ -215,9 +217,13 @@ func TestEmbeddedManifestsLoadWithV02Anchors(t *testing.T) {
 				t.Errorf("%s: anchor %q missing or not followed by a blank line", m.Name, a)
 			}
 		}
-		// Until their units land, the v0.2 tables are absent: online and
-		// artifact sync are off, and no legacy layout is declared.
-		if m.Online.Enabled || m.Artifacts.Enabled || len(m.Legacy.ScopedDirs) != 0 {
+		// The online layer is on for 7.x only (6.x has no confirmed tool
+		// texts). Until their units land, the other v0.2 tables are
+		// absent: artifact sync is off and no legacy layout is declared.
+		if m.Online.Enabled != (m.Name == "7.x") {
+			t.Errorf("%s: online.enabled = %v", m.Name, m.Online.Enabled)
+		}
+		if m.Artifacts.Enabled || len(m.Legacy.ScopedDirs) != 0 {
 			t.Errorf("%s: v0.2 tables present before their units", m.Name)
 		}
 		for _, r := range []model.RowID{model.RowScratch, model.RowSidebarCollapse, model.RowSidebarSeed, model.RowPins} {
@@ -232,7 +238,10 @@ func TestEmbeddedManifestsLoadWithV02Anchors(t *testing.T) {
 
 func TestOverrideWithV02TablesDecodes(t *testing.T) {
 	dir := t.TempDir()
-	writeOverride(t, dir, "override.toml", embeddedText(t)+v02Tables)
+	// The embedded 6.x manifest has its own [online] table (enabled =
+	// false); the override replaces it with the full sample.
+	base := strings.Replace(embeddedText(t), "[online]\nenabled = false\n", "", 1)
+	writeOverride(t, dir, "override.toml", base+v02Tables)
 	ms, err := compat.Load(dir)
 	if err != nil {
 		t.Fatal(err)

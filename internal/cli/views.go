@@ -6,6 +6,7 @@ import (
 
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/ids"
+	"github.com/kazupc/paritydesk/internal/online"
 	"github.com/kazupc/paritydesk/internal/orchestrator"
 	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/plan"
@@ -43,6 +44,9 @@ type runView struct {
 	// v0.2 anchor: view scratch
 
 	// v0.2 anchor: view online
+	// Online counts what the switch applies inside Claude afterwards
+	// (counts and fixed words only).
+	Online *online.Summary `json:"online,omitempty"`
 
 	// v0.2 anchor: view i18n-ja
 
@@ -93,11 +97,20 @@ func newRunView(r *orchestrator.Result) runView {
 			titles, masked = append(titles, b.Title), append(masked, b.Session)
 		}
 	}
+	var ov *render.OnlinePlanView
+	if o := r.Online; o != nil {
+		s := *o
+		s.PinsSource = render.Sanitize(s.PinsSource, 16)
+		s.PinsReason = render.Sanitize(s.PinsReason, 32)
+		v.Online = &s
+		ov = &render.OnlinePlanView{PinsAdd: s.PinsAdd, PinsRemove: s.PinsRemove, Sidebar: s.Sidebar,
+			PinsUnreadable: s.PinsReason == "pins_unreadable"}
+	}
 	// Without a target the run stopped before planning: no plan to show.
 	if v.To != "" {
 		v.Lines = render.PlanLines(render.PlanView{
 			From: string(v.From), To: string(v.To), Approximate: v.Approximate,
-			FirstSync: v.NeedsConfirmation, Summary: v.Summary, Busy: busy, BusyWait: r.BusyWait,
+			FirstSync: v.NeedsConfirmation, Summary: v.Summary, Busy: busy, BusyWait: r.BusyWait, Online: ov,
 		})
 		v.humanBusy = render.BusyTitled(titles, masked)
 	}

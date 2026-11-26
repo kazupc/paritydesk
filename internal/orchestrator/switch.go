@@ -89,7 +89,7 @@ func (r *run) execute(ctx context.Context) (*Result, error) {
 	r.launch(cctx)
 	if r.launched {
 		// Announce the switch when Claude is up, not after the checks.
-		r.notify(cctx, notifySwitched)
+		r.notify(cctx, r.onlineNotice(notifySwitched))
 	}
 	return r.res, r.finalCode(r.verifyP12(ctx))
 }

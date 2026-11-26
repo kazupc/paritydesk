@@ -1,0 +1,1 @@
+{"v":1,"state":"calls","capture":"cap-20260102T030405Z-01020304","calls":[{"id":"c001","tool":"mcp__ccd_session_mgmt__get_session","input":{"session_id":"self"}}],"tools":["mcp__ccd_session_mgmt__get_session"],"lines":[]}

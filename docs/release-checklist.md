@@ -287,6 +287,41 @@ Record every result in ADR 0009.
 <!-- v0.2 anchor: scratch -->
 
 <!-- v0.2 anchor: online -->
+## Online reconcile (v0.2)
+
+On a Mac with app 7.x, the plugin 0.2.0 installed and two profiles A and B.
+
+- R-ON-1. With a temporary PostToolUse hook that logs its raw payload
+  (outside paritydesk), call `list_sections` once in a Code session.
+  Expected: `tool_response` is one of the shapes `online.ExtractText`
+  accepts (a string, a content array, or an object with `content`).
+- R-ON-2. During `/paritydesk:reconcile`, decline one approval card.
+  Expected: the step stays offered for `result_grace`, then shows
+  `no_result` in `paritydesk online status`; nothing is retried
+  automatically.
+- R-ON-3. Run `/paritydesk:switch`; check the run log. Expected:
+  `${CLAUDE_SESSION_ID}` expanded to a UUID in `--session`.
+- R-ON-4. The switch confirmation and the pins question appear as
+  buttons with every plan line, in the reopened session and in a Remote
+  Control session; Cancel changes nothing.
+- R-ON-6. Change the whole-list group-by on A (for example to state),
+  switch to B and run the reconcile. Expected: the value survives a quit
+  and relaunch of Claude.
+- R-ON-7. (pins work item) `idb` over a copy of a real folder reports
+  `db_from_metadata = true`.
+- R-ON-8. Check whether the SessionStart payload carries
+  `permission_mode`. Without it, the prompt text is shown in auto mode.
+- R-ON-9. After a launch and after an account change inside Claude,
+  `main.log` shows the account and organization line. Expected: the
+  reconcile's replica check is known within two minutes.
+- R-ON-10. During the reconcile, ask Claude to call `set_unread` on
+  another session. Expected: denied; `paritydesk online status` lists the
+  denial. The per-turn plan and wrap-up tools keep working.
+- R-ON-11. A manual section's group-by changed on A reaches B after the
+  reconcile; the skill loads deferred tools with one ToolSearch call.
+- R-ON-12. `paritydesk online cancel` in Terminal while the reconcile
+  runs. Expected: the next guarded call is denied with the cancel hint,
+  then nothing is armed; nothing in Claude changed.
 
 <!-- v0.2 anchor: pins -->
 

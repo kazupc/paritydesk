@@ -305,6 +305,29 @@ that is normal again.
 <!-- v0.2 anchor: scratch -->
 
 <!-- v0.2 anchor: online -->
+## Changes waiting to be applied in Claude
+
+`paritydesk status` shows "… wait to be applied in Claude" after a switch
+when some values (the sidebar's group-by and sort) can only be set
+through Claude's own tools. Open a Code session and run
+`/paritydesk:reconcile`; Claude may ask you to approve some calls.
+
+- **A call was blocked by paritydesk.** While the reconcile works in a
+  session, only the listed calls run there. Finish the reconcile, or run
+  `paritydesk online cancel` in Terminal; nothing in Claude changes and
+  the next switch plans the values again.
+- **"paritydesk's hooks did not run in this session".** The plugin is not
+  installed, is older than the binary, or hooks are turned off. Fix that,
+  then run `/paritydesk:reconcile` again; nothing was changed.
+- **"Another Claude session is applying these changes".** Let that session
+  finish, or run `paritydesk online cancel`.
+- **Some changes were not applied.** `paritydesk online status` lists the
+  steps; `paritydesk online retry` followed by `/paritydesk:reconcile`
+  offers the failed ones once more.
+- **Claude is on another account.** The waiting changes are dropped; the
+  next switch plans them again.
+- **`--app-support-dir` is set.** The hooks only know the default folder,
+  so the changes are not applied; `paritydesk doctor` says so.
 
 <!-- v0.2 anchor: pins -->
 

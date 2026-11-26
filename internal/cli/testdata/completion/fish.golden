@@ -5,13 +5,15 @@
 function __paritydesk_subs
     switch "$argv[1]"
         case ''
-            printf '%s\n' backups completion config doctor generations help history init log plan profile rebase recover rollback status switch sync uninstall verify version
+            printf '%s\n' backups completion config doctor generations help history init log online plan profile rebase recover rollback status switch sync uninstall verify version
         case 'backups'
             printf '%s\n' prune purge
         case 'config'
             printf '%s\n' path show validate
         case 'generations'
             printf '%s\n' list show
+        case 'online'
+            printf '%s\n' cancel status
         case 'profile'
             printf '%s\n' add adopt list remove rename
     end
@@ -94,6 +96,7 @@ complete -c paritydesk -n '__paritydesk_at \'\'' -a help -d 'Show help for a com
 complete -c paritydesk -n '__paritydesk_at \'\'' -a history -d 'List past runs'
 complete -c paritydesk -n '__paritydesk_at \'\'' -a init -d 'Set up paritydesk for the account in the app now'
 complete -c paritydesk -n '__paritydesk_at \'\'' -a log -d 'Show the log of a run'
+complete -c paritydesk -n '__paritydesk_at \'\'' -a online -d 'Show or drop changes waiting to be applied in Claude'
 complete -c paritydesk -n '__paritydesk_at \'\'' -a plan -d 'Preview what a switch would change (approximate)'
 complete -c paritydesk -n '__paritydesk_at \'\'' -a profile -d 'Manage profiles'
 complete -c paritydesk -n '__paritydesk_at \'\'' -a rebase -d 'Forget every sync base; the next run is a first sync'
@@ -112,6 +115,8 @@ complete -c paritydesk -n '__paritydesk_at \'config\'' -a show -d 'Print the eff
 complete -c paritydesk -n '__paritydesk_at \'config\'' -a validate -d 'Validate the config file'
 complete -c paritydesk -n '__paritydesk_at \'generations\'' -a list -d 'List generations'
 complete -c paritydesk -n '__paritydesk_at \'generations\'' -a show -d 'Show one generation'
+complete -c paritydesk -n '__paritydesk_at \'online\'' -a cancel -d 'Drop the waiting changes; nothing in Claude changes'
+complete -c paritydesk -n '__paritydesk_at \'online\'' -a status -d 'Show the changes waiting to be applied in Claude'
 complete -c paritydesk -n '__paritydesk_at \'profile\'' -a add -d 'Add an account without signing out of any other'
 complete -c paritydesk -n '__paritydesk_at \'profile\'' -a adopt -d 'Register a parked folder after checking its identity'
 complete -c paritydesk -n '__paritydesk_at \'profile\'' -a list -d 'List profiles'
@@ -175,5 +180,5 @@ complete -c paritydesk -n '__paritydesk_at \'plan\'' -a '(command paritydesk __a
 complete -c paritydesk -n '__paritydesk_at \'profile remove\'' -a '(command paritydesk __aliases 2>/dev/null)'
 complete -c paritydesk -n '__paritydesk_at \'profile rename\'' -a '(command paritydesk __aliases 2>/dev/null)'
 complete -c paritydesk -n '__paritydesk_at \'switch\'' -a '(command paritydesk __aliases 2>/dev/null)'
-complete -c paritydesk -n '__paritydesk_at \'help\'' -a 'backups completion config doctor generations help history init log plan profile rebase recover rollback status switch sync uninstall verify version'
+complete -c paritydesk -n '__paritydesk_at \'help\'' -a 'backups completion config doctor generations help history init log online plan profile rebase recover rollback status switch sync uninstall verify version'
 complete -c paritydesk -n '__paritydesk_at \'completion\'' -a 'bash fish zsh'

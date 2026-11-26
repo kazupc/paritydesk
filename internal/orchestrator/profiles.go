@@ -313,6 +313,9 @@ func (o *Orchestrator) ProfileRename(ctx context.Context, from, to ids.Alias) er
 	if err := o.saveConfig(); err != nil {
 		return err
 	}
+	if s.root.Online != nil && s.root.Online.Profile == from {
+		o.dropOnline(ctx, s.root, "profile rename")
+	}
 	renameAlias(s.root, from, to)
 	o.rewriteMarker(s.root, to, p)
 	return o.commit(s.root)
@@ -443,6 +446,9 @@ func (o *Orchestrator) ProfileRemove(ctx context.Context, alias ids.Alias) error
 	cfg.Profiles = slices.Delete(cfg.Profiles, i, i+1)
 	if err := o.saveConfig(); err != nil {
 		return err
+	}
+	if s.root.Online != nil && s.root.Online.Profile == alias {
+		o.dropOnline(ctx, s.root, "profile remove")
 	}
 	delete(s.root.Profiles, alias)
 	dropAliasKeys(s.root, alias)

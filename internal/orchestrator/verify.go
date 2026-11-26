@@ -71,6 +71,11 @@ func (o *Orchestrator) Verify(ctx context.Context) (*VerifyResult, error) {
 	if err != nil || m == nil {
 		return nil, pderr.New(pderr.CompatRefused, "verify", "no compatibility manifest covers this Claude version")
 	}
+	if !d.ReadOnly {
+		if err := o.verifyConfirm(ctx, root, m); err != nil {
+			return nil, err
+		}
+	}
 	var from int64
 	if n, err := d.App.LogSize(); err == nil && n > verifyLogTail {
 		from = n - verifyLogTail

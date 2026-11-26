@@ -15,6 +15,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/gen"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
+	"github.com/kazupc/paritydesk/internal/online"
 	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/plan"
 	"github.com/kazupc/paritydesk/internal/profile"
@@ -94,6 +95,8 @@ type run struct {
 	tSess             *model.RowSnapshot
 	launchAt          int64
 	launched          bool
+	// draft is the P5 online draft (empty when the layer is off).
+	draft online.Draft
 }
 
 func (o *Orchestrator) newRun(kind state.RunKind, opts SwitchOptions) *run {
@@ -288,6 +291,9 @@ func (r *run) preflight(ctx context.Context, lock bool) error {
 	}
 	if !lock {
 		return nil
+	}
+	if err := r.onlineP0(ctx); err != nil {
+		return r.abort(ctx, err)
 	}
 	if err := r.lockedChecks(ctx); err != nil {
 		return r.abort(ctx, err)
@@ -688,6 +694,11 @@ func (r *run) resolveInvoking(ctx context.Context) {
 	}
 	id, err := r.d().Sessions.ResolveByCLISession(ctx, r.sPath, r.S.Replica, r.opts.ReopenCLISession)
 	if err != nil || id == "" {
+		// The P1 capture's mapping (recorded for this session only).
+		if id = r.captureReopen(ctx); id != "" {
+			r.invoking = id
+			return
+		}
 		r.warn(P0Preflight, "the invoking session was not found; it will not be reopened")
 		return
 	}
@@ -708,6 +719,7 @@ func (r *run) preview(ctx context.Context) error {
 		r.p2 = pl
 	}
 	r.setPlan(r.p2.Plan)
+	r.onlinePreview()
 	return nil
 }
 

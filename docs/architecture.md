@@ -176,6 +176,19 @@ unverified (exit 0). Facts and decisions: [ADR 0009](adr/0009-sidebar-collapse-a
 <!-- v0.2 anchor: scratch -->
 
 <!-- v0.2 anchor: online -->
+### Online layer (v0.2)
+
+| Piece | Where | What |
+|---|---|---|
+| Queue (P5 build, P10 publish) | `internal/online` (`Build`, providers probe and sidebar, `Service.Publish`), `internal/orchestrator/online.go` | exact tool calls derived from the merge outputs; draft stored with the planned intent (`Run.Online`), published between the epoch update and the root commit, recorded in `Root.Online` with its steps hash |
+| P13 reconcile | `paritydesk online next/decide/retry/done`, `plugin/skills/reconcile` | probe first, lease and token per session, replica check against `main.log`, settle time, live check of sidebar values, bases moved to confirmed values (`OnlineConfirm`, or the next `verify`/P0) |
+| P1 capture | `paritydesk online capture`, `plugin/skills/switch` | one `get_session self` after the confirmation, for the reopen mapping only |
+| Guard and recorder | `internal/hook/pretool.go`, `posttool.go`, `plugin/hooks/hooks.json`, `plugin/bin/paritydesk-hook` | PreToolUse denies everything but offered exact steps while armed (never "allow"); the in-flight marker is the duplicate gate; PostToolUse records validated fields; the shim fails closed while armed |
+| Files | `<SupportDir>/online` | `queue.json`, `capture.json`, `lease.json`, `armed`, `stop`; hooks only create files (results, markers, denials, counters) |
+
+Locks: run lock, then the online lock (`<SupportDir>/locks/online.lock`);
+`online cancel` takes none for its stop marker. Facts and decisions:
+[ADR 0005](adr/0005-online-layer.md).
 
 <!-- v0.2 anchor: pins -->
 

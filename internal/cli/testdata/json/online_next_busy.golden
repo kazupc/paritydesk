@@ -1,0 +1,1 @@
+{"v":1,"queue":"run-0001","state":"busy_elsewhere","calls":[],"tools":[],"question":null,"retry_after_ms":0,"remaining_batches":0,"counts":{"pins_add":0,"pins_remove":0,"pins_keep":0,"pins_blocked":0,"sidebar":0,"other":0,"done":0,"skipped":0,"failed":0},"lines":["Another Claude session is applying these changes right now. Nothing was changed here."]}

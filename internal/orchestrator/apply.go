@@ -59,6 +59,7 @@ func (r *run) harvest(ctx context.Context) error {
 	}
 	r.p5 = pl
 	r.setPlan(pl.Plan)
+	r.onlineHarvest()
 	if err := r.validate(ctx); err != nil {
 		return r.abort(ctx, err)
 	}
@@ -247,6 +248,9 @@ func (r *run) commitP5() error {
 	root.Run.PlanHash = p.Hash()
 	root.Run.PostHashes = postHashes(p)
 	root.Run.ConfirmedPlan = r.opts.ConfirmedPlan
+	if err := r.storeOnlineDraft(); err != nil {
+		return err
+	}
 	data := map[string]string{"hash": root.Run.PlanHash, "rows": joinRows(r.p5.Rows)}
 	if err := r.o.begin(root, P5Harvest, state.IntentPlanned, data); err != nil {
 		return err
