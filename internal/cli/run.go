@@ -135,6 +135,9 @@ func runSwitch(ctx context.Context, e *env, fs *flag.FlagSet, args []string) err
 			if v.Generation > 0 {
 				p.Line(i18n.T(i18n.SwitchGeneration, v.Generation))
 			}
+			if v.Online != nil && v.Online.Queued {
+				p.Line("%s", i18n.T(i18n.SwitchOnlineNext))
+			}
 		}
 		warn(p, v.Warnings)
 	}, resultErr("switch", res.Code, err))
@@ -201,6 +204,9 @@ func runSync(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 		p.Lines(v.Lines)
 		if v.Code == pderr.OK {
 			p.Line(i18n.T(i18n.SyncDone, "%s"), string(v.To))
+		}
+		if v.Online != nil && v.Online.Queued {
+			p.Line("%s", i18n.T(i18n.SwitchOnlineNext))
 		}
 		warn(p, v.Warnings)
 	}, resultErr("sync", res.Code, err))
@@ -371,13 +377,18 @@ func runStatus(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error 
 
 func printStatus(p *render.Printer, s *orchestrator.Status, short bool) {
 	if short {
+		// The waiting online changes come from root.json only (G5).
+		tail := ""
+		if n := s.Online.Pending(); n > 0 {
+			tail = " " + i18n.T(i18n.OnlineShort, n)
+		}
 		switch {
 		case s.NeedsRecover:
-			p.Line(i18n.T(i18n.StatusNeedsRecover))
+			p.Line(i18n.T(i18n.StatusNeedsRecover) + tail)
 		case s.Active != "":
-			p.Line(i18n.T(i18n.StatusActive, "%s"), string(s.Active))
+			p.Line(i18n.T(i18n.StatusActive, "%s")+tail, string(s.Active))
 		default:
-			p.Line(i18n.T(i18n.StatusNoActive))
+			p.Line(i18n.T(i18n.StatusNoActive) + tail)
 		}
 		return
 	}
@@ -410,6 +421,9 @@ func printStatus(p *render.Printer, s *orchestrator.Status, short bool) {
 		}
 	}
 	p.Line(i18n.T(i18n.StatusGenerations, s.Generations))
+	if o := s.Online; o.Pending() > 0 {
+		p.Line(i18n.T(i18n.OnlineStatusPending, o.Counts.PinsAdd, o.Counts.PinsRemove, o.Counts.Sidebar, "%s"), render.Sanitize(string(o.Profile), 32))
+	}
 	warn(p, s.Warnings)
 }
 

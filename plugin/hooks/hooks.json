@@ -10,6 +10,30 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(mcp__(ccd_sidebar|ccd_session_mgmt|ccd_settings|claude-artifacts|ccd_directory)__.*|Artifact|ArtifactComments|ArtifactData|ArtifactCheck)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/paritydesk-hook\" pre-tool-use",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(mcp__(ccd_sidebar|ccd_session_mgmt|ccd_settings|claude-artifacts|ccd_directory)__.*|Artifact|ArtifactComments|ArtifactData|ArtifactCheck)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/paritydesk-hook\" post-tool-use",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }

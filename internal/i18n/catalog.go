@@ -225,6 +225,55 @@ const (
 	DoctorScratchKeptUnreadable Msg = "doctor.scratch_kept_unreadable"
 
 	// v0.2 anchor: online
+	HookOnlinePrompt             Msg = "hook.online_prompt"
+	HookOnlineAuto               Msg = "hook.online_auto"
+	GuardDenyFloor               Msg = "guard.deny_floor"
+	GuardDenyUnplanned           Msg = "guard.deny_unplanned"
+	GuardDenyNotYet              Msg = "guard.deny_not_yet"
+	GuardDenyUnreadable          Msg = "guard.deny_unreadable"
+	GuardDenyDuplicate           Msg = "guard.deny_duplicate"
+	GuardDenyArtifactTool        Msg = "guard.deny_artifact_tool"
+	OnlineArtifactsQueue         Msg = "online.artifacts_queue"
+	OnlineQPinsHeader            Msg = "online.q_pins_header"
+	OnlineQPinsText              Msg = "online.q_pins_text"
+	OnlineQPinsApply             Msg = "online.q_pins_apply"
+	OnlineQPinsApplyDesc         Msg = "online.q_pins_apply_desc"
+	OnlineQPinsApplyAll          Msg = "online.q_pins_apply_all"
+	OnlineQPinsAddOnly           Msg = "online.q_pins_add_only"
+	OnlineQPinsAddOnlyDesc       Msg = "online.q_pins_add_only_desc"
+	OnlineQPinsSkip              Msg = "online.q_pins_skip"
+	OnlineQPinsSkipDesc          Msg = "online.q_pins_skip_desc"
+	OnlineStatusNone             Msg = "online.status_none"
+	OnlineStatusPending          Msg = "online.status_pending"
+	OnlineStatusOther            Msg = "online.status_other"
+	OnlineStatusStale            Msg = "online.status_stale"
+	OnlineStatusReplicaChanged   Msg = "online.status_replica_changed"
+	OnlineStatusDenials          Msg = "online.status_denials"
+	OnlineStatusState            Msg = "online.status_state"
+	OnlineNoHooks                Msg = "online.no_hooks"
+	OnlineBusyElsewhere          Msg = "online.busy_elsewhere"
+	OnlineLoopBound              Msg = "online.loop_bound"
+	OnlineErrSupportDir          Msg = "online.err_support_dir"
+	OnlineDoneSummary            Msg = "online.done_summary"
+	OnlineDoneFailedHint         Msg = "online.done_failed_hint"
+	OnlineDoneRootBusy           Msg = "online.done_root_busy"
+	OnlineCancelled              Msg = "online.cancelled"
+	OnlineErrBusy                Msg = "online.err_busy"
+	OnlineErrReadOnly            Msg = "online.err_read_only"
+	OnlineErrQueueInvalid        Msg = "online.err_queue_invalid"
+	OnlineWarnPinsUnreadable     Msg = "online.warn_pins_unreadable"
+	OnlineWarnPinsCapped         Msg = "online.warn_pins_capped"
+	OnlineWarnBuildFailed        Msg = "online.warn_build_failed"
+	OnlineWarnSidebarNotWritable Msg = "online.warn_sidebar_not_writable"
+	OnlineRetried                Msg = "online.retried"
+	OnlineCaptureDone            Msg = "online.capture_done"
+	OnlineShort                  Msg = "online.short"
+	PlanOnlineLine               Msg = "plan.online_line"
+	PlanOnlinePinsUnreadable     Msg = "plan.online_pins_unreadable"
+	SwitchOnlineNext             Msg = "switch.online_next"
+	DoctorOnlineSupportDir       Msg = "doctor.online_support_dir"
+	DoctorOnlineQueue            Msg = "doctor.online_queue"
+	DoctorOnlineOff              Msg = "doctor.online_off"
 
 	// v0.2 anchor: pins
 
@@ -452,6 +501,55 @@ var catalog = map[Msg]string{
 	DoctorScratchKeptUnreadable: "the kept scratch files could not be listed",
 
 	// v0.2 anchor: online
+	HookOnlinePrompt:             "paritydesk: some changes for this profile can only be made through Claude's own tools. Tell the user and offer to run /paritydesk:reconcile.",
+	HookOnlineAuto:               "paritydesk: some changes for this profile can only be made through Claude's own tools. Run /paritydesk:reconcile before other work, unless the user asked for something else.",
+	GuardDenyFloor:               "paritydesk: this tool is blocked while paritydesk applies changes in this session. Nothing was changed.",
+	GuardDenyUnplanned:           "paritydesk: only the calls paritydesk listed may run now, with exactly the listed input. Run paritydesk online next for the list, or paritydesk online cancel in Terminal to stop.",
+	GuardDenyNotYet:              "paritydesk: this call is listed but not ready yet. Run paritydesk online next first.",
+	GuardDenyUnreadable:          "paritydesk could not check this call, so it was blocked. Run paritydesk online cancel in Terminal to stop applying changes.",
+	GuardDenyDuplicate:           "paritydesk: this exact call is already running once. Wait for it, then run paritydesk online next.",
+	GuardDenyArtifactTool:        "paritydesk is syncing artifacts in this session; Claude's own artifact tool is paused until it finishes. To stop the sync, run paritydesk online cancel in Terminal.",
+	OnlineArtifactsQueue:         "This queue belongs to /paritydesk:artifacts.",
+	OnlineQPinsHeader:            "Pins",
+	OnlineQPinsText:              "To match %s, paritydesk will pin %d and unpin %d session(s) here. Claude may ask you to approve each change to another session (up to %d).",
+	OnlineQPinsApply:             "Apply pin changes",
+	OnlineQPinsApplyDesc:         "Claude may ask before each change to another session",
+	OnlineQPinsApplyAll:          "Apply all pin changes",
+	OnlineQPinsAddOnly:           "Pin only, keep current pins",
+	OnlineQPinsAddOnlyDesc:       "Unusually many unpins; keep every pin you have now",
+	OnlineQPinsSkip:              "Skip pins this time",
+	OnlineQPinsSkipDesc:          "Pins stay as they are; the next switch offers this again",
+	OnlineStatusNone:             "No changes wait to be applied in Claude.",
+	OnlineStatusPending:          "%d pin(s), %d unpin(s) and %d sidebar setting(s) wait to be applied in Claude for %s.",
+	OnlineStatusOther:            "%d other change(s) wait as well.",
+	OnlineStatusStale:            "The waiting changes belonged to an earlier switch and were dropped. Nothing in Claude was changed.",
+	OnlineStatusReplicaChanged:   "Claude is signed in to another account or organization than the one these changes are for, so they were dropped. Nothing in Claude was changed.",
+	OnlineStatusDenials:          "paritydesk blocked %d tool call(s) while it applied changes.",
+	OnlineStatusState:            "Changes in Claude for %s: %s (%d done, %d skipped, %d not applied).",
+	OnlineNoHooks:                "paritydesk's hooks did not run in this session, so nothing was changed. Check that the paritydesk plugin is installed and hooks are enabled, then run /paritydesk:reconcile again.",
+	OnlineBusyElsewhere:          "Another Claude session is applying these changes right now. Nothing was changed here.",
+	OnlineLoopBound:              "The changes were not finished in this session; the next session start offers them again.",
+	OnlineErrSupportDir:          "Changes inside Claude need paritydesk's default folder; they are not applied while --app-support-dir is set.",
+	OnlineDoneSummary:            "Applied %d of %d change(s) in Claude; %d skipped, %d not applied.",
+	OnlineDoneFailedHint:         "To try the changes that were not applied once more, run /paritydesk:reconcile again after paritydesk online retry, or drop them with paritydesk online cancel.",
+	OnlineDoneRootBusy:           "paritydesk is busy with another run; it records the applied changes with the next paritydesk verify or switch.",
+	OnlineCancelled:              "Dropped the waiting changes. Nothing in Claude was changed.",
+	OnlineErrBusy:                "Another paritydesk command is updating the waiting changes. Try again in a moment.",
+	OnlineErrReadOnly:            "Read-only mode: waiting changes are not updated.",
+	OnlineErrQueueInvalid:        "The file with the waiting changes is not valid. Run paritydesk online cancel to drop it; nothing in Claude changes.",
+	OnlineWarnPinsUnreadable:     "Pins were not carried this time: Claude's pin list in %s could not be read.",
+	OnlineWarnPinsCapped:         "Only the first %d pin changes were queued; the next switch offers the rest.",
+	OnlineWarnBuildFailed:        "Some changes inside Claude could not be planned this time; the next switch tries again.",
+	OnlineWarnSidebarNotWritable: "%d sidebar section(s) have settings Claude's tools cannot set; those settings were not queued.",
+	OnlineRetried:                "%d change(s) will be offered again by /paritydesk:reconcile.",
+	OnlineCaptureDone:            "The capture is closed.",
+	OnlineShort:                  "online:%d",
+	PlanOnlineLine:               "  online        %d pin(s), %d unpin(s), %d sidebar setting(s) (applied in Claude after the switch)",
+	PlanOnlinePinsUnreadable:     "  pins          not carried this time (Claude's pin list could not be read)",
+	SwitchOnlineNext:             "Some changes can only be made inside Claude: open a Code session and run /paritydesk:reconcile.",
+	DoctorOnlineSupportDir:       "Changes inside Claude are off: --app-support-dir is not the default folder",
+	DoctorOnlineQueue:            "Waiting changes in Claude: %s",
+	DoctorOnlineOff:              "Changes inside Claude are off (online.reconcile = \"off\", or this Claude version has no online support)",
 
 	// v0.2 anchor: pins
 

@@ -89,7 +89,18 @@ func (r *run) commitP10(ctx context.Context) error {
 		if row == model.RowScratch {
 			want = r.scratchExpected(w)
 		}
-		if !ok || !sameRead(snap, want, rows.CarriesOrder(row)) {
+		if onRow(r.manifest, row) {
+			// Nothing was applied offline: the base is T's re-read (or its
+			// P5 read when the re-read left the row out); the online
+			// changes move it once they are confirmed.
+			if !ok {
+				snap = w.T
+			}
+			if snap == nil {
+				dropBase(root, tk)
+				continue
+			}
+		} else if !ok || !sameRead(snap, want, rows.CarriesOrder(row)) {
 			dropBase(root, tk)
 			if reread != nil {
 				r.warn(P10Commit, fmt.Sprintf("%s: the entering folder does not read back as planned; its base is invalid", row))
@@ -122,6 +133,11 @@ func (r *run) commitP10(ctx context.Context) error {
 		}
 	}
 	r.recordProfiles()
+	prevOnline := root.Online
+	published := publishOnline(ctx, r.o, root, r.manifest, r.draft, r.res.RunID, r.T.Profile.Alias, r.S.Profile.Alias, r.T.Replica)
+	if published {
+		r.res.Online = onlineSummary(r.draft, true)
+	}
 	if r.bundle.Version != "" {
 		root.LastAppVersion = r.bundle.Version
 	}
@@ -130,10 +146,15 @@ func (r *run) commitP10(ctx context.Context) error {
 		root.Generations = append(root.Generations, state.GenerationRef{N: r.gen, RunID: r.res.RunID, Target: r.T.Profile.Alias, At: r.o.now()})
 	}
 	r.quitByUs = root.Run.QuitByUs
+	run := root.Run
 	root.Run = nil
 	if err := r.o.commit(root); err != nil {
+		// The run stays open: the queue just published is an orphan
+		// (recover republishes it from Run.Online or removes it).
+		root.Run, root.Online = run, prevOnline
 		return err
 	}
+	r.o.afterPublish(ctx, published)
 	if err := d.State.GC(root); err != nil {
 		r.warn(P10Commit, "unreferenced state objects could not be removed")
 	}
@@ -216,11 +237,13 @@ func (r *run) launch(ctx context.Context) {
 	if n, err := d.App.LogSize(); err == nil {
 		r.launchAt = n
 	}
+	t0 := r.o.now()
 	if err := d.App.Launch(ctx, d.Config.App.BundleID); err != nil {
 		r.warn(P11Launch, "Claude could not be launched; open it manually")
 		return
 	}
 	r.launched = true
+	r.onlineLaunched(ctx, t0)
 	if r.opts.NoReopen || r.invoking == "" {
 		return
 	}

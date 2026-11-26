@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/kazupc/paritydesk/internal/i18n"
+	"github.com/kazupc/paritydesk/internal/online"
 	"github.com/kazupc/paritydesk/internal/state"
 )
 
@@ -25,6 +26,27 @@ type SessionStartInput struct {
 	SessionID     string `json:"session_id"`
 	HookEventName string `json:"hook_event_name"`
 	Source        string `json:"source"`
+	// PermissionMode is the session's permission mode, when the payload
+	// carries it (only known values are kept).
+	PermissionMode string `json:"permission_mode"`
+}
+
+// Sources of a SessionStart that may show the online line, and the
+// permission modes of attended sessions (only they get the "auto" text).
+var (
+	onlineSources   = map[string]bool{"startup": true, "resume": true}
+	attendedModes   = map[string]bool{"default": true, "acceptEdits": true, "plan": true}
+	knownPermModes  = map[string]bool{"default": true, "acceptEdits": true, "plan": true, "bypassPermissions": true, "dontAsk": true}
+	knownSourceVals = map[string]bool{"startup": true, "resume": true, "clear": true, "compact": true}
+)
+
+// OnlineReader is what SessionStart reads of the online folder: the head
+// of queue.json and the per-queue show counter.
+type OnlineReader interface {
+	ReadHead() (*online.QueueHead, error)
+	// CreateShown takes the next free show counter of a queue; false when
+	// all are taken.
+	CreateShown(key string, max int) bool
 }
 
 // StateReader loads root.json without taking the run lock (state.Store.Load
@@ -45,6 +67,12 @@ type Deps struct {
 	// plugin passes a version and its major.minor differs from the
 	// binary's, the hook stays silent (version skew, M11).
 	PluginVersion, BinaryVersion string
+	// Online is the online folder (nil: no online line). Mode is config
+	// online.reconcile ("prompt", "auto" or "off"); MaxShows is the
+	// manifest's session_start_max_shows (0: 3).
+	Online   OnlineReader
+	Mode     string
+	MaxShows int
 }
 
 // SessionStart reads at most MaxPayload bytes of the payload from in,
@@ -60,7 +88,8 @@ func SessionStart(ctx context.Context, in io.Reader, out io.Writer, d Deps) (err
 			err = nil
 		}
 	}()
-	if _, ok := ReadPayload(in); !ok {
+	p, ok := ReadPayload(in)
+	if !ok {
 		return nil
 	}
 	if Skewed(d.PluginVersion, d.BinaryVersion) {
@@ -76,10 +105,44 @@ func SessionStart(ctx context.Context, in io.Reader, out io.Writer, d Deps) (err
 	if lerr != nil || root == nil {
 		return nil
 	}
-	if line := PendingLine(root); line != "" {
+	if line := sessionLine(root, p, d); line != "" {
 		_, _ = fmt.Fprintln(out, line)
 	}
 	return nil
+}
+
+// sessionLine applies the online line's reach limits (11): only for a
+// startup or resume, at most MaxShows times per queue, the "auto" text
+// only in attended permission modes. When the online line may not be
+// shown, the next item (drift) is considered instead.
+func sessionLine(root *state.Root, p SessionStartInput, d Deps) string {
+	var head *online.QueueHead
+	if d.Online != nil && d.Mode != "off" {
+		head, _ = d.Online.ReadHead()
+	}
+	id, isOnline := pendingItem(root, head, d.Mode)
+	if !isOnline {
+		return msgText(id)
+	}
+	max := d.MaxShows
+	if max <= 0 {
+		max = 3
+	}
+	if !onlineSources[p.Source] || !d.Online.CreateShown(head.ID, max) {
+		id, _ = pendingItem(root, nil, d.Mode)
+		return msgText(id)
+	}
+	if id == i18n.HookOnlineAuto && !attendedModes[p.PermissionMode] {
+		id = i18n.HookOnlinePrompt
+	}
+	return i18n.T(id)
+}
+
+func msgText(id i18n.Msg) string {
+	if id == "" {
+		return ""
+	}
+	return i18n.T(id)
 }
 
 // ReadPayload reads and validates the payload: at most MaxPayload bytes
@@ -108,6 +171,12 @@ func ParsePayload(b []byte) (SessionStartInput, bool) {
 	}
 	if p.HookEventName != "" && p.HookEventName != EventSessionStart {
 		return SessionStartInput{}, false
+	}
+	if !knownSourceVals[p.Source] {
+		p.Source = ""
+	}
+	if !knownPermModes[p.PermissionMode] {
+		p.PermissionMode = ""
 	}
 	return p, true
 }
@@ -172,19 +241,52 @@ func leadingNumber(s string, whole bool) (string, bool) {
 
 // PendingLine returns the one fixed line for what is pending in root, or
 // "" when nothing is: an open run first, then a profile add waiting for
-// its sign-in, then a sign-in or drift found by the last verify.
-func PendingLine(root *state.Root) string {
+// its sign-in, then a needed sign-in, then changes waiting to be applied
+// in Claude (head is queue.json's head; mode is online.reconcile), then
+// drift found by the last verify. The reach limits of the online line are
+// SessionStart's (sessionLine).
+func PendingLine(root *state.Root, head *online.QueueHead, mode string) string {
+	id, _ := pendingItem(root, head, mode)
+	return msgText(id)
+}
+
+// pendingItem returns the message of the first pending item and whether
+// it is the online line.
+func pendingItem(root *state.Root, head *online.QueueHead, mode string) (i18n.Msg, bool) {
 	switch {
 	case root == nil:
-		return ""
+		return "", false
 	case root.Run != nil:
-		return i18n.T(i18n.HookRecover)
+		return i18n.HookRecover, false
 	case root.PendingAdd != nil:
-		return i18n.T(i18n.HookPendingAdd)
+		return i18n.HookPendingAdd, false
 	case root.LastVerify != nil && root.LastVerify.SignIn:
-		return i18n.T(i18n.HookSignIn)
+		return i18n.HookSignIn, false
+	case OnlinePending(root, head) && (mode == "prompt" || mode == "auto"):
+		if mode == "auto" {
+			return i18n.HookOnlineAuto, true
+		}
+		return i18n.HookOnlinePrompt, true
 	case root.LastVerify != nil && len(root.LastVerify.Drift) > 0:
-		return i18n.T(i18n.HookDrift)
+		return i18n.HookDrift, false
 	}
-	return ""
+	return "", false
+}
+
+// OnlinePending reports a reconcile queue waiting for a session: the root
+// record is pending or active for this epoch and the active profile, and
+// queue.json's head has the same id and is not complete or cancelled.
+// Artifacts queues have their own line.
+func OnlinePending(root *state.Root, head *online.QueueHead) bool {
+	rec := root.Online
+	if rec == nil || head == nil || rec.Kind != "" {
+		return false
+	}
+	if rec.State != string(online.QueuePending) && rec.State != string(online.QueueActive) {
+		return false
+	}
+	if rec.Epoch != root.Epoch || rec.Profile != root.Active || head.ID != rec.Queue {
+		return false
+	}
+	return head.State != online.QueueComplete && head.State != online.QueueCancelled
 }

@@ -106,6 +106,42 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   there (S-5, S-6).
 
 <!-- v0.2 anchor: online -->
+- Added: changes that only Claude's own tools can make are queued at the
+  switch and applied in the next Code session by the new
+  `/paritydesk:reconcile` skill: the sidebar's whole-list and section
+  group-by and sort (written only when the live value is still the one the
+  account had, after a 45 s settle time and a check of the account and
+  organization in Claude's log). The queue is derived: dropping it loses
+  nothing. See ADR 0005.
+- Added: the plugin's PreToolUse guard and PostToolUse recorder for
+  Claude's sidebar, session, settings and artifact tools. While a queue is
+  armed for a session, only the listed calls with exactly the listed input
+  run (plus a short read list); deletes, shares and other sessions' content
+  are always blocked there; nothing is ever pre-approved, so Claude's own
+  approval cards still appear. Other tools, including the per-turn plan
+  tools, are never touched. `online.guard = "always"` blocks the fixed
+  floor in every session.
+- Added: `paritydesk online status` and `paritydesk online cancel`
+  (stops everything at once, also during a run); `online next`,
+  `decide`, `retry`, `done` and `capture` are used by the skills. `plan`,
+  `switch` and `sync` gain an `online` member and a plan line; `status`
+  shows waiting changes (`--short`: `online:<n>`); `doctor` gains the
+  check `online`; `uninstall` removes the online folder.
+- Added: config `[online]` (`reconcile` prompt/auto/off,
+  `capture_max_age`, `queue_max_age`, `lease_ttl`, `guard`,
+  `create_sections`) and the SessionStart line that offers
+  `/paritydesk:reconcile` (startup and resume only, at most three times
+  per queue).
+- Changed: `/paritydesk:switch` confirms with buttons (plain-text
+  fallback when the question tool is missing) and runs a read-only capture
+  of its own session after the confirmation; the plugin is version 0.2.0
+  and registers three hook events.
+- Not yet confirmed on a real Mac: the shape of PostToolUse payloads for
+  MCP tools, what happens after a declined approval card, that
+  `${CLAUDE_SESSION_ID}` expands in skills, the question tool in every
+  session kind, how soon a sidebar write survives the first reconcile and
+  whether every launch logs the account and organization (release
+  checklist R-ON-1 to R-ON-9). 6.x gets no online steps.
 
 <!-- v0.2 anchor: pins -->
 

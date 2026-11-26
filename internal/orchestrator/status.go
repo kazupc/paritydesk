@@ -52,6 +52,9 @@ type Status struct {
 	// only (short status reads no log); nil means not checked.
 	AccountChanges     []AccountChangeView `json:"account_changes,omitempty"`
 	NativeMultiAccount *bool               `json:"native_multi_account,omitempty"`
+	// Online is the queue of changes waiting for inside Claude, from
+	// root.json only.
+	Online *OnlineStatus `json:"online,omitempty"`
 }
 
 // AccountChangeView is one account change inside a data folder, from
@@ -100,6 +103,7 @@ func (o *Orchestrator) Status(ctx context.Context, short bool) (*Status, error) 
 		}
 		st.Profiles = append(st.Profiles, ps)
 	}
+	st.Online = onlineStatus(root)
 	if short {
 		return st, nil
 	}
@@ -261,6 +265,7 @@ func (o *Orchestrator) Doctor(ctx context.Context, opts DoctorOptions) ([]Check,
 	// v0.2 anchor: doctor pins
 
 	// v0.2 anchor: doctor online
+	dr.onlineChecks(root, m)
 
 	// v0.2 anchor: doctor artifacts
 

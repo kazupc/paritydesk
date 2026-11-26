@@ -25,6 +25,8 @@ type PlanView struct {
 	// WithScratch).
 	Scratch      *ScratchSummary
 	ScratchNotes []string
+	// Online is what the switch applies inside Claude afterwards.
+	Online *OnlinePlanView
 }
 
 // PlanLines returns the human summary of a plan: a header, one line per
@@ -56,6 +58,7 @@ func PlanLines(v PlanView) []string {
 	lines = append(lines, scratchLines(v)...)
 
 	// v0.2 anchor: plan online
+	lines = append(lines, onlineLines(v)...)
 
 	// v0.2 anchor: plan artifacts
 

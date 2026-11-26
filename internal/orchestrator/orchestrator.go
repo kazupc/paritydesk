@@ -7,6 +7,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
+	"github.com/kazupc/paritydesk/internal/online"
 	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/plan"
 )
@@ -165,7 +166,9 @@ type Result struct {
 	BusyWait time.Duration `json:"-"`
 
 	// v0.2 anchor: result online
-
+	// Online counts what the run queued (or, for a preview, would queue)
+	// for inside Claude; not part of the plan hash.
+	Online *online.Summary `json:"online,omitempty"`
 }
 
 // Service is every command the front end calls. cli depends on this
@@ -190,6 +193,11 @@ type Service interface {
 	ProfileAdd(ctx context.Context, alias ids.Alias, managed bool) error
 	ProfileRename(ctx context.Context, from, to ids.Alias) error
 	ProfileRemove(ctx context.Context, alias ids.Alias) error
+	// OnlineConfirm is `online done`.
+	OnlineConfirm(ctx context.Context, in OnlineConfirmInput) (*OnlineConfirmResult, error)
+	// OnlineCancel records a cancelled queue in root.json when the run
+	// lock is free (never waits); `online cancel` already stopped it.
+	OnlineCancel(ctx context.Context, queue string) (bool, error)
 }
 
 // Orchestrator runs commands.

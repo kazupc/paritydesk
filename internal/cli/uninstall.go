@@ -11,6 +11,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/config"
 	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
+	"github.com/kazupc/paritydesk/internal/online"
 	"github.com/kazupc/paritydesk/internal/orchestrator"
 	"github.com/kazupc/paritydesk/internal/render"
 )
@@ -66,6 +67,7 @@ func runUninstall(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) err
 	}
 	targets := []target{
 		{filepath.Join(paths.SupportDir, HookBinaryFile), false},
+		{filepath.Join(paths.SupportDir, online.DirName), false},
 		{paths.RunDir, false},
 		{filepath.Join(paths.SupportDir, "locks"), false},
 		{paths.StateDir, getBool(fs, "keep-state")},

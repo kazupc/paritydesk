@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -356,6 +357,55 @@ func runHookSessionStart(ctx context.Context, e *env, fs *flag.FlagSet, _ []stri
 		return nil
 	}
 	_ = hook.SessionStart(ctx, e.stdin, e.stdout, d)
+	return nil
+}
+
+// Budgets of the tool hooks: PreToolUse has its own 2 s deadline inside
+// (hook.PreDeadline) and the process returns within 2.5 s; PostToolUse
+// gets 3 s.
+const (
+	preToolTimeout  = 2500 * time.Millisecond
+	postToolTimeout = 3 * time.Second
+)
+
+// runHookPreToolUse is the plugin's PreToolUse entry point (the guard).
+// It writes at most one deny document and exits 0 once it has decided;
+// on a failure while armed it denies (hook.PreToolUse). When it cannot
+// get as far as deciding (its dependencies fail, a panic outside the
+// guard, a bad command line), it exits non-zero without output and the
+// shim denies if the armed marker is live. The plugin version is
+// ignored: staying silent on skew would fail open.
+func runHookPreToolUse(ctx context.Context, e *env, _ *flag.FlagSet, _ []string) (err error) {
+	defer func() {
+		if recover() != nil {
+			err = errFailClosed
+		}
+	}()
+	ctx, cancel := context.WithTimeout(ctx, preToolTimeout)
+	defer cancel()
+	d, err := e.sys.toolDeps(ctx, e)
+	if err != nil {
+		return errFailClosed
+	}
+	_ = hook.PreToolUse(ctx, e.stdin, e.stdout, d)
+	return nil
+}
+
+// runHookPostToolUse is the plugin's PostToolUse entry point (the
+// recorder). It always exits 0 and prints nothing.
+func runHookPostToolUse(ctx context.Context, e *env, _ *flag.FlagSet, _ []string) (err error) {
+	defer func() {
+		if recover() != nil {
+			err = nil
+		}
+	}()
+	ctx, cancel := context.WithTimeout(ctx, postToolTimeout)
+	defer cancel()
+	d, err := e.sys.toolDeps(ctx, e)
+	if err != nil {
+		return nil
+	}
+	_ = hook.PostToolUse(ctx, e.stdin, io.Discard, d)
 	return nil
 }
 

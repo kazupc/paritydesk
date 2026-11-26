@@ -15,6 +15,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/hook"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
+	"github.com/kazupc/paritydesk/internal/online"
 	"github.com/kazupc/paritydesk/internal/orchestrator"
 	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/plan"
@@ -72,6 +73,10 @@ type fakeService struct {
 	confirm *orchestrator.Confirmation
 	// busy is the busy list Preview reports (BusyWait one minute).
 	busy []orchestrator.BusyView
+	// confirmIn is the last OnlineConfirm input; confirm2 replaces its
+	// result.
+	confirmIn orchestrator.OnlineConfirmInput
+	confirm2  *orchestrator.OnlineConfirmResult
 }
 
 func newFakeService() *fakeService {
@@ -242,6 +247,21 @@ func (f *fakeService) ProfileRemove(_ context.Context, a ids.Alias) error {
 	return f.record("profile-remove", string(a))
 }
 
+func (f *fakeService) OnlineConfirm(_ context.Context, in orchestrator.OnlineConfirmInput) (*orchestrator.OnlineConfirmResult, error) {
+	f.confirmIn = in
+	if err := f.record("online-confirm"); err != nil {
+		return nil, err
+	}
+	if f.confirm2 != nil {
+		return f.confirm2, nil
+	}
+	return &orchestrator.OnlineConfirmResult{State: "complete", Queue: in.Queue, Profile: "home"}, nil
+}
+
+func (f *fakeService) OnlineCancel(_ context.Context, queue string) (bool, error) {
+	return true, f.record("online-cancel", queue)
+}
+
 var _ orchestrator.Service = (*fakeService)(nil)
 
 // fakeGens is a generationStore.
@@ -287,6 +307,9 @@ type harness struct {
 	g     *globalFlags // the global flags of the last run
 	sys   *system
 	inApp bool
+	// ol is the online environment of the `online` commands, built on
+	// first use over the temporary home (online_test.go).
+	ol *onlineEnv
 }
 
 func newHarness(t *testing.T) *harness {
@@ -317,6 +340,12 @@ func newHarness(t *testing.T) *harness {
 				InsideApp:     func(context.Context) (bool, error) { return h.inApp, nil },
 				PluginVersion: pv, BinaryVersion: Version,
 			}, nil
+		},
+		online:       func(context.Context, *env) (*onlineEnv, error) { return h.onlineEnv(), nil },
+		onlineCancel: func(context.Context, *env) (*online.Service, error) { return h.onlineEnv().svc, nil },
+		toolDeps: func(context.Context, *env) (hook.ToolDeps, error) {
+			return hook.ToolDeps{Store: h.onlineEnv().svc.Store, Mode: "armed", Mono: h.onlineEnv().svc.Mono,
+				Clock: h.onlineEnv().svc.Clock, Providers: h.onlineEnv().svc.Providers}, nil
 		},
 		rules: func(*env) ([]string, map[string]string, error) {
 			return []string{"Claude", "Claude-3p"}, map[string]string{"sidebarMode": "ui_state", "keepAwakeEnabled": "other"}, nil

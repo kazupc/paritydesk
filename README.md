@@ -46,6 +46,13 @@ Under `sync.exclude`: collapsed project groups follow the same rule; while any g
 
 
 <!-- v0.2 anchor: online -->
+Some values only Claude's own tools can change after a relaunch (the
+sidebar's group-by and sort). The switch queues those calls, and the next
+Code session's `/paritydesk:reconcile` makes them, with a hook that lets
+only the listed calls run while it works and never approves anything for
+you ([ADR 0005](docs/adr/0005-online-layer.md); not yet confirmed on a
+real Mac, release checklist R-ON). `paritydesk online cancel` drops the
+waiting changes at any time.
 
 <!-- v0.2 anchor: pins -->
 

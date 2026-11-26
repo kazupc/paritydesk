@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/model"
+	"github.com/kazupc/paritydesk/internal/online"
 	"github.com/kazupc/paritydesk/internal/state"
 )
 
@@ -93,7 +95,7 @@ func TestOneFixedLine(t *testing.T) {
 			if !strings.Contains(got, tc.want) {
 				t.Fatalf("got %q, want %q", got, tc.want)
 			}
-			if got != PendingLine(tc.root)+"\n" {
+			if got != PendingLine(tc.root, nil, "")+"\n" {
 				t.Fatalf("line differs from PendingLine")
 			}
 		})
@@ -194,7 +196,7 @@ func TestNoUntrustedTextInLines(t *testing.T) {
 	r.Run = &state.Run{ID: "evil\x1b[31m", From: "a", To: "b"}
 	r.PendingAdd = &state.PendingAdd{Alias: "evil\u202e"}
 	r.LastVerify = &state.VerifyRecord{RunID: "x\x07", Drift: []model.RowID{"row\x1b"}}
-	line := PendingLine(r)
+	line := PendingLine(r, nil, "")
 	for _, bad := range []string{"evil", "\x1b", "\x07", "row"} {
 		if strings.Contains(line, bad) {
 			t.Fatalf("untrusted %q in %q", bad, line)
@@ -263,8 +265,104 @@ func FuzzParsePayload(f *testing.F) {
 		if err := SessionStart(context.Background(), bytes.NewReader(b), &out, deps(r)); err != nil {
 			t.Fatal(err)
 		}
-		if out.Len() != 0 && out.String() != PendingLine(r)+"\n" {
+		if out.Len() != 0 && out.String() != PendingLine(r, nil, "")+"\n" {
 			t.Fatalf("unexpected output %q", out.String())
 		}
 	})
+}
+
+// fakeOnline is an OnlineReader with a fixed head and a show counter.
+type fakeOnline struct {
+	head  *online.QueueHead
+	shown map[string]int
+}
+
+func (f *fakeOnline) ReadHead() (*online.QueueHead, error) { return f.head, nil }
+
+func (f *fakeOnline) CreateShown(key string, max int) bool {
+	if f.shown == nil {
+		f.shown = map[string]int{}
+	}
+	if f.shown[key] >= max {
+		return false
+	}
+	f.shown[key]++
+	return true
+}
+
+func onlineRoot() *state.Root {
+	r := state.NewRoot("/d")
+	r.Active, r.Epoch = "home", 4
+	r.Online = &state.OnlineRecord{Queue: "run-0001", Profile: "home", Epoch: 4, State: "pending"}
+	return r
+}
+
+func onlinePayload(source, mode string) string {
+	return `{"session_id":"00000000-0000-4000-8000-000000000001","hook_event_name":"SessionStart","source":"` + source + `","permission_mode":"` + mode + `"}`
+}
+
+func TestSessionStartOnlineLine(t *testing.T) {
+	head := &online.QueueHead{V: 1, ID: "run-0001", Phase: online.PhaseReconcile, State: online.QueuePending}
+	prompt, auto := i18n.T(i18n.HookOnlinePrompt)+"\n", i18n.T(i18n.HookOnlineAuto)+"\n"
+	tests := []struct {
+		name, source, mode, cfgMode string
+		root                        func() *state.Root
+		head                        *online.QueueHead
+		want                        string
+	}{
+		{"prompt", "startup", "default", "prompt", onlineRoot, head, prompt},
+		{"auto attended", "resume", "acceptEdits", "auto", onlineRoot, head, auto},
+		{"auto bypass gets prompt", "startup", "bypassPermissions", "auto", onlineRoot, head, prompt},
+		{"auto without mode gets prompt", "startup", "", "auto", onlineRoot, head, prompt},
+		{"off", "startup", "default", "off", onlineRoot, head, ""},
+		{"clear", "clear", "default", "prompt", onlineRoot, head, ""},
+		{"compact", "compact", "default", "prompt", onlineRoot, head, ""},
+		{"head complete", "startup", "default", "prompt", onlineRoot, &online.QueueHead{V: 1, ID: "run-0001", State: online.QueueComplete}, ""},
+		{"head of another queue", "startup", "default", "prompt", onlineRoot, &online.QueueHead{V: 1, ID: "run-0002", State: online.QueuePending}, ""},
+		{"epoch moved", "startup", "default", "prompt", func() *state.Root { r := onlineRoot(); r.Epoch = 5; return r }, head, ""},
+		{"artifacts queue", "startup", "default", "prompt", func() *state.Root { r := onlineRoot(); r.Online.Kind = "artifacts"; return r }, head, ""},
+		{"recover first", "startup", "default", "prompt", func() *state.Root {
+			r := onlineRoot()
+			r.Run = &state.Run{ID: "run-0002", Kind: state.RunSwitch}
+			return r
+		}, head, i18n.T(i18n.HookRecover) + "\n"},
+		{"online before drift", "startup", "default", "prompt", func() *state.Root {
+			r := onlineRoot()
+			r.LastVerify = &state.VerifyRecord{Drift: []model.RowID{model.RowSidebarView}}
+			return r
+		}, head, prompt},
+		{"drift when online is not shown", "clear", "default", "prompt", func() *state.Root {
+			r := onlineRoot()
+			r.LastVerify = &state.VerifyRecord{Drift: []model.RowID{model.RowSidebarView}}
+			return r
+		}, head, i18n.T(i18n.HookDrift) + "\n"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			d := deps(tc.root())
+			d.Online, d.Mode = &fakeOnline{head: tc.head}, tc.cfgMode
+			if got := run(t, strings.NewReader(onlinePayload(tc.source, tc.mode)), d); got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestSessionStartOnlineShowsAtMostThree: the fourth start for one queue
+// is silent.
+func TestSessionStartOnlineShowsAtMostThree(t *testing.T) {
+	d := deps(onlineRoot())
+	f := &fakeOnline{head: &online.QueueHead{V: 1, ID: "run-0001", State: online.QueueActive}}
+	d.Online, d.Mode = f, "prompt"
+	for i := 0; i < 3; i++ {
+		if got := run(t, strings.NewReader(onlinePayload("startup", "default")), d); got == "" {
+			t.Fatalf("start %d silent", i+1)
+		}
+	}
+	if got := run(t, strings.NewReader(onlinePayload("startup", "default")), d); got != "" {
+		t.Fatalf("fourth start: %q", got)
+	}
+	if PendingLine(onlineRoot(), f.head, "prompt") != i18n.T(i18n.HookOnlinePrompt) {
+		t.Fatal("PendingLine order")
+	}
 }

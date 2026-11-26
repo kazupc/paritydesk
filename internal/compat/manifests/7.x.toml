@@ -878,6 +878,73 @@ account_changed_hint = [
 
 # v0.2 anchor: tables online
 
+# ---------------------------------------------------------------- online
+#
+# The online layer (ADR 0005): changes made after the launch through the
+# app's own tools (P13), checked by the plugin's PreToolUse guard and
+# recorded by its PostToolUse hook. Values from the app code of
+# 7.37095.0; the armed read list, the untrusted reads and the guarded
+# servers are code, and this table may only add servers and floor tools.
+[online]
+enabled = true
+# Sidebar writes wait this long after the launch, so the app's first
+# server reconcile cannot replace them.
+settle_after_launch = "45s"
+# How long server-synced steps wait for main.log to show the queue's
+# account and org before they are skipped.
+replica_wait = "2m"
+# An offered call with a PreToolUse pass but no result stays offered this
+# long (an approval card may still be open).
+result_grace = "10m"
+unbound_lease_ttl = "3m"
+read_max_age = "2m"
+batch_max = 20
+session_start_max_shows = 3
+post_max_payload = 8388608
+guarded_servers_extra = []
+guarded_tools_extra = []
+always_deny = []
+
+[online.sidebar]
+builtin = ["pinned", "routines", "sessions"]
+manual_kind = "manual"
+group_by_field = "groupBy"
+sort_by_field = "sortBy"
+name_field = "name"
+kind_field = "kind"
+# create_section counts the name in UTF-16 code units.
+max_name_units = 200
+sort_by = ["recency", "alpha", "created"]
+# Text prefixes of set_view refusals that mean "not writable here".
+refusals = [
+  "Grouping by \"state\" isn't available for this account.",
+  "The user put this section's sessions in their own order",
+  "This section has no view of its own in this sidebar layout",
+  "This section groups its own rows by",
+  "group_by \"environment\" needs",
+  "group_by \"custom\" isn't a view",
+]
+
+# Stored section groupBy -> reported (tool) spelling. A stored value not
+# listed here is never written.
+[online.sidebar.group_by_report]
+none = "none"
+date = "date"
+folder = "project"
+status = "state"
+savedEnvironment = "environment"
+
+# Tool values writable per section class. "environment" is not in the
+# set_view enum; "custom" is refused in the sections layout.
+[online.sidebar.group_by]
+sessions = ["date", "project", "state", "none"]
+routines = ["date", "state", "none"]
+pinned = ["date", "state", "none"]
+manual = ["date", "state", "none"]
+
+[online.responses]
+tools_off = ["Sidebar tools are turned off right now."]
+
 # v0.2 anchor: tables pins
 
 # v0.2 anchor: tables artifacts

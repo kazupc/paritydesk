@@ -83,9 +83,13 @@ type command struct {
 	// lenient commands never fail: parse and run errors exit 0 (the
 	// plugin's hook entry point).
 	lenient bool
-	flags   func(fs *flag.FlagSet)
-	run     func(ctx context.Context, e *env, fs *flag.FlagSet, args []string) error
-	sub     []*command
+	// failClosed (lenient commands only): a parse error, or a run that
+	// returns errFailClosed, exits non-zero without output, so the
+	// plugin's shim applies its own armed check (the PreToolUse guard).
+	failClosed bool
+	flags      func(fs *flag.FlagSet)
+	run        func(ctx context.Context, e *env, fs *flag.FlagSet, args []string) error
+	sub        []*command
 }
 
 // errUsage marks command-line errors (exit 2).
@@ -193,13 +197,13 @@ func dispatch(ctx context.Context, e *env, c *command, args []string, path strin
 	pos, err := parseInterleaved(fs, args)
 	if err != nil {
 		if c.lenient && !errors.Is(err, flag.ErrHelp) {
-			return nil
+			return c.lenientFailure(path)
 		}
 		return e.parseError(c, fs, path, err)
 	}
 	if len(pos) < c.minArgs || (c.maxArgs >= 0 && len(pos) > c.maxArgs) {
 		if c.lenient {
-			return nil
+			return c.lenientFailure(path)
 		}
 		return usageErrorf("%s %s", path, c.args)
 	}
@@ -208,9 +212,25 @@ func dispatch(ctx context.Context, e *env, c *command, args []string, path strin
 	}
 	err = c.run(ctx, e, fs, pos)
 	if c.lenient {
+		if errors.Is(err, errFailClosed) {
+			return c.lenientFailure(path)
+		}
 		return nil
 	}
 	return err
+}
+
+// errFailClosed is returned by a failClosed command's run when it could
+// not decide (its dependencies or a panic).
+var errFailClosed = errors.New("could not decide")
+
+// lenientFailure is a lenient command's answer to a failure: exit 0, or
+// for a failClosed one a silent non-zero exit.
+func (c *command) lenientFailure(path string) error {
+	if !c.failClosed {
+		return nil
+	}
+	return &quietError{pderr.Wrap(pderr.Internal, path, errFailClosed)}
 }
 
 // parseError prints the usage for --help (exit 0) and turns other parse
@@ -406,6 +426,7 @@ func root() *command {
 			leaf("validate", "", "Validate the config file", 0, 0, nil, runConfigValidate),
 		),
 		// v0.2 anchor: commands online
+		onlineGroup(),
 
 		// v0.2 anchor: commands artifacts
 
@@ -419,6 +440,14 @@ func root() *command {
 				flags: func(fs *flag.FlagSet) {
 					fs.String("plugin-version", "", "version of the calling plugin (silent on version skew)")
 				}, run: runHookSessionStart},
+			&command{name: "pre-tool-use", short: "PreToolUse hook", maxArgs: -1, lenient: true, failClosed: true,
+				flags: func(fs *flag.FlagSet) {
+					fs.String("plugin-version", "", "version of the calling plugin")
+				}, run: runHookPreToolUse},
+			&command{name: "post-tool-use", short: "PostToolUse hook", maxArgs: -1, lenient: true,
+				flags: func(fs *flag.FlagSet) {
+					fs.String("plugin-version", "", "version of the calling plugin")
+				}, run: runHookPostToolUse},
 		),
 		leaf("completion", "<bash|zsh|fish>", "Print a shell completion script", 1, 1, nil, runCompletion),
 		&command{name: aliasesCommand, short: "Internal: list profile aliases for completion", hidden: true, lenient: true,

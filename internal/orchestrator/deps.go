@@ -177,6 +177,8 @@ type Deps struct {
 	// process had been killed (PARITYDESK_FAULT=after:<phase> and
 	// recovery tests).
 	Crash func(after Phase) bool
+	// Online is the online layer (online.Service); nil turns it off.
+	Online Online
 	// ReadOnly plans only (--read-only, PARITYDESK_READONLY=1): no run
 	// lock, no state commit, no config save, no plan save, no runner
 	// submit; FS is fsx.ReadOnly and KV is kv.ReadOnly.

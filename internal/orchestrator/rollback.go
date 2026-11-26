@@ -71,6 +71,13 @@ func (o *Orchestrator) Rollback(ctx context.Context, n uint64, propagate bool) (
 		return nil, pderr.Wrap(pderr.CompatRefused, "rollback", err)
 	}
 	m, _, _ := d.Compat.Manifest(ctx, b.Version)
+	// Confirmations first, so the bases the restore starts from are
+	// current; the queue is then stale (the epoch moves).
+	if res, err := o.confirmPending(ctx, root, m); err == nil && res != nil && res.changed {
+		if err := o.commit(root); err != nil {
+			return nil, err
+		}
+	}
 	runID, err := runner.NewRunID(o.now())
 	if err != nil {
 		return nil, err
@@ -97,6 +104,7 @@ func (o *Orchestrator) Rollback(ctx context.Context, n uint64, propagate bool) (
 	}
 	quit := root.Run.QuitByUs
 	root.Run = nil
+	o.dropOnline(cctx, root, "rollback")
 	if err := o.commit(root); err != nil {
 		return nil, err
 	}
@@ -345,6 +353,7 @@ func (o *Orchestrator) Rebase(ctx context.Context) error {
 	}
 	root.Bases = map[string]state.Ref{}
 	root.Contested = nil
+	o.dropOnline(ctx, root, "rebase")
 	if err := o.commit(root); err != nil {
 		return err
 	}

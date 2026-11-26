@@ -12,6 +12,7 @@ commands:
   history      List past runs
   init         Set up paritydesk for the account in the app now
   log          Show the log of a run
+  online       Show or drop changes waiting to be applied in Claude
   plan         Preview what a switch would change (approximate)
   profile      Manage profiles
   rebase       Forget every sync base; the next run is a first sync

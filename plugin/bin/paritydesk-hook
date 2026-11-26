@@ -4,15 +4,51 @@
 #   1. the absolute path recorded by `paritydesk init` (and refreshed by
 #      `paritydesk doctor`) in the file below, if it names an executable;
 #   2. the fixed Homebrew locations.
-# Never from PATH or the working directory. A missing binary or any
-# failure is silent and exits 0, so a session never fails because of this
-# hook.
-PLUGIN_VERSION="0.1.0-dev" # kept equal to .claude-plugin/plugin.json by a policy test
-RECORD="$HOME/Library/Application Support/paritydesk/hook-binary"
+# Never from PATH or the working directory.
+#
+# session-start and post-tool-use: a missing binary or any failure is
+# silent and exits 0, so a session never fails because of this hook.
+#
+# pre-tool-use is the guard of paritydesk's online changes. While a queue
+# is armed (the armed file holds the lease's deadline in Unix seconds and
+# it lies in the future), a missing binary or a binary that fails prints
+# the fixed deny document below: the guard fails closed while armed. The
+# binary's output is printed only after it exits 0, so this hook never
+# prints two documents.
+PLUGIN_VERSION="0.2.0" # kept equal to .claude-plugin/plugin.json by a policy test
+SUPPORT="$HOME/Library/Application Support/paritydesk"
+RECORD="$SUPPORT/hook-binary"
+ARMED="$SUPPORT/online/armed"
+# Equal to the binary's guard.deny_unreadable text (a policy test checks).
+DENY='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"paritydesk could not check this call, so it was blocked. Run paritydesk online cancel in Terminal to stop applying changes."}}'
+
+armed=0
+if [ "$1" = "pre-tool-use" ] && [ -f "$ARMED" ] && [ ! -L "$ARMED" ]; then
+  d=$(head -c 13 "$ARMED" 2>/dev/null)
+  case $d in
+    *[!0-9]*|'') ;;
+    *) if [ ${#d} -le 12 ] && [ "$(date +%s)" -lt "$d" ]; then armed=1; fi ;;
+  esac
+fi
+
+deny() {
+  printf '%s\n' "$DENY"
+  exit 0
+}
 
 run() {
   bin="$1"
   shift
+  case "$1" in
+    pre-tool-use|post-tool-use)
+      if out=$("$bin" hook "$@" --plugin-version "$PLUGIN_VERSION" 2>/dev/null); then
+        [ -n "$out" ] && printf '%s\n' "$out"
+        exit 0
+      fi
+      [ "$armed" = 1 ] && deny
+      exit 0
+      ;;
+  esac
   "$bin" hook "$@" --plugin-version "$PLUGIN_VERSION" 2>/dev/null
   exit 0
 }
@@ -28,4 +64,5 @@ for b in /opt/homebrew/bin/paritydesk /usr/local/bin/paritydesk; do
     run "$b" "$@"
   fi
 done
+[ "$armed" = 1 ] && deny
 exit 0
