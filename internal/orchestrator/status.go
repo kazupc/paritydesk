@@ -190,6 +190,8 @@ func (dr *doctor) add(id, status, detail string) {
 func (o *Orchestrator) Doctor(ctx context.Context, opts DoctorOptions) ([]Check, error) {
 	d := o.d
 	dr := &doctor{o: o}
+	// v0.2 anchor: doctor i18n-ja
+
 	root, err := d.State.Load()
 	if err != nil || root == nil {
 		root = state.NewRoot(d.DataRoot)
@@ -222,12 +224,24 @@ func (o *Orchestrator) Doctor(ctx context.Context, opts DoctorOptions) ([]Check,
 	}
 	dr.automation(ctx, opts.GrantAutomation)
 	dr.update(ctx)
+	// v0.2 anchor: doctor fdscan
+
 	if m != nil {
 		dr.bridge(ctx, m.Signals)
 		dr.busyDetection(m)
 	}
+	// v0.2 anchor: doctor busy
+
 	dr.managed()
 	dr.runnerJobs()
+	// v0.2 anchor: doctor scratch
+
+	// v0.2 anchor: doctor pins
+
+	// v0.2 anchor: doctor online
+
+	// v0.2 anchor: doctor artifacts
+
 	return dr.checks, nil
 }
 

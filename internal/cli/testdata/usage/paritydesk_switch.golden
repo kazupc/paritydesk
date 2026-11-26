@@ -11,7 +11,7 @@ flags:
   --json-progress              NDJSON progress on stderr
   --no-launch                  do not relaunch Claude
   --no-reopen                  do not reopen the invoking session
-  --only string                categories to carry, comma-separated: sessions,environments,order,sidebar,pins,prefs,worktrees,window,mcp
+  --only string                categories to carry, comma-separated: sessions,environments,order,sidebar,pins,prefs,worktrees,scratch,window,mcp
   --reopen-session string      Claude Code session id of the invoking session (set by the plugin; empty: no reopen)
   --skip string                categories to leave alone, comma-separated
   --yes                        do not ask (destructive differences after the preview still ask)

@@ -393,6 +393,10 @@ func root() *command {
 			leaf("show", "", "Print the effective config", 0, 0, nil, runConfigShow),
 			leaf("validate", "", "Validate the config file", 0, 0, nil, runConfigValidate),
 		),
+		// v0.2 anchor: commands online
+
+		// v0.2 anchor: commands artifacts
+
 		leaf("uninstall", "", "Remove paritydesk's state; every data folder is kept", 0, 0, func(fs *flag.FlagSet) {
 			fs.Bool("keep-backups", true, "keep backup generations")
 			fs.Bool("keep-state", false, "keep the state directory as well")

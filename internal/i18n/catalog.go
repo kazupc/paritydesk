@@ -152,6 +152,25 @@ const (
 	UninstallNoStatus Msg = "uninstall.no_status"
 
 	Progress Msg = "progress"
+
+	// v0.2 anchor: busy
+
+	// v0.2 anchor: fdscan
+
+	// v0.2 anchor: sidebar-offline
+
+	// v0.2 anchor: scratch
+
+	// v0.2 anchor: online
+
+	// v0.2 anchor: pins
+
+	// v0.2 anchor: artifacts
+
+	// v0.2 anchor: legacy-adopt
+
+	// v0.2 anchor: i18n-ja
+
 )
 
 // catalog is the English text of every message id above.
@@ -299,4 +318,23 @@ var catalog = map[Msg]string{
 	UninstallNoStatus: "The active profile could not be read; check that Claude starts on the right account before reinstalling.",
 
 	Progress: "%s %-4s %s",
+
+	// v0.2 anchor: busy
+
+	// v0.2 anchor: fdscan
+
+	// v0.2 anchor: sidebar-offline
+
+	// v0.2 anchor: scratch
+
+	// v0.2 anchor: online
+
+	// v0.2 anchor: pins
+
+	// v0.2 anchor: artifacts
+
+	// v0.2 anchor: legacy-adopt
+
+	// v0.2 anchor: i18n-ja
+
 }

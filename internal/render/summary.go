@@ -40,6 +40,14 @@ func PlanLines(v PlanView) []string {
 	if len(lines) == n {
 		lines = append(lines, i18n.T(i18n.PlanNoChanges))
 	}
+	// v0.2 anchor: plan busy
+
+	// v0.2 anchor: plan scratch
+
+	// v0.2 anchor: plan online
+
+	// v0.2 anchor: plan artifacts
+
 	return append(lines, DestructiveLine(v.Summary))
 }
 

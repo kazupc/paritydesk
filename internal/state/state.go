@@ -11,8 +11,10 @@ import (
 	"github.com/kazupc/paritydesk/internal/model"
 )
 
-// RootVersion is the root.json schema version.
-const RootVersion = 1
+// RootVersion is the root.json schema version. Version 2 (v0.2) adds
+// only optional fields; the migration from 1 is a no-op marker, so an
+// older binary refuses a root this one wrote.
+const RootVersion = 2
 
 // Ref is the sha256 (hex) of an object.
 type Ref string
@@ -34,7 +36,15 @@ type ProfileState struct {
 	// AccountHistory lists every account seen in the folder, for native
 	// multi-account detection.
 	AccountHistory []ids.AccountID `json:"account_history,omitempty"`
+	// SeededFrom is SeededLegacy while the profile's bases are the ones
+	// profile adopt --from-legacy seeded; the first commit of a switch or
+	// sync into the profile clears it.
+	SeededFrom string `json:"seeded_from,omitempty"`
 }
+
+// SeededLegacy is ProfileState.SeededFrom for bases seeded by profile
+// adopt --from-legacy.
+const SeededLegacy = "legacy"
 
 // BaseKey identifies a base, an overlay, tool stamps and contested
 // entries: one (profile, replica, row).
@@ -70,6 +80,9 @@ const (
 	// IntentAddParked: profile add (RunAdd) moved Claude/ to the active
 	// profile's parked folder so the app starts on an empty folder.
 	IntentAddParked IntentName = "add_parked"
+	// IntentQuarantining: a legacy-quarantine run (RunQuarantine) is moving
+	// leftovers of other accounts into a generation (data: "n", "alias").
+	IntentQuarantining IntentName = "quarantining"
 )
 
 // Intent is one recorded step. Done is false between "before" and "after".
@@ -89,6 +102,9 @@ const (
 	RunSync     RunKind = "sync"
 	RunRollback RunKind = "rollback"
 	RunAdd      RunKind = "profile-add"
+	// RunQuarantine moves leftovers that an earlier folder-swap script left
+	// in a folder into a generation (profile adopt --from-legacy).
+	RunQuarantine RunKind = "legacy-quarantine"
 )
 
 // Run is an open (uncommitted) run.
@@ -112,6 +128,12 @@ type Run struct {
 	// ConfirmedPlan is the hash of the plan the user confirmed outside the
 	// run (switch --confirmed-plan), for the log and result file.
 	ConfirmedPlan string `json:"confirmed_plan,omitempty"`
+	// Online is the online-reconcile draft object committed with the
+	// planned intent (P5), so recover can still publish it.
+	Online Ref `json:"online,omitempty"`
+	// PostHashesRef is the object holding the post-hashes of row-scratch
+	// ops (PostHashes keeps every other row's entries inline).
+	PostHashesRef Ref `json:"post_hashes_ref,omitempty"`
 }
 
 // PendingAdd records a profile add whose new account has not signed in
@@ -141,6 +163,28 @@ type GenerationRef struct {
 	RunID  string    `json:"run"`
 	Target ids.Alias `json:"target"`
 	At     time.Time `json:"at"`
+	// Purpose is copied from the generation manifest ("" for a switch or
+	// sync backup, "legacy-quarantine" for leftovers moved aside).
+	Purpose string `json:"purpose,omitempty"`
+}
+
+// OnlineRecord is the online-reconcile queue state committed with a run:
+// which queue the next session works on, for which profile and replica.
+type OnlineRecord struct {
+	Queue   string        `json:"queue"`          // queue id = run id, or an artifacts round id
+	Kind    string        `json:"kind,omitempty"` // "" = switch queue, "artifacts"
+	Profile ids.Alias     `json:"profile"`
+	From    ids.Alias     `json:"from"`
+	Replica model.Replica `json:"replica"`
+	// Epoch is root.Epoch after the P10 recordProfiles.
+	Epoch    uint64             `json:"epoch"`
+	Created  time.Time          `json:"created"`
+	State    string             `json:"state"` // pending|active|complete|cancelled
+	Counts   model.OnlineCounts `json:"counts"`
+	StepsSHA string             `json:"steps_sha"`
+	// Confirmed lists the step ids whose effect was applied to the
+	// profile's bases, so a confirmation is never applied twice.
+	Confirmed []string `json:"confirmed,omitempty"`
 }
 
 // Root is root.json.
@@ -175,6 +219,16 @@ type Root struct {
 	// sync ran against. An older installed version is a downgrade, which
 	// is refused (exit 30).
 	LastAppVersion string `json:"last_app_version,omitempty"`
+	// Online is the online-reconcile queue of the last committed run, if
+	// any.
+	Online *OnlineRecord `json:"online,omitempty"`
+	// PinsProbes are the starts (Unix ms) of the pins freshness probe per
+	// profile.
+	PinsProbes map[ids.Alias]int64 `json:"pins_probes,omitempty"`
+	// LastCommitAt is when the last switch, sync, pending-add binding or
+	// profile adopt was committed (the "last switch" mark of the account
+	// checks).
+	LastCommitAt time.Time `json:"last_commit_at,omitzero"`
 }
 
 // VerifyRecord is the stored outcome of a verify.

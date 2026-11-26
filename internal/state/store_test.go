@@ -218,7 +218,7 @@ func TestNewerVersionRefused(t *testing.T) {
 	if err := os.MkdirAll(s.Dir(), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	newer := []byte(`{"v": 2, "data_root": "/data", "profiles": {}}`)
+	newer := []byte(`{"v": 3, "data_root": "/data", "profiles": {}}`)
 	if err := os.WriteFile(filepath.Join(s.Dir(), rootFile), newer, 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/kazupc/paritydesk/internal/compat"
@@ -12,11 +13,17 @@ import (
 	"github.com/kazupc/paritydesk/internal/rows"
 	"github.com/kazupc/paritydesk/internal/sources"
 	"github.com/kazupc/paritydesk/internal/state"
+	"github.com/kazupc/paritydesk/internal/store/kv"
 )
 
 // rereadRows reads rows of the folder now holding a profile, over a fresh
-// snapshot (the app is stopped).
-func (o *Orchestrator) rereadRows(ctx context.Context, m *compat.Manifest, folder string, rep model.Replica, rs []model.RowID) (map[model.RowID]*model.RowSnapshot, error) {
+// snapshot (the app is stopped). It opens one Local Storage reader and
+// reads every row with readRowLS. A sources.RefReader row is read with
+// ReadRefs(refs[r]) when refs has an entry for it, else it is left out of
+// the result (never Read). A row whose source is unavailable
+// (sources.ErrSourceUnavailable) is left out and the others are read; any
+// other error fails the call.
+func (o *Orchestrator) rereadRows(ctx context.Context, m *compat.Manifest, folder string, rep model.Replica, rs []model.RowID, refs map[model.RowID][]string) (map[model.RowID]*model.RowSnapshot, error) {
 	out := map[model.RowID]*model.RowSnapshot{}
 	if m == nil || len(rs) == 0 {
 		return out, nil
@@ -27,18 +34,37 @@ func (o *Orchestrator) rereadRows(ctx context.Context, m *compat.Manifest, folde
 	}
 	defer closeReader(ls)
 	for _, r := range rs {
-		ad := o.d.Adapters[r]
-		spec, ok := o.rowSpec(m, r)
-		if ad == nil || !ok {
+		rowRefs, have := refs[r]
+		snap, err := o.readRowLS(ctx, m, folder, rep, r, ls, rowRefs, have)
+		switch {
+		case errors.Is(err, sources.ErrSourceUnavailable):
 			continue
-		}
-		snap, err := ad.Read(ctx, sources.ReadContext{Folder: folder, Replica: rep, LS: ls, Spec: spec.Expand(rep), Manifest: m})
-		if err != nil {
+		case err != nil:
 			return nil, pderr.Wrap(pderr.Internal, fmt.Sprintf("re-read %s", r), err)
+		case snap == nil:
+			continue // no adapter, no spec, or a RefReader row without refs
 		}
 		out[r] = snap
 	}
 	return out, nil
+}
+
+// readRowLS reads row r of folder over ls. A sources.RefReader row is read
+// with ReadRefs(refs) when haveRefs is true; without refs it is not read
+// at all and (nil, nil) is returned. A row without an adapter or without a
+// manifest spec also returns (nil, nil). Adapter errors are returned
+// unwrapped, so callers can test for sources.ErrSourceUnavailable.
+func (o *Orchestrator) readRowLS(ctx context.Context, m *compat.Manifest, folder string, rep model.Replica, r model.RowID, ls kv.Reader, refs []string, haveRefs bool) (*model.RowSnapshot, error) {
+	ad := o.d.Adapters[r]
+	spec, ok := o.rowSpec(m, r)
+	if ad == nil || !ok {
+		return nil, nil
+	}
+	rc := sources.ReadContext{Folder: folder, Replica: rep, LS: ls, Spec: spec.Expand(rep), Manifest: m}
+	if _, isRef := ad.(sources.RefReader); isRef && !haveRefs {
+		return nil, nil
+	}
+	return readAdapter(ctx, ad, rc, refs)
 }
 
 // commitP10 re-reads T, sets its bases from the re-read (only where it
@@ -47,7 +73,7 @@ func (r *run) commitP10(ctx context.Context) error {
 	defer r.phase(P10Commit, "recording")()
 	d := r.d()
 	root := r.root
-	reread, err := r.o.rereadRows(ctx, r.manifest, r.tPath, r.T.Replica, r.p5.Rows)
+	reread, err := r.o.rereadRows(ctx, r.manifest, r.tPath, r.T.Replica, r.p5.Rows, nil)
 	if err != nil {
 		r.warn(P10Commit, "the entering folder could not be re-read; its bases are invalid until the next run")
 		reread = nil
@@ -84,7 +110,7 @@ func (r *run) commitP10(ctx context.Context) error {
 		}
 	}
 	if r.tSess == nil && r.invoking != "" {
-		if snaps, err := r.o.rereadRows(ctx, r.manifest, r.tPath, r.T.Replica, []model.RowID{model.RowSessions}); err == nil {
+		if snaps, err := r.o.rereadRows(ctx, r.manifest, r.tPath, r.T.Replica, []model.RowID{model.RowSessions}, nil); err == nil {
 			r.tSess = snaps[model.RowSessions]
 		}
 	}

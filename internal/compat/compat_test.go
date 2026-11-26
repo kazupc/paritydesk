@@ -48,7 +48,7 @@ func TestEmbeddedManifest(t *testing.T) {
 
 // checkEmbedded checks what every embedded manifest must hold.
 func checkEmbedded(t *testing.T, m *compat.Manifest) {
-	for _, r := range model.AllRows {
+	for _, r := range implementedRows() {
 		s, ok := m.Row(r)
 		if !ok {
 			t.Errorf("row %s missing", r)

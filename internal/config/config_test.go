@@ -86,7 +86,9 @@ func TestValidate(t *testing.T) {
 		{"app_prefs duplicate", func(c *Config) { c.Sync.AppPrefs = []string{"sidebarMode", "sidebarMode"} }, "listed twice"},
 		{"app_prefs other ok", func(c *Config) { c.Sync.AppPrefs = []string{"unusedButAllowedX", "anotherUIToggle"} }, ""},
 		{"export unknown alias", func(c *Config) { c.Sync.Export = map[string][]string{"nobody": {"sessions"}} }, "sync.export"},
-		{"export unknown category", func(c *Config) { c.Sync.Export = map[string][]string{"work": {"artifacts"}} }, "not a category"},
+		{"export unknown category", func(c *Config) { c.Sync.Export = map[string][]string{"work": {"surprise"}} }, "not a category"},
+		{"export artifacts ok", func(c *Config) { c.Sync.Export = map[string][]string{"work": {"artifacts"}} }, ""},
+		{"import scratch ok", func(c *Config) { c.Sync.Import = map[string][]string{"home": {"scratch", "sessions"}} }, ""},
 		{"import unknown alias", func(c *Config) { c.Sync.Import = map[string][]string{"x\x1b": {"sessions"}} }, "sync.import"},
 		{"import ok", func(c *Config) { c.Sync.Import = map[string][]string{"home": {"sessions", "pins"}} }, ""},
 		{"fraction zero", func(c *Config) { c.Limits.MaxDeleteFraction = 0 }, "max_delete_fraction"},
@@ -209,7 +211,7 @@ func TestLoad(t *testing.T) {
 		}
 	})
 	t.Run("unknown nested key", func(t *testing.T) {
-		if _, err := Load(write("c.toml", "[sync]\nartifacts = true\n")); err == nil {
+		if _, err := Load(write("c.toml", "[sync]\nsurprise = true\n")); err == nil {
 			t.Fatal("unknown key accepted")
 		}
 	})

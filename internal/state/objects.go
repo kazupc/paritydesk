@@ -8,7 +8,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
+	"strings"
 	"sync"
 	"syscall"
 
@@ -177,6 +179,13 @@ func (s *Store) readSnapshot(ref Ref) (*model.RowSnapshot, error) {
 	if model.HashBytes(b) != string(ref) {
 		return nil, fmt.Errorf("state: object %s: %w", ref, ErrCorruptObject)
 	}
+	if bytes.HasPrefix(b, objectPrefix) {
+		// A generic object (PutObject), not a row snapshot. PutObject
+		// writes canonical bytes (sorted keys, no spaces), so its envelope
+		// always starts with "kind"; a snapshot has no such member. A
+		// prefix test avoids parsing large snapshots twice.
+		return nil, fmt.Errorf("state: object %s is not a row snapshot: %w", ref, ErrUnknownSchema)
+	}
 	snap := &model.RowSnapshot{}
 	if err := json.Unmarshal(b, snap); err != nil {
 		return nil, fmt.Errorf("state: parse object %s: %w", ref, err)
@@ -188,7 +197,8 @@ func (s *Store) readSnapshot(ref Ref) (*model.RowSnapshot, error) {
 }
 
 // referenced returns every object ref r points to: bases, canonical,
-// overlays (of every profile) and the open run's pending bases.
+// overlays (of every profile), and the open run's pending bases, online
+// draft and scratch post-hashes.
 func referenced(r *Root) map[Ref]bool {
 	keep := map[Ref]bool{}
 	for _, ref := range r.Bases {
@@ -203,6 +213,11 @@ func referenced(r *Root) map[Ref]bool {
 	if r.Run != nil {
 		for _, ref := range r.Run.PendingBases {
 			keep[ref] = true
+		}
+		for _, ref := range []Ref{r.Run.Online, r.Run.PostHashesRef} {
+			if ref != "" {
+				keep[ref] = true
+			}
 		}
 	}
 	return keep
@@ -232,4 +247,223 @@ func (s *Store) GC(r *Root) error {
 		}
 	}
 	return nil
+}
+
+// ObjectSchema is the envelope schema of objects stored by PutObject.
+const ObjectSchema = 1
+
+// Errors of the generic object API.
+var (
+	// ErrBadKind is returned for an object kind that is not a short
+	// lowercase name.
+	ErrBadKind = errors.New("state: malformed object kind")
+	// ErrKindMismatch is returned by GetObject when the stored object has
+	// another kind than the one asked for.
+	ErrKindMismatch = errors.New("state: object has another kind")
+	// ErrObjectTooDeep is returned by PutObject for a value nested too
+	// deeply to be checked for secrets.
+	ErrObjectTooDeep = errors.New("state: object too deep to check for secrets")
+)
+
+var kindRE = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
+
+// objectEnvelope is the stored form of a generic object.
+type objectEnvelope struct {
+	Kind   string          `json:"kind"`
+	Schema int             `json:"schema"`
+	Value  json.RawMessage `json:"value"`
+}
+
+// PutObject stores any JSON-marshalable value as an object (sha256 ref of
+// the canonical bytes, 0600, same directory and garbage collection as
+// snapshots) and returns its ref. The stored envelope is {"kind": kind,
+// "schema": 1, "value": ...}. The secrets check of PutSnapshot applies to
+// every model.Item reachable from v, and the raw bytes of a secret item
+// may not appear in any string value of the object either.
+func (s *Store) PutObject(kind string, v any) (Ref, error) {
+	if !kindRE.MatchString(kind) {
+		return "", ErrBadKind
+	}
+	val, err := json.Marshal(v)
+	if err != nil {
+		return "", fmt.Errorf("state: encode object %s: %w", kind, err)
+	}
+	if err := checkObjectSecrets(v, val); err != nil {
+		return "", fmt.Errorf("state: put object %s: %w", kind, err)
+	}
+	env, err := json.Marshal(objectEnvelope{Kind: kind, Schema: ObjectSchema, Value: val})
+	if err != nil {
+		return "", fmt.Errorf("state: encode object %s: %w", kind, err)
+	}
+	b, err := model.Canonical(env)
+	if err != nil {
+		return "", fmt.Errorf("state: encode object %s: %w", kind, err)
+	}
+	ref := Ref(model.HashBytes(b))
+	rel := filepath.Join(objectsDir, string(ref))
+	if old, err := os.ReadFile(filepath.Join(s.dir, rel)); err == nil && bytes.Equal(old, b) {
+		return ref, nil // content-addressed: already stored intact
+	}
+	if err := s.ensureDir(); err != nil {
+		return "", err
+	}
+	if err := s.fs.WriteFileAtomic(s.dir, rel, b, filePerm, s.tmpDir()); err != nil {
+		return "", fmt.Errorf("state: write object: %w", err)
+	}
+	if err := s.fs.FullSync(s.objectsDir()); err != nil {
+		return "", fmt.Errorf("state: sync objects: %w", err)
+	}
+	return ref, nil
+}
+
+// GetObject loads an object stored by PutObject into v after checking its
+// hash. A kind mismatch is ErrKindMismatch; an unknown envelope schema is
+// ErrUnknownSchema.
+func (s *Store) GetObject(ref Ref, kind string, v any) error {
+	if !ref.valid() {
+		return ErrBadRef
+	}
+	if !kindRE.MatchString(kind) {
+		return ErrBadKind
+	}
+	b, err := os.ReadFile(filepath.Join(s.objectsDir(), string(ref)))
+	if err != nil {
+		return fmt.Errorf("state: read object %s: %w", ref, err)
+	}
+	if model.HashBytes(b) != string(ref) {
+		return fmt.Errorf("state: object %s: %w", ref, ErrCorruptObject)
+	}
+	var env objectEnvelope
+	if err := json.Unmarshal(b, &env); err != nil {
+		return fmt.Errorf("state: parse object %s: %w", ref, err)
+	}
+	switch {
+	case env.Kind != kind:
+		return fmt.Errorf("state: object %s: %w", ref, ErrKindMismatch)
+	case env.Schema != ObjectSchema:
+		return fmt.Errorf("state: object %s has schema %d: %w", ref, env.Schema, ErrUnknownSchema)
+	}
+	if err := json.Unmarshal(env.Value, v); err != nil {
+		return fmt.Errorf("state: parse object %s: %w", ref, err)
+	}
+	return nil
+}
+
+// objectPrefix starts every envelope PutObject writes (canonical JSON,
+// keys sorted: "kind" comes first).
+var objectPrefix = []byte(`{"kind":`)
+
+// maxSecretsDepth bounds the walk of checkObjectSecrets. A value nested
+// deeper is refused with ErrObjectTooDeep instead of being stored
+// unchecked.
+const maxSecretsDepth = 1000
+
+// checkObjectSecrets applies PutSnapshot's rule to every model.Item
+// reachable from v through exported fields, maps, slices and pointers (a
+// secret item's Value may not hold its raw bytes), and refuses an encoded
+// object in which any string value contains a secret item's raw bytes.
+func checkObjectSecrets(v any, encoded []byte) error {
+	var raws [][]byte
+	var walkErr error
+	itemType := reflect.TypeOf(model.Item{})
+	// A pointer is remembered by address and type: a pointer to a struct
+	// and a pointer to its first field share an address, and skipping the
+	// struct because its first field was seen would leave its other fields
+	// unchecked.
+	type ptrKey struct {
+		p uintptr
+		t reflect.Type
+	}
+	seen := map[ptrKey]bool{}
+	var walk func(x reflect.Value, depth int)
+	walk = func(x reflect.Value, depth int) {
+		if walkErr != nil || !x.IsValid() {
+			return
+		}
+		if depth > maxSecretsDepth {
+			// Refuse rather than pass a value that was not fully checked.
+			walkErr = ErrObjectTooDeep
+			return
+		}
+		switch x.Kind() {
+		case reflect.Pointer:
+			k := ptrKey{x.Pointer(), x.Type()}
+			if x.IsNil() || seen[k] {
+				return
+			}
+			seen[k] = true
+			walk(x.Elem(), depth+1)
+		case reflect.Interface:
+			if !x.IsNil() {
+				walk(x.Elem(), depth+1)
+			}
+		case reflect.Struct:
+			if x.Type() == itemType {
+				it := model.Item{Value: x.FieldByName("Value").Bytes(), Raw: x.FieldByName("Raw").Bytes(), Secret: x.FieldByName("Secret").Bool()}
+				if it.Secret && len(it.Raw) > 0 {
+					if bytes.Contains(it.Value, it.Raw) {
+						walkErr = ErrSecretInValue
+						return
+					}
+					raws = append(raws, it.Raw)
+				}
+				return
+			}
+			for i := 0; i < x.NumField(); i++ {
+				if x.Type().Field(i).IsExported() {
+					walk(x.Field(i), depth+1)
+				}
+			}
+		case reflect.Map:
+			it := x.MapRange()
+			for it.Next() {
+				walk(it.Value(), depth+1)
+			}
+		case reflect.Slice, reflect.Array:
+			if x.Type().Elem().Kind() == reflect.Uint8 {
+				return
+			}
+			for i := 0; i < x.Len(); i++ {
+				walk(x.Index(i), depth+1)
+			}
+		}
+	}
+	walk(reflect.ValueOf(v), 0)
+	if walkErr != nil || len(raws) == 0 {
+		return walkErr
+	}
+	var doc any
+	if err := json.Unmarshal(encoded, &doc); err != nil {
+		return err
+	}
+	if stringHolds(doc, raws) {
+		return ErrSecretInValue
+	}
+	return nil
+}
+
+// stringHolds reports whether any string (value or object key) in the
+// decoded JSON doc contains one of raws.
+func stringHolds(doc any, raws [][]byte) bool {
+	switch x := doc.(type) {
+	case string:
+		for _, r := range raws {
+			if strings.Contains(x, string(r)) {
+				return true
+			}
+		}
+	case []any:
+		for _, e := range x {
+			if stringHolds(e, raws) {
+				return true
+			}
+		}
+	case map[string]any:
+		for k, e := range x {
+			if stringHolds(k, raws) || stringHolds(e, raws) {
+				return true
+			}
+		}
+	}
+	return false
 }

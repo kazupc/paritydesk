@@ -120,6 +120,9 @@ func checkOverride(file string, m *Manifest, embedded map[string]*Manifest) erro
 			return fmt.Errorf("compat: override %s widens synced beyond manifest %q: %s",
 				file, base.Name, strings.Join(extra, ", "))
 		}
+		if err := checkOverrideV02(base, m); err != nil {
+			return fmt.Errorf("compat: override %s weakens manifest %q: %w", file, base.Name, err)
+		}
 	}
 	return nil
 }
@@ -177,7 +180,8 @@ func Decode(data []byte, label string) (*Manifest, error) {
 var (
 	writePaths = map[WritePath]bool{PathOff: true, PathOffVerify: true, PathOn: true, PathCap: true, PathNone: true}
 	probeKinds = map[ProbeKind]bool{ProbeFile: true, ProbeDir: true, ProbeJSONShape: true, ProbeLSKey: true,
-		ProbeLSShape: true, ProbePersistVersion: true, ProbeIdxVersion: true, ProbeJSONVersion: true}
+		ProbeLSShape: true, ProbePersistVersion: true, ProbeIdxVersion: true, ProbeJSONVersion: true,
+		ProbeDirOptional: true}
 	jsonTypes = map[string]bool{"": true, "object": true, "array": true, "string": true, "number": true, "bool": true}
 	prefTags  = map[string]bool{TagUIState: true, TagOther: true, TagSecurity: true, TagInternalState: true}
 )
@@ -223,7 +227,10 @@ func (m *Manifest) validate() error {
 			return fmt.Errorf("ls_never_touched glob %q is malformed", g)
 		}
 	}
-	return m.Signals.validate()
+	if err := m.Signals.validate(); err != nil {
+		return err
+	}
+	return m.validateV02()
 }
 
 func (m *Manifest) allClassGlobs() []string {
@@ -292,6 +299,9 @@ func (m *Manifest) validateRows(probes map[string]bool) error {
 			if !relativeClean(f) {
 				return fmt.Errorf("row %s: file %q must be a clean relative path", r.Row, f)
 			}
+		}
+		if err := validateRowV02(m, r); err != nil {
+			return err
 		}
 		seen[r.Row] = true
 	}

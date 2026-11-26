@@ -260,3 +260,21 @@ directory.
 [PRIVACY.md](../PRIVACY.md#the-support-archive) lists every file in it
 and every redaction rule. Open it (`tar -xzf <file>`) and read it before
 you attach it to an issue.
+
+<!-- v0.2 anchor: busy -->
+
+<!-- v0.2 anchor: fdscan -->
+
+<!-- v0.2 anchor: sidebar-offline -->
+
+<!-- v0.2 anchor: scratch -->
+
+<!-- v0.2 anchor: online -->
+
+<!-- v0.2 anchor: pins -->
+
+<!-- v0.2 anchor: artifacts -->
+
+<!-- v0.2 anchor: legacy-adopt -->
+
+<!-- v0.2 anchor: i18n-ja -->

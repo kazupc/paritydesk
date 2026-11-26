@@ -149,6 +149,10 @@ type Result struct {
 	// QuitPending is set when the app vetoed the quit and had not quit by
 	// the end of the late-quit watch: the user's answer in the app decides.
 	QuitPending bool `json:"quit_pending,omitempty"`
+	// v0.2 anchor: result busy
+
+	// v0.2 anchor: result online
+
 }
 
 // Service is every command the front end calls. cli depends on this

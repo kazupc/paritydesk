@@ -45,6 +45,13 @@ type Config struct {
 	Limits   Limits    `toml:"limits" json:"limits"`
 	Backups  Backups   `toml:"backups" json:"backups"`
 	Log      Log       `toml:"log" json:"log"`
+	// Online configures the online reconcile through the app's tools
+	// after a launch (pins and sidebar settings).
+	Online Online `toml:"online" json:"online"`
+	// Artifacts configures artifact sync (/paritydesk:artifacts, beta).
+	Artifacts Artifacts `toml:"artifacts" json:"artifacts"`
+	// Scratch configures the carry of scratch workspaces.
+	Scratch Scratch `toml:"scratch" json:"scratch"`
 }
 
 // App configures how the desktop app is found and controlled.
@@ -57,6 +64,14 @@ type App struct {
 	// relaunch of the leaving profile instead of leaving the app closed.
 	LateQuitWatch Duration `toml:"late_quit_watch" json:"late_quit_watch"`
 	RequireTested bool     `toml:"require_tested" json:"require_tested"`
+	// BusyStaleAfter is how long a session with a turn start and no turn
+	// end in main.log counts as working; after that it is reported as
+	// probably stale.
+	BusyStaleAfter Duration `toml:"busy_stale_after" json:"busy_stale_after"`
+	// OpenFileScan picks how open files are found before anything is
+	// written: "auto" (the native scan, lsof when it cannot run),
+	// "native" or "lsof".
+	OpenFileScan string `toml:"open_file_scan" json:"open_file_scan"`
 }
 
 // Profile is one account the user switches between.
@@ -96,7 +111,66 @@ type Sync struct {
 	Import       map[string][]string `toml:"import" json:"import"`   // alias -> categories
 	Secrets      string              `toml:"secrets" json:"secrets"` // "same-boundary" | "never"
 	SecretsAllow []string            `toml:"secrets_allow" json:"secrets_allow"`
+	// Pins carries which sessions are pinned (needs the plugin).
+	Pins bool `toml:"pins" json:"pins"`
+	// Artifacts carries artifacts (beta; needs the plugin and runs only
+	// when /paritydesk:artifacts is used).
+	Artifacts bool `toml:"artifacts" json:"artifacts"`
+	// CollapsedGroups carries which sidebar groups and fork families are
+	// collapsed (row 11, Local Storage only, verified after launch).
+	CollapsedGroups bool `toml:"collapsed_groups" json:"collapsed_groups"`
 }
+
+// Online configures the online reconcile.
+type Online struct {
+	// Reconcile is "prompt" (ask in the next session), "auto" or "off"
+	// (no capture, no pins row, no sidebar provider).
+	Reconcile string `toml:"reconcile" json:"reconcile"`
+	// CaptureMaxAge is how long a capture stays usable.
+	CaptureMaxAge Duration `toml:"capture_max_age" json:"capture_max_age"`
+	// QueueMaxAge drops a queue older than this (written in hours:
+	// durations have no day unit).
+	QueueMaxAge Duration `toml:"queue_max_age" json:"queue_max_age"`
+	LeaseTTL    Duration `toml:"lease_ttl" json:"lease_ttl"`
+	// Guard is "armed" (deny the floor tools while a queue is armed) or
+	// "always" (deny them in every session).
+	Guard string `toml:"guard" json:"guard"`
+	// CreateSections creates missing manual sections by name.
+	CreateSections bool `toml:"create_sections" json:"create_sections"`
+}
+
+// Artifacts configures artifact sync.
+type Artifacts struct {
+	// Verify is "first" (read back the first publish of every sync) or
+	// "all".
+	Verify string `toml:"verify" json:"verify"`
+	// HistoryKeep is how many replaced versions are kept per artifact.
+	HistoryKeep int `toml:"history_keep" json:"history_keep"`
+	// CrossManaged carries artifacts between profiles where either is
+	// managed_by_org.
+	CrossManaged bool `toml:"cross_managed" json:"cross_managed"`
+}
+
+// Scratch configures the carry of scratch workspaces.
+type Scratch struct {
+	Enabled              bool     `toml:"enabled" json:"enabled"`
+	MaxFilesPerWorkspace int      `toml:"max_files_per_workspace" json:"max_files_per_workspace"`
+	MaxWorkspaceBytes    string   `toml:"max_workspace_bytes" json:"max_workspace_bytes"`
+	MaxRunBytes          string   `toml:"max_run_bytes" json:"max_run_bytes"`
+	MaxFilesPerRun       int      `toml:"max_files_per_run" json:"max_files_per_run"`
+	PropagateDeletions   bool     `toml:"propagate_deletions" json:"propagate_deletions"`
+	CrossManaged         bool     `toml:"cross_managed" json:"cross_managed"`
+	Exclude              []string `toml:"exclude" json:"exclude"`
+	// CacheDirs are folder names held back wherever they occur; an empty
+	// list in the config file means none.
+	CacheDirs         []string `toml:"cache_dirs" json:"cache_dirs"`
+	MaxDeleteFraction float64  `toml:"max_delete_fraction" json:"max_delete_fraction"`
+	MaxDeleteMin      int      `toml:"max_delete_min" json:"max_delete_min"`
+}
+
+// DefaultCacheDirs are the default scratch.cache_dirs.
+var DefaultCacheDirs = []string{"target", ".next", "dist", "build", "__pycache__", ".pytest_cache",
+	".mypy_cache", ".gradle", ".cache", ".turbo", ".parcel-cache"}
 
 // Limits holds the deletion breaker settings.
 type Limits struct {
@@ -121,10 +195,12 @@ func Default() *Config {
 	return &Config{
 		Version: SchemaVersion,
 		App: App{
-			BundleID:      DefaultBundleID,
-			DataRoot:      "~/Library/Application Support",
-			QuitTimeout:   Duration{60 * time.Second},
-			LateQuitWatch: Duration{10 * time.Minute},
+			BundleID:       DefaultBundleID,
+			DataRoot:       "~/Library/Application Support",
+			QuitTimeout:    Duration{60 * time.Second},
+			LateQuitWatch:  Duration{10 * time.Minute},
+			BusyStaleAfter: Duration{6 * time.Hour},
+			OpenFileScan:   OpenFileScanAuto,
 		},
 		Sync: Sync{
 			Sessions:     true,
@@ -138,10 +214,36 @@ func Default() *Config {
 			MCPServers:   false,
 			AppPrefs:     []string{"sidebarMode", "keepAwakeEnabled"},
 			Secrets:      "same-boundary",
+			Pins:         true,
+			Artifacts:    true,
+			// On by default once release checklist step 11 (collapsed
+			// groups survive a relaunch) has passed; the CHANGELOG says so
+			// if a release ships it off.
+			CollapsedGroups: true,
 		},
 		Limits:  Limits{MaxDeleteFraction: 0.10, MaxDeleteMin: 3},
 		Backups: Backups{Keep: 10, LevelDBClonesKeep: 2, MaxSize: "2GiB"},
 		Log:     Log{Redact: true},
+		Online: Online{
+			Reconcile:     OnlineReconcilePrompt,
+			CaptureMaxAge: Duration{10 * time.Minute},
+			QueueMaxAge:   Duration{336 * time.Hour},
+			LeaseTTL:      Duration{20 * time.Minute},
+			Guard:         OnlineGuardArmed,
+		},
+		Artifacts: Artifacts{Verify: ArtifactsVerifyFirst, HistoryKeep: 10},
+		Scratch: Scratch{
+			Enabled:              true,
+			MaxFilesPerWorkspace: 20000,
+			MaxWorkspaceBytes:    "2GiB",
+			MaxRunBytes:          "8GiB",
+			MaxFilesPerRun:       50000,
+			PropagateDeletions:   true,
+			Exclude:              []string{},
+			CacheDirs:            append([]string(nil), DefaultCacheDirs...),
+			MaxDeleteFraction:    0.5,
+			MaxDeleteMin:         50,
+		},
 	}
 }
 
@@ -199,6 +301,33 @@ func (c *Config) RowEnabled(r model.RowID) bool {
 		return s.MCPServers
 	case model.RowWorktrees:
 		return s.Worktrees
+	case model.RowScratch:
+		return c.Scratch.Enabled && s.Sessions
+	case model.RowSidebarCollapse:
+		return s.CollapsedGroups
+	case model.RowSidebarSeed:
+		return s.SidebarView
+	case model.RowPins:
+		return s.Pins
+	}
+	return false
+}
+
+// CategoryListed reads sync.export / sync.import: an alias without an
+// entry exports and imports everything; otherwise only the listed
+// categories ("all" or "*" list everything). A list that names the
+// category that implies cat (model.ImpliedBy) names cat too, so scratch
+// follows sessions.
+func CategoryListed(m map[string][]string, a ids.Alias, cat model.Category) bool {
+	list, ok := m[string(a)]
+	if !ok {
+		return true
+	}
+	implied := model.ImpliedBy(cat)
+	for _, c := range list {
+		if c == string(cat) || c == "all" || c == "*" || (implied != "" && c == string(implied)) {
+			return true
+		}
 	}
 	return false
 }

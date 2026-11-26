@@ -10,7 +10,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/sources/worktrees"
 )
 
-// Registry returns an adapter for every v0.1 row.
+// Registry returns an adapter for every row that has one.
 func Registry() sources.Registry {
 	r := sources.Registry{}
 	for _, a := range []sources.Adapter{
@@ -20,6 +20,12 @@ func Registry() sources.Registry {
 		prefs.NewAppPrefs(), prefs.NewMCPServers(),
 		worktrees.New(),
 		windowstate.New(),
+		// v0.2 anchor: adapters scratch
+
+		// v0.2 anchor: adapters sidebar-offline
+
+		// v0.2 anchor: adapters pins
+
 	} {
 		r[a.Row()] = a
 	}

@@ -7,6 +7,31 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 
 ## [Unreleased]
 
+### v0.2 (in progress)
+
+- Changed: `root.json` is written as version 2. Every v0.2 field is
+  optional and an older root is read as before, but a v0.1 binary refuses
+  a version 2 root: do not downgrade paritydesk, and never with an open
+  run.
+
+<!-- v0.2 anchor: busy -->
+
+<!-- v0.2 anchor: fdscan -->
+
+<!-- v0.2 anchor: sidebar-offline -->
+
+<!-- v0.2 anchor: scratch -->
+
+<!-- v0.2 anchor: online -->
+
+<!-- v0.2 anchor: pins -->
+
+<!-- v0.2 anchor: artifacts -->
+
+<!-- v0.2 anchor: legacy-adopt -->
+
+<!-- v0.2 anchor: i18n-ja -->
+
 ### Added
 
 - The `paritydesk` command line on the standard library flag package:

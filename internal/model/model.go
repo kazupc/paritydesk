@@ -31,17 +31,31 @@ const (
 	RowWorktrees    RowID = "worktrees"     // row 18
 )
 
-// AllRows lists the v0.1 rows in apply order. Environments come before
-// sessions because the environment remap feeds session records (row 8).
+// v0.2 row modules. Each is listed as skipped ("not covered by the
+// compatibility manifest") until its manifest row and adapter land.
+const (
+	RowScratch         RowID = "scratch"          // row 18b: scratch workspaces, carried at the same path (category scratch, implied by sessions)
+	RowSidebarCollapse RowID = "sidebar-collapse" // row 11 (collapsedGroups, collapsedFamilies): OFF + verify from Local Storage
+	RowSidebarSeed     RowID = "sidebar-seed"     // row 13: legacy per-account sidebar keys (seed-only and live)
+	RowPins            RowID = "pins"             // row 12: which Code sessions are pinned (IndexedDB); written through the app's tools (ON)
+)
+
+// AllRows lists every row in apply order. Environments come before
+// sessions because the environment remap feeds session records (row 8);
+// scratch follows sessions, whose records name the workspaces; the
+// sidebar rows follow sidebar-view (the seed row reads its Desired) and
+// environments (the collapse row uses the remap); pins is last.
 var AllRows = []RowID{
-	RowEnvironments, RowSessions, RowTasks, RowWaitingInput, RowWorktrees,
-	RowGroupOrder, RowSidebarView, RowPinnedOrder, RowAppPrefs, RowWindowState, RowMCPServers,
+	RowEnvironments, RowSessions, RowTasks, RowWaitingInput, RowWorktrees, RowScratch,
+	RowGroupOrder, RowSidebarView, RowPinnedOrder, RowSidebarCollapse, RowSidebarSeed,
+	RowAppPrefs, RowWindowState, RowMCPServers, RowPins,
 }
 
 // Category is a user-facing group of rows for --only and --skip.
 type Category string
 
-// Categories for --only and --skip. "artifacts" is reserved for v0.2.
+// Categories for --only and --skip. "artifacts" is a boundary category
+// only (sync.export/import), not an --only/--skip value.
 const (
 	CatSessions     Category = "sessions"
 	CatEnvironments Category = "environments"
@@ -50,12 +64,32 @@ const (
 	CatPins         Category = "pins"
 	CatPrefs        Category = "prefs"
 	CatWorktrees    Category = "worktrees"
+	CatScratch      Category = "scratch" // follows sessions (ImpliedBy)
 	CatWindow       Category = "window"
 	CatMCP          Category = "mcp"
+	// CatArtifacts names artifact sync in sync.export and sync.import.
+	// Artifacts are synced by /paritydesk:artifacts, not by a switch, so
+	// it is not in AllCategories.
+	CatArtifacts Category = "artifacts"
 )
 
-// AllCategories lists the v0.1 categories.
-var AllCategories = []Category{CatSessions, CatEnvironments, CatOrder, CatSidebar, CatPins, CatPrefs, CatWorktrees, CatWindow, CatMCP}
+// AllCategories lists the categories that --only and --skip accept, in
+// display order.
+var AllCategories = []Category{CatSessions, CatEnvironments, CatOrder, CatSidebar, CatPins, CatPrefs, CatWorktrees, CatScratch, CatWindow, CatMCP}
+
+// BoundaryCategories lists the categories that sync.export and
+// sync.import accept: AllCategories plus artifacts.
+var BoundaryCategories = append(append([]Category(nil), AllCategories...), CatArtifacts)
+
+// ImpliedBy returns the category whose selection also selects c, or ""
+// when none does. Scratch workspaces follow sessions: a list that names
+// sessions names scratch too.
+func ImpliedBy(c Category) Category {
+	if c == CatScratch {
+		return CatSessions
+	}
+	return ""
+}
 
 // CategoryOf maps a row to its category.
 func CategoryOf(r RowID) Category {
@@ -66,10 +100,12 @@ func CategoryOf(r RowID) Category {
 		return CatEnvironments
 	case RowGroupOrder:
 		return CatOrder
-	case RowSidebarView:
+	case RowSidebarView, RowSidebarCollapse, RowSidebarSeed:
 		return CatSidebar
-	case RowPinnedOrder:
+	case RowPinnedOrder, RowPins:
 		return CatPins
+	case RowScratch:
+		return CatScratch
 	case RowAppPrefs:
 		return CatPrefs
 	case RowWorktrees:
@@ -80,6 +116,21 @@ func CategoryOf(r RowID) Category {
 		return CatMCP
 	}
 	return ""
+}
+
+// OnlineCounts are the counts of an online reconcile queue (pins added,
+// removed, kept or blocked; sidebar and other steps; and step outcomes).
+// online.Counts is an alias, so state does not import online.
+type OnlineCounts struct {
+	PinsAdd     int `json:"pins_add"`
+	PinsRemove  int `json:"pins_remove"`
+	PinsKeep    int `json:"pins_keep"`
+	PinsBlocked int `json:"pins_blocked"`
+	Sidebar     int `json:"sidebar"`
+	Other       int `json:"other"`
+	Done        int `json:"done"`
+	Skipped     int `json:"skipped"`
+	Failed      int `json:"failed"`
 }
 
 // Replica is one (account, org) scope. Folders hold replicas; with folder
@@ -190,6 +241,10 @@ type RowSnapshot struct {
 	// is in Items; the stale copy is never harvested as an edit. Memory
 	// only; reported as a warning.
 	Stale []string `json:"-"`
+	// Notes are constant-note changes (ChangeSkipped) an adapter found
+	// while reading. Memory only; the orchestrator appends them to the
+	// plan's changes.
+	Notes []Change `json:"-"`
 }
 
 // Clone returns a deep copy of s (Raw slices are shared, never mutated).
@@ -207,6 +262,7 @@ func (s *RowSnapshot) Clone() *RowSnapshot {
 	}
 	c.Order = append([]string(nil), s.Order...)
 	c.Stale = append([]string(nil), s.Stale...)
+	c.Notes = append([]Change(nil), s.Notes...)
 	if s.Tombstones != nil {
 		c.Tombstones = make(map[string]Tombstone, len(s.Tombstones))
 		for k, v := range s.Tombstones {

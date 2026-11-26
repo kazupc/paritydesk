@@ -119,7 +119,7 @@ _paritydesk() {
                     --only|--skip)
                         pre=""
                         case "$cur" in *,*) pre="${cur%,*}," ;; esac
-                        _paritydesk_reply < <(compgen -W 'sessions environments order sidebar pins prefs worktrees window mcp' -P "$pre" -- "${cur##*,}") ;;
+                        _paritydesk_reply < <(compgen -W 'sessions environments order sidebar pins prefs worktrees scratch window mcp' -P "$pre" -- "${cur##*,}") ;;
                 esac
                 return 0
             fi

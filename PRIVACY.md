@@ -101,6 +101,24 @@ every other entry the compatibility manifest marks as never touched.
   for this command, so no program a repository names runs; files that a
   filter such as Git LFS normalizes may therefore count as modified.
 
+<!-- v0.2 anchor: busy -->
+
+<!-- v0.2 anchor: fdscan -->
+
+<!-- v0.2 anchor: sidebar-offline -->
+
+<!-- v0.2 anchor: scratch -->
+
+<!-- v0.2 anchor: online -->
+
+<!-- v0.2 anchor: pins -->
+
+<!-- v0.2 anchor: artifacts -->
+
+<!-- v0.2 anchor: legacy-adopt -->
+
+<!-- v0.2 anchor: i18n-ja -->
+
 ## Things paritydesk asks macOS to do
 
 - Send Claude Apple Events: `quit`, and `get name` once while you are

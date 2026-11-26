@@ -58,6 +58,11 @@ type RowSpec struct {
 	// names.
 	Fields map[string][]string `toml:"fields"`
 	Probes []string            `toml:"probes"`
+	// IDB is [row.idb] of row pins: where the value is read in the app's
+	// IndexedDB.
+	IDB *IDBSpec `toml:"idb"`
+	// Scratch is [row.scratch] of row scratch.
+	Scratch *ScratchSpec `toml:"scratch"`
 }
 
 // Expand returns a copy with {acct} and {org} filled in.
@@ -97,6 +102,7 @@ const (
 	ProbePersistVersion ProbeKind = "persist-version" // a persisted store's version matches
 	ProbeIdxVersion     ProbeKind = "idx-version"     // archived-sessions.idx has v == 1
 	ProbeJSONVersion    ProbeKind = "json-version"    // a file's numeric member at path equals version
+	ProbeDirOptional    ProbeKind = "dir-optional"    // absent passes; present must be a real directory (Lstat)
 )
 
 // Probe is one shape check.
@@ -188,6 +194,13 @@ type Manifest struct {
 	// the target folder, or when the target's own records already use the
 	// mode (D8).
 	PermissionAcks map[string][]string `toml:"permission_acks"`
+	// Online is the online layer (pins and sidebar through the app's
+	// tools); absent means off.
+	Online OnlineSpec `toml:"online"`
+	// Artifacts is artifact sync (beta); absent means off.
+	Artifacts ArtifactsSpec `toml:"artifacts"`
+	// Legacy lists the layouts profile adopt --from-legacy inspects.
+	Legacy Legacy `toml:"legacy"`
 }
 
 // Preference tags.

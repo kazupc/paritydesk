@@ -32,6 +32,14 @@ type runView struct {
 	Lines             []string         `json:"lines"`
 	Warnings          []string         `json:"warnings,omitempty"`
 	TimingsMS         map[string]int64 `json:"timings_ms,omitempty"`
+	// v0.2 anchor: view busy
+
+	// v0.2 anchor: view scratch
+
+	// v0.2 anchor: view online
+
+	// v0.2 anchor: view i18n-ja
+
 }
 
 // newRunView builds the view of a result. Lines are the human summary,

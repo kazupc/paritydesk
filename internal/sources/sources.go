@@ -47,6 +47,12 @@ type ReadContext struct {
 	Spec compat.RowSpec
 	// Manifest gives access to classification and globs.
 	Manifest *compat.Manifest
+	// Side holds facts about this side that a merge decision needs beyond
+	// the snapshot (pins). nil: no facts, so the strictest rules apply.
+	Side *SideFacts
+	// Report is filled by adapters that have something to say beyond the
+	// snapshot (pins). nil: not wanted.
+	Report *ReadReport
 }
 
 // OpsContext adds what producing edits needs.
@@ -63,7 +69,76 @@ type OpsContext struct {
 	// model.ChangeSkipped in OpsResult.Skipped; this never fails the run
 	// (G8).
 	Source *ReadContext
+	// SourceSnapshot is the leaving replica's snapshot of this row as read
+	// at P5 (nil when unknown). Row scratch finds content by hash in it.
+	SourceSnapshot *model.RowSnapshot
 }
+
+// ErrSourceUnavailable marks a row whose source cannot be read this time
+// (for example a store the app is rewriting). The orchestrator skips only
+// that row; every other row is merged as usual. Adapters wrap it, so
+// callers test with errors.Is.
+var ErrSourceUnavailable = errors.New("sources: source unavailable")
+
+// SideFacts are facts about one side of a merge that are not row items.
+type SideFacts struct {
+	BaseValid  bool            // this side has a valid pins base
+	BaseEmpty  bool            // ... and it holds no item
+	StarredIDs map[string]bool // ids whose sessions-row record has isStarred == true
+	ProbeSince int64           // ms; > 0: the freshness probe is active for this profile
+}
+
+// ReadReport is filled by adapters that have something to say beyond the
+// snapshot. Only the pins adapter uses it.
+type ReadReport struct {
+	PinsSource    string // "idb" | "mirror"
+	MirrorDiffers bool   // IDB was used and the mirror holds another set
+	TailDropped   bool
+	Copied        bool
+	ProbePassed   bool // ProbeSince > 0 and the read was fresh
+}
+
+// RefReader is implemented by adapters that read only what another row
+// references (row scratch). Every caller reads such a row with ReadRefs;
+// Read of such an adapter returns ErrRefsRequired.
+type RefReader interface {
+	ReadRefs(ctx context.Context, rc ReadContext, refs []string) (*model.RowSnapshot, error)
+}
+
+// ErrRefsRequired is returned by Read of a RefReader adapter.
+var ErrRefsRequired = errors.New("sources: this row is read only with ReadRefs")
+
+// LSVerifier is implemented by adapters of rows kept only in Local Storage
+// (sidebar-collapse). P12 calls it on a snapshot copy of the running app's
+// Local Storage; it must return the same items and hashes as Read.
+type LSVerifier interface {
+	VerifyItems(ctx context.Context, rc ReadContext) (*model.RowSnapshot, error)
+}
+
+// TargetState holds facts about a folder that are not row items but that
+// decide what a merge may write there.
+type TargetState struct {
+	// StoreMissing: the row's persisted store is absent; nothing can be
+	// written.
+	StoreMissing bool
+	// Seeded: the sidebar scope of rc.Replica is seeded, or its state is
+	// unknown.
+	Seeded bool
+}
+
+// TargetStater is implemented by adapters whose merge needs TargetState of
+// the entering folder. The orchestrator calls it on the entering side's
+// ReadContext before merging; Ops re-checks on disk.
+type TargetStater interface {
+	TargetState(ctx context.Context, rc ReadContext) (TargetState, error)
+}
+
+// Constant notes of the sidebar rows (model.Change.Note).
+const (
+	NoteStoreMissing = "persisted store missing; row left unchanged"
+	NoteTooLarge     = "value exceeds the manifest limit; target value kept"
+	NoteSeeded       = "folder already set up by Claude; seed key left unchanged"
+)
 
 // Adapter reads and writes one row.
 //
@@ -154,6 +229,9 @@ const (
 	RoleTombstoneTime = "tombstone_time" // members of a tombstone file holding its time
 	RoleAllow         = "allow"          // app-prefs allow-list set by the orchestrator
 	RoleWorktreePath  = "worktree_path"  // sessions: fields holding the worktree's absolute path
+	RoleScratchRef    = "scratch_ref"    // sessions: members that may hold scratch workspace paths
+	RoleSets          = "sets"           // sidebar-collapse: dframe-store.state members merged as sets
+	RoleSeedKeys      = "seed_keys"      // sidebar-seed: item keys, in mirror_paths order
 )
 
 // Session file name parts.

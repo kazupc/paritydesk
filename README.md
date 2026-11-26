@@ -27,6 +27,24 @@ v0.1 is designed to carry Code sessions, backlog and scheduled tasks, environmen
 
 A staged Claude update installs when Claude quits (finding 4 of ADR 0003), so a switch lets it install first and checks the new version before it syncs anything. That path has not yet been run against the real app (release checklist, step 20).
 
+<!-- v0.2 anchor: busy -->
+
+<!-- v0.2 anchor: fdscan -->
+
+<!-- v0.2 anchor: sidebar-offline -->
+
+<!-- v0.2 anchor: scratch -->
+
+<!-- v0.2 anchor: online -->
+
+<!-- v0.2 anchor: pins -->
+
+<!-- v0.2 anchor: artifacts -->
+
+<!-- v0.2 anchor: legacy-adopt -->
+
+<!-- v0.2 anchor: i18n-ja -->
+
 ## What it will never do
 
 - Read, copy or move tokens, browser cookie stores or Keychain items.

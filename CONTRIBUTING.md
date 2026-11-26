@@ -225,3 +225,21 @@ translations. Printed text must stay ASCII-safe under `--ascii`.
 
 The README claims a capability only after a runtime spike on the real app
 is recorded in `docs/adr/0003-online-reconcile.md` (decision D26).
+
+<!-- v0.2 anchor: busy -->
+
+<!-- v0.2 anchor: fdscan -->
+
+<!-- v0.2 anchor: sidebar-offline -->
+
+<!-- v0.2 anchor: scratch -->
+
+<!-- v0.2 anchor: online -->
+
+<!-- v0.2 anchor: pins -->
+
+<!-- v0.2 anchor: artifacts -->
+
+<!-- v0.2 anchor: legacy-adopt -->
+
+<!-- v0.2 anchor: i18n-ja -->

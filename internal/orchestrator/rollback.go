@@ -268,7 +268,7 @@ func (o *Orchestrator) rebaseRestored(ctx context.Context, root *state.Root, m *
 			rows = append(rows, e.Row)
 		}
 	}
-	snaps, err := o.rereadRows(ctx, m, folder, rep, rows)
+	snaps, err := o.rereadRows(ctx, m, folder, rep, rows, nil)
 	for _, row := range rows {
 		k := state.BaseKey{Alias: a, Replica: rep, Row: row}.String()
 		snap, ok := snaps[row]

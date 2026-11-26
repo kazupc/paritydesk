@@ -10,7 +10,7 @@ import (
 
 func TestRegistryCoversAllRows(t *testing.T) {
 	reg := Registry()
-	for _, r := range model.AllRows {
+	for _, r := range implementedRows() {
 		m, ok := reg[r]
 		if !ok || m.Row() != r {
 			t.Fatalf("row %s missing or misregistered", r)

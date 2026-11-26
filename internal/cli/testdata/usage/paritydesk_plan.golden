@@ -3,7 +3,7 @@ usage: paritydesk plan [<alias>|-] [flags]
 Preview what a switch would change (approximate)
 
 flags:
-  --only string                categories to carry, comma-separated: sessions,environments,order,sidebar,pins,prefs,worktrees,window,mcp
+  --only string                categories to carry, comma-separated: sessions,environments,order,sidebar,pins,prefs,worktrees,scratch,window,mcp
   --skip string                categories to leave alone, comma-separated
 
 global flags:

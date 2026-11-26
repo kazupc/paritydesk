@@ -132,6 +132,41 @@ func (s *fakeState) GetSnapshot(ref state.Ref) (*model.RowSnapshot, error) {
 	return &snap, json.Unmarshal(b, &snap)
 }
 
+// fakeObject is the stored form of a fake generic object.
+type fakeObject struct {
+	Kind  string          `json:"kind"`
+	Value json.RawMessage `json:"value"`
+}
+
+func (s *fakeState) PutObject(kind string, v any) (state.Ref, error) {
+	val, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	b, err := json.Marshal(fakeObject{Kind: kind, Value: val})
+	if err != nil {
+		return "", err
+	}
+	ref := state.Ref(model.HashBytes(b))
+	s.objects[ref] = b
+	return ref, nil
+}
+
+func (s *fakeState) GetObject(ref state.Ref, kind string, v any) error {
+	b, ok := s.objects[ref]
+	if !ok {
+		return errors.New("fake state: no object")
+	}
+	var o fakeObject
+	if err := json.Unmarshal(b, &o); err != nil {
+		return err
+	}
+	if o.Kind != kind {
+		return state.ErrKindMismatch
+	}
+	return json.Unmarshal(o.Value, v)
+}
+
 func (s *fakeState) GC(*state.Root) error { return nil }
 
 func (s *fakeState) Lock(context.Context, time.Duration) (*state.Lock, error) {

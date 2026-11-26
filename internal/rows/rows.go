@@ -1,7 +1,9 @@
 package rows
 
 import (
+	"encoding/json"
 	"fmt"
+	"regexp"
 
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
@@ -26,6 +28,11 @@ type Side struct {
 	Contested map[string]model.Contested
 	// ToolStamps are app-time values paritydesk wrote on this replica.
 	ToolStamps map[string]int64
+	// Seeded: the base was seeded by profile adopt --from-legacy from
+	// values every folder agreed on. A key absent from such a base merges
+	// as under an invalid base (union: no deletion, no epoch rule) on both
+	// sides.
+	Seeded bool
 }
 
 // Policy carries the user's choices and the data boundary for one switch.
@@ -60,6 +67,34 @@ type Policy struct {
 	// compat.RowSpec.Fields. Modules never hard-code on-disk field names.
 	// A record field that no role lists comes from the winning record.
 	Fields map[string][]string
+	// Limits are the row's manifest limits (compat.RowSpec.Limits), copied by
+	// the orchestrator. A module that enforces them keeps the target's value
+	// for an item over a limit.
+	Limits map[string]int
+	// EnteringStoreMissing: the entering folder lacks the row's persisted
+	// store, so nothing can be written there; the module keeps the target's
+	// own values (sources.TargetStater).
+	EnteringStoreMissing bool
+	// EnteringSeeded: the entering folder's sidebar scope for its replica is
+	// seeded, or its state could not be read (sources.TargetStater).
+	EnteringSeeded bool
+	// SeedFrom holds, for the sidebar-seed row only, the values derived from
+	// the sidebar-view row's Desired of this switch (SeedValues), by item key.
+	SeedFrom map[string]json.RawMessage
+	// Scratch is the scratch row's policy; nil for every other row.
+	Scratch *ScratchPolicy
+}
+
+// ScratchPolicy is the policy of row scratch (scratch workspaces).
+type ScratchPolicy struct {
+	PropagateDeletions bool
+	Exclude            []string       // manifest exclude + config scratch.exclude
+	HeldBack           []string       // dependency_dirs + vcs_dirs + cache_dirs
+	ReservedGlobs      []string       // manifest tmp_recovery_globs
+	Leaf               *regexp.Regexp // workspace folder names the app mints
+	ConflictDate       string         // "YYYY-MM-DD", local date of the run clock
+	Refs               []string       // the carry set (keys), sorted
+	Referenced         []string       // every workspace key Desired sessions name (superset of Refs)
 }
 
 // ManagedEdge reports whether either side is managed_by_org.
@@ -110,7 +145,7 @@ type Module interface {
 	Merge(in Input) (Output, error)
 }
 
-// Registry returns the module of every v0.1 row.
+// Registry returns the module of every row that has one.
 func Registry() map[model.RowID]Module {
 	mods := []Module{
 		environmentsModule{},
@@ -124,6 +159,12 @@ func Registry() map[model.RowID]Module {
 		keyedModule{row: model.RowAppPrefs, noFieldMerge: true},
 		keyedModule{row: model.RowWindowState, noFieldMerge: true},
 		mcpModule{},
+		// v0.2 anchor: rows scratch
+
+		// v0.2 anchor: rows sidebar-offline
+
+		// v0.2 anchor: rows pins
+
 	}
 	m := make(map[model.RowID]Module, len(mods))
 	for _, mod := range mods {

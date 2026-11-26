@@ -199,6 +199,24 @@ release:
     project path or alias. Running it again with the same file name is
     refused.
 
+<!-- v0.2 anchor: busy -->
+
+<!-- v0.2 anchor: fdscan -->
+
+<!-- v0.2 anchor: sidebar-offline -->
+
+<!-- v0.2 anchor: scratch -->
+
+<!-- v0.2 anchor: online -->
+
+<!-- v0.2 anchor: pins -->
+
+<!-- v0.2 anchor: artifacts -->
+
+<!-- v0.2 anchor: legacy-adopt -->
+
+<!-- v0.2 anchor: i18n-ja -->
+
 ## Uninstall (last on this Mac)
 
 30. `paritydesk uninstall`. Expected: every data folder intact, the

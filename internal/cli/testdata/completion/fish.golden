@@ -77,7 +77,7 @@ end
 # __paritydesk_categories completes one name of a comma-separated list.
 function __paritydesk_categories
     set -l pre (string replace -r '[^,]*$' '' -- (commandline -ct))
-    for c in sessions environments order sidebar pins prefs worktrees window mcp
+    for c in sessions environments order sidebar pins prefs worktrees scratch window mcp
         echo $pre$c
     end
 end
@@ -128,7 +128,7 @@ complete -c paritydesk -n '__paritydesk_at \'init\'' -l label -x -d 'display lab
 complete -c paritydesk -n '__paritydesk_at \'init\'' -l managed -d 'the account is managed by an employer or client'
 complete -c paritydesk -n '__paritydesk_at \'init\'' -l unmanaged -d 'the account is not managed by an employer or client'
 complete -c paritydesk -n '__paritydesk_at \'log\'' -l run -x -d 'run id (default: the last run)'
-complete -c paritydesk -n '__paritydesk_at \'plan\'' -l only -x -a '(__paritydesk_categories)' -d 'categories to carry, comma-separated: sessions,environments,order,sidebar,pins,prefs,worktrees,window,mcp'
+complete -c paritydesk -n '__paritydesk_at \'plan\'' -l only -x -a '(__paritydesk_categories)' -d 'categories to carry, comma-separated: sessions,environments,order,sidebar,pins,prefs,worktrees,scratch,window,mcp'
 complete -c paritydesk -n '__paritydesk_at \'plan\'' -l skip -x -a '(__paritydesk_categories)' -d 'categories to leave alone, comma-separated'
 complete -c paritydesk -n '__paritydesk_at \'profile add\'' -l managed -d 'the account is managed by an employer or client'
 complete -c paritydesk -n '__paritydesk_at \'profile add\'' -l unmanaged -d 'the account is not managed by an employer or client'
@@ -147,7 +147,7 @@ complete -c paritydesk -n '__paritydesk_at \'switch\'' -l detach -d 'run as a de
 complete -c paritydesk -n '__paritydesk_at \'switch\'' -l json-progress -d 'NDJSON progress on stderr'
 complete -c paritydesk -n '__paritydesk_at \'switch\'' -l no-launch -d 'do not relaunch Claude'
 complete -c paritydesk -n '__paritydesk_at \'switch\'' -l no-reopen -d 'do not reopen the invoking session'
-complete -c paritydesk -n '__paritydesk_at \'switch\'' -l only -x -a '(__paritydesk_categories)' -d 'categories to carry, comma-separated: sessions,environments,order,sidebar,pins,prefs,worktrees,window,mcp'
+complete -c paritydesk -n '__paritydesk_at \'switch\'' -l only -x -a '(__paritydesk_categories)' -d 'categories to carry, comma-separated: sessions,environments,order,sidebar,pins,prefs,worktrees,scratch,window,mcp'
 complete -c paritydesk -n '__paritydesk_at \'switch\'' -l reopen-session -x -d 'Claude Code session id of the invoking session (set by the plugin; empty: no reopen)'
 complete -c paritydesk -n '__paritydesk_at \'switch\'' -l skip -x -a '(__paritydesk_categories)' -d 'categories to leave alone, comma-separated'
 complete -c paritydesk -n '__paritydesk_at \'switch\'' -l yes -d 'do not ask (destructive differences after the preview still ask)'

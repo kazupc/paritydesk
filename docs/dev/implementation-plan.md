@@ -33,19 +33,19 @@ opens a network connection.
 
 ### Deferred to v0.2 (decided)
 
-| Item | Why it waits |
+| Item | Status |
 |---|---|
-| Artifact sync (beta), `/paritydesk:artifacts` | Was gated on spike S5, which passed: hooks fire for the app-injected tools and a PreToolUse deny stops them. Scheduled for v0.2. |
-| Pins through the app's tools (capture, `set_pinned`) | S5 and S6 are run (hooks fire; one approval per call for another session). Which sessions are pinned lives in IndexedDB (S14), so v0.1 carries pin order only (pinned-order row) |
-| ON write path for sections and group-by, online reconcile (P13), P1 capture, PreToolUse guard, PostToolUse hook | S5 passed, so these are unblocked for v0.2; v0.1 carries sidebar-view through OFF + verify |
-| Collapsed groups | Device-local in Local Storage `dframe-store` and never synced (S1 second round), so they can be carried offline; not yet built |
-| Seed-only legacy sidebar keys | Read by the app only for unseeded folders; no effect on existing ones |
-| Native libproc fd scan | The fixed-argv `lsof` path is correct, only slower |
-| `profile adopt --from-legacy`, legacy archive import | One-off migration; generic `profile adopt` covers folders |
-| Scratch-workspaces handling for worktrees | Shape not yet observed |
-| Buttons for the switch confirmation | `/paritydesk:switch` asks for the yes in plain text; asking with the question tool (Switch / Cancel buttons) is requested and not yet built |
-| Native multi-account signal from main.log | Signal not confirmed (S11); v0.1 uses folder account history (the manifest pattern stays empty until confirmed) |
-| Pinned pairing org shown in `doctor` | Needs a confirmed main.log signal for the pairing org; `doctor` reports the active org only |
+| Artifact sync (beta), `/paritydesk:artifacts` | Planned for v0.2: unit U7 (`spec-artifacts`) |
+| Pins through the app's tools (capture, `set_pinned`) | Planned for v0.2: units U5 and U6 (`spec-online`, `spec-pins`) |
+| ON write path for sections and group-by, online reconcile (P13), P1 capture, PreToolUse guard, PostToolUse hook | Planned for v0.2: unit U5 (`spec-online`) |
+| Collapsed groups | Planned for v0.2: unit U3 (`spec-sidebar-offline`) |
+| Seed-only legacy sidebar keys | Planned for v0.2: unit U3 (`spec-sidebar-offline`) |
+| Native libproc fd scan | Planned for v0.2: unit U2 (`spec-fdscan`) |
+| `profile adopt --from-legacy`, legacy archive import | Planned for v0.2: unit U8 (`spec-legacy-adopt`); legacy archive import: unit U7 (`spec-artifacts`) |
+| Scratch-workspaces handling for worktrees | Planned for v0.2: unit U4 (`spec-scratch`) |
+| Buttons for the switch confirmation | Planned for v0.2: unit U5 (`spec-online`) |
+| Native multi-account signal from main.log | Planned for v0.2: unit U1 (`spec-busy`) |
+| Pinned pairing org shown in `doctor` | Planned for v0.2: unit U1 (`spec-busy`) |
 
 Dropped rather than deferred: any SIGTERM path (`--force-quit`); ADR 0003
 showed SIGTERM is an unclean exit.
@@ -116,6 +116,13 @@ cmd/paritydesk ─► cli ─► orchestrator (Service) ─► (interfaces only)
 | `render`, `i18n`, `redact` | Output, sanitizer, strings, redaction | yes |
 | `hook` | `hook session-start` | no |
 | `cli` | Standard library `flag` command tree and wiring | no |
+| `online` | (v0.2, planned) Online reconcile after a launch: queue, captures, PreToolUse guard, PostToolUse interpretation, providers (sidebar; pins) | mostly |
+| `store/idb` | (v0.2, planned) Read-only IndexedDB-on-LevelDB reader for one string key, over a private clone | no |
+| `sources/pins` | (v0.2, planned) Adapter for row pins (which Code sessions are pinned) and the reader of the app's own mirror of that list | no |
+| `sources/scratch` | (v0.2, planned) Adapter for row scratch: the scratch workspaces that session records reference, carried at the same path | no |
+| `artifacts` | (v0.2, planned) Artifact sync: archive, rounds, judge, ingest, the online provider, legacy archive import | mostly |
+| `legacy` | (v0.2, planned) Importer for folders left by an earlier folder-swap script (`profile adopt --from-legacy`); every input untrusted, writes nothing | mostly |
+| `fdscan` | (v0.2, planned) Native open-file scan through libproc without cgo; `lsof` stays the fallback | no |
 | `testkit` | Synthetic data roots with real goleveldb databases | test only |
 | `policy` | Tests for project-wide rules | test only |
 
@@ -336,6 +343,10 @@ adapter; `Secret` is then true.
 | window-state | `window-state.json` | `{"sha256": "<hex>"}` | file mtime ms | — |
 | mcp-servers | server name | server object with `env` values hashed | — | — |
 | worktrees | worktree name (the key in `git-worktrees.json` on app 6.x, ADR 0004) | entry object | — | — |
+| scratch (v0.2) | relative to the scratch root: `<acct>/<org>/<leaf>/` (root marker), `…/<rel>/` (directory or git unit), `…/<rel>` (file or symlink) | `{"k":"root"\|"dir"\|"git"\|"file"\|"link", …}`: mode, sha256 and size of files, link target, git unit digest; content only | file or link lstat mtime ms; newest member mtime for a git unit; else 0 | Tombstones only in canonical |
+| sidebar-collapse (v0.2) | `collapsedGroups`, `collapsedFamilies` | JSON array of the member's string elements, deduplicated and sorted | 0 (the epoch decides) | — |
+| sidebar-seed (v0.2) | `code-sessions-sort-ascending`, `code-sessions-show-empty-projects` | the bare JSON boolean (from the mirror) | envelope `timestamp` when LS and mirror agree, else 0 | — |
+| pins (v0.2) | session id `local_<uuid>` | `true` | 0 (the epoch decides) | — |
 
 Rules every side relies on:
 

@@ -31,6 +31,10 @@ type StateStore interface {
 	Done(r *state.Root, name state.IntentName) error
 	PutSnapshot(s *model.RowSnapshot) (state.Ref, error)
 	GetSnapshot(ref state.Ref) (*model.RowSnapshot, error)
+	// PutObject and GetObject store any JSON value as an object of a
+	// kind (the online draft, the scratch post-hashes).
+	PutObject(kind string, v any) (state.Ref, error)
+	GetObject(ref state.Ref, kind string, v any) error
 	GC(r *state.Root) error
 	Lock(ctx context.Context, wait time.Duration) (*state.Lock, error)
 }

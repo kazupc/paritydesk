@@ -120,3 +120,21 @@ the folder swap (P8), parking the leaving folder (P9), one state commit
 | S16 | Are the token cache's entry names plaintext? | Run: no, the cache is one encrypted string. |
 | S17 | Does the app keep an extended attribute on its data folder? | Run: yes. |
 | S18 | Does Claude in Chrome work on every account with one Chrome profile per account? | Run: yes. |
+
+<!-- v0.2 anchor: busy -->
+
+<!-- v0.2 anchor: fdscan -->
+
+<!-- v0.2 anchor: sidebar-offline -->
+
+<!-- v0.2 anchor: scratch -->
+
+<!-- v0.2 anchor: online -->
+
+<!-- v0.2 anchor: pins -->
+
+<!-- v0.2 anchor: artifacts -->
+
+<!-- v0.2 anchor: legacy-adopt -->
+
+<!-- v0.2 anchor: i18n-ja -->

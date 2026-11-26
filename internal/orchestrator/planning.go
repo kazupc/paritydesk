@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -37,6 +38,11 @@ type planInput struct {
 	Skipped     map[model.RowID]string
 	RunID       string
 	Approximate bool
+	// Seeded: the entering profile's bases were seeded by profile adopt
+	// --from-legacy and this is its first sync.
+	Seeded bool
+	// Preview is P2's plan when this is P5 (nil at P2).
+	Preview *plan.Plan
 }
 
 // rowWork keeps one row's merge inputs and outputs for later phases.
@@ -47,6 +53,9 @@ type rowWork struct {
 	SKey, TKey   state.BaseKey
 	Stamps       map[string]int64
 	TBaseInvalid bool
+	// Refs are the keys a sources.RefReader row was read with (nil for
+	// every other row).
+	Refs []string
 }
 
 // planned is a computed plan plus its row work.
@@ -54,6 +63,13 @@ type planned struct {
 	Plan *plan.Plan
 	Rows []model.RowID
 	Work map[model.RowID]*rowWork
+	// Skipped are the rows left out while planning (a source that could
+	// not be read), with their reasons; composePlan copies them into
+	// Plan.Skipped.
+	Skipped map[model.RowID]string
+	// AuxSessions are the sessions-row snapshots of both sides when the
+	// sessions row is not planned but another row needs its facts.
+	AuxSessions struct{ S, T *model.RowSnapshot }
 }
 
 // selectRows returns the rows to plan, in model.AllRows order, and the
@@ -93,23 +109,32 @@ func (o *Orchestrator) selectRows(m *compat.Manifest, dec compat.Decision, only,
 // buildPlan reads both sides, merges every row, and composes the plan for
 // the entering folder.
 func (o *Orchestrator) buildPlan(ctx context.Context, in planInput) (*planned, error) {
-	pl := &planned{Rows: in.Rows, Work: map[model.RowID]*rowWork{}}
+	pl := &planned{Work: map[model.RowID]*rowWork{}}
 	outs := map[model.RowID]*rows.Output{}
-	var envRemap map[string]string
 	acks := o.permissionAcks(ctx, in.Manifest, in.T)
 	for _, r := range in.Rows {
 		if err := ctx.Err(); err != nil {
 			return nil, pderr.Wrap(pderr.Declined, "interrupted", err)
 		}
-		w, err := o.mergeRow(ctx, in, r, acks, envRemap)
+		w, err := o.mergeRow(ctx, in, r, acks, outs, nil)
+		var skip *errRowSkipped
+		if errors.As(err, &skip) {
+			// Only this row is left out: it is not merged, written or
+			// committed, and every other row is planned as usual. No
+			// generic warning is printed here: the unit that owns the
+			// skip reason emits its own (e.g. spec-pins 6.4 item 3).
+			if pl.Skipped == nil {
+				pl.Skipped = map[model.RowID]string{}
+			}
+			pl.Skipped[r] = skip.Reason
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
+		pl.Rows = append(pl.Rows, r)
 		pl.Work[r] = w
 		outs[r] = w.Out
-		if r == model.RowEnvironments && w.Out.EnvRemap != nil {
-			envRemap = w.Out.EnvRemap
-		}
 	}
 	if o.d.PostMerge != nil {
 		if err := o.d.PostMerge(outs); err != nil {
@@ -157,19 +182,24 @@ func modeAcks(prefs map[string]bool, table map[string][]string) map[string]bool 
 	return out
 }
 
-// mergeRow reads one row on both sides and merges it.
-func (o *Orchestrator) mergeRow(ctx context.Context, in planInput, r model.RowID, acks map[string]bool, envRemap map[string]string) (*rowWork, error) {
+// mergeRow reads one row on both sides and merges it. prior holds the
+// outputs of the rows merged before r in this plan (the environment remap
+// comes from there); refs are the keys a sources.RefReader row is read
+// with (nil for every other row). A source that cannot be read this time
+// (sources.ErrSourceUnavailable) returns *errRowSkipped, so the caller
+// leaves only this row out.
+func (o *Orchestrator) mergeRow(ctx context.Context, in planInput, r model.RowID, acks map[string]bool, prior map[model.RowID]*rows.Output, refs []string) (*rowWork, error) {
 	spec, _ := o.rowSpec(in.Manifest, r)
 	ad := o.d.Adapters[r]
 	sRC := sources.ReadContext{Folder: in.S.Folder, Replica: in.S.Replica, LS: in.S.LS, Spec: spec.Expand(in.S.Replica), Manifest: in.Manifest}
 	tRC := sources.ReadContext{Folder: in.T.Folder, Replica: in.T.Replica, LS: in.T.LS, Spec: spec.Expand(in.T.Replica), Manifest: in.Manifest}
-	sSnap, err := ad.Read(ctx, sRC)
+	sSnap, err := readAdapter(ctx, ad, sRC, refs)
 	if err != nil {
-		return nil, pderr.Wrap(pderr.Internal, fmt.Sprintf("read %s (leaving)", r), err)
+		return nil, readError(r, "leaving", err)
 	}
-	tSnap, err := ad.Read(ctx, tRC)
+	tSnap, err := readAdapter(ctx, ad, tRC, refs)
 	if err != nil {
-		return nil, pderr.Wrap(pderr.Internal, fmt.Sprintf("read %s (entering)", r), err)
+		return nil, readError(r, "entering", err)
 	}
 	for _, snap := range []*model.RowSnapshot{sSnap, tSnap} {
 		if snap != nil && len(snap.Stale) > 0 {
@@ -183,7 +213,7 @@ func (o *Orchestrator) mergeRow(ctx context.Context, in planInput, r model.RowID
 		}
 	}
 	w := &rowWork{
-		Spec: spec, S: sSnap, T: tSnap,
+		Spec: spec, S: sSnap, T: tSnap, Refs: refs,
 		SKey: state.BaseKey{Alias: in.S.Alias, Replica: in.S.Replica, Row: r},
 		TKey: state.BaseKey{Alias: in.T.Alias, Replica: in.T.Replica, Row: r},
 	}
@@ -195,9 +225,9 @@ func (o *Orchestrator) mergeRow(ctx context.Context, in planInput, r model.RowID
 		Canonical:       o.object(in.Root.Canonical[r]),
 		LeavingOverlay:  o.object(in.Root.Overlays[w.SKey.String()]),
 		EnteringOverlay: o.object(in.Root.Overlays[w.TKey.String()]),
-		Policy:          o.policy(in, cat, spec, acks, envRemap),
+		Policy:          o.policy(in, cat, spec, acks, envRemapOf(prior)),
 	}
-	if r != model.RowSessions {
+	if r != model.RowSessions && r != model.RowSidebarCollapse {
 		mi.Policy.EnvRemap = nil
 	}
 	out, err := o.d.Rows[r].Merge(mi)
@@ -276,9 +306,9 @@ func (o *Orchestrator) policy(in planInput, cat model.Category, spec compat.RowS
 	p := rows.Policy{
 		TombstoneMode:   sync.Tombstones,
 		Exclude:         expandExcludes(o.d.Home, sync.Exclude),
-		LeavingExports:  categoryListed(sync.Export, in.S.Alias, cat),
-		EnteringExports: categoryListed(sync.Export, in.T.Alias, cat),
-		EnteringImports: categoryListed(sync.Import, in.T.Alias, cat),
+		LeavingExports:  config.CategoryListed(sync.Export, in.S.Alias, cat),
+		EnteringExports: config.CategoryListed(sync.Export, in.T.Alias, cat),
+		EnteringImports: config.CategoryListed(sync.Import, in.T.Alias, cat),
 		LeavingManaged:  in.S.Managed,
 		EnteringManaged: in.T.Managed,
 		PermissionAcks:  acks,
@@ -304,22 +334,6 @@ func (o *Orchestrator) secrets(sManaged, tManaged bool) (bool, map[string]bool) 
 	return may, allow
 }
 
-// categoryListed reads sync.export / sync.import: an alias without an
-// entry exports and imports everything; otherwise only the listed
-// categories ("all" or "*" list everything).
-func categoryListed(m map[string][]string, a ids.Alias, cat model.Category) bool {
-	list, ok := m[string(a)]
-	if !ok {
-		return true
-	}
-	for _, c := range list {
-		if c == string(cat) || c == "all" || c == "*" {
-			return true
-		}
-	}
-	return false
-}
-
 // composePlan turns every row's Desired into edits and composes the plan.
 func (o *Orchestrator) composePlan(ctx context.Context, in planInput, pl *planned) (*plan.Plan, error) {
 	now := o.now()
@@ -327,7 +341,7 @@ func (o *Orchestrator) composePlan(ctx context.Context, in planInput, pl *planne
 		Version: plan.Version, RunID: in.RunID, From: in.S.Alias,
 		Target:      plan.Target{Alias: in.T.Alias, Replica: in.T.Replica, Folder: in.T.Folder},
 		Approximate: in.Approximate, CreatedAt: now,
-		Skipped: in.Skipped,
+		Skipped: mergeSkipped(in.Skipped, pl.Skipped),
 	}
 	var edits []plan.Edit
 	for _, r := range pl.Rows {

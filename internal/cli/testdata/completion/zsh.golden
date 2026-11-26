@@ -21,13 +21,13 @@ _paritydesk_flags() {
     ('doctor') reply=('--bundle:write a redacted support archive (tar.gz) to this new file' '--bundle-logs:newest run logs to put in the archive' '--grant-automation:ask macOS for Automation permission now') ;;
     ('init') reply=('--alias:alias for the account in Claude now (asked when missing)' '--label:display label for the profile' '--managed:the account is managed by an employer or client' '--unmanaged:the account is not managed by an employer or client') ;;
     ('log') reply=('--run:run id (default: the last run)') ;;
-    ('plan') reply=('--only:categories to carry, comma-separated: sessions,environments,order,sidebar,pins,prefs,worktrees,window,mcp' '--skip:categories to leave alone, comma-separated') ;;
+    ('plan') reply=('--only:categories to carry, comma-separated: sessions,environments,order,sidebar,pins,prefs,worktrees,scratch,window,mcp' '--skip:categories to leave alone, comma-separated') ;;
     ('profile add') reply=('--managed:the account is managed by an employer or client' '--unmanaged:the account is not managed by an employer or client') ;;
     ('profile adopt') reply=('--managed:the account is managed by an employer or client' '--unmanaged:the account is not managed by an employer or client') ;;
     ('recover') reply=('--rollback:undo the interrupted run instead of completing it' '--yes:do not ask') ;;
     ('rollback') reply=('--propagate:carry the restored values to other profiles on the next switch' '--yes:do not ask') ;;
     ('status') reply=('--short:one line; never opens Local Storage') ;;
-    ('switch') reply=('--accept-worktree-risk:switch even if a worktree with uncommitted changes loses its registration' '--allow-deletions:allow up to N deletions per category past the breaker' '--confirm-first-sync:confirm the first-sync union that the confirmed plan showed' '--confirmed-plan:hash of the plan you confirmed (printed by paritydesk plan --json)' '--detach:run as a detached launchd job' '--json-progress:NDJSON progress on stderr' '--no-launch:do not relaunch Claude' '--no-reopen:do not reopen the invoking session' '--only:categories to carry, comma-separated: sessions,environments,order,sidebar,pins,prefs,worktrees,window,mcp' '--reopen-session:Claude Code session id of the invoking session (set by the plugin; empty: no reopen)' '--skip:categories to leave alone, comma-separated' '--yes:do not ask (destructive differences after the preview still ask)') ;;
+    ('switch') reply=('--accept-worktree-risk:switch even if a worktree with uncommitted changes loses its registration' '--allow-deletions:allow up to N deletions per category past the breaker' '--confirm-first-sync:confirm the first-sync union that the confirmed plan showed' '--confirmed-plan:hash of the plan you confirmed (printed by paritydesk plan --json)' '--detach:run as a detached launchd job' '--json-progress:NDJSON progress on stderr' '--no-launch:do not relaunch Claude' '--no-reopen:do not reopen the invoking session' '--only:categories to carry, comma-separated: sessions,environments,order,sidebar,pins,prefs,worktrees,scratch,window,mcp' '--reopen-session:Claude Code session id of the invoking session (set by the plugin; empty: no reopen)' '--skip:categories to leave alone, comma-separated' '--yes:do not ask (destructive differences after the preview still ask)') ;;
     ('sync') reply=('--allow-deletions:allow up to N deletions per category past the breaker' '--json-progress:NDJSON progress on stderr' '--no-launch:do not relaunch Claude' '--yes:do not ask') ;;
     ('uninstall') reply=('--keep-backups:keep backup generations' '--keep-state:keep the state directory as well' '--yes:do not ask') ;;
     (*) reply=() ;;
@@ -92,7 +92,7 @@ _paritydesk() {
       case $flag in
         (--bundle|--config) _files ;;
         (--app-support-dir|--state-dir) _files -/ ;;
-        (--only|--skip) compset -P '*,'; compadd -- sessions environments order sidebar pins prefs worktrees window mcp ;;
+        (--only|--skip) compset -P '*,'; compadd -- sessions environments order sidebar pins prefs worktrees scratch window mcp ;;
       esac
       return
     fi

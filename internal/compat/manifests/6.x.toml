@@ -217,6 +217,12 @@ run_state = ["leasedBy", "leaseCleared"]
 # replaces the target's own entry.
 worktree_path = ["path"]
 
+# v0.2 anchor: rows scratch
+
+# v0.2 anchor: rows sidebar-offline
+
+# v0.2 anchor: rows pins
+
 # ---------------------------------------------------------------- probes
 #
 # Probes read names and shapes only. file, dir and ls-key need the target
@@ -450,6 +456,10 @@ target = "window-state.json"
 path = []
 type = "object"
 
+# v0.2 anchor: probes scratch
+
+# v0.2 anchor: probes sidebar-offline
+
 # ---------------------------------------------------------------- classification
 #
 # Top-level entries of a data folder (globs, slash-separated). The fixed
@@ -611,3 +621,11 @@ native_multi_account = ''
 # exit 14). None has been confirmed for 6.x, so the list is empty and v0.1
 # detects no other tool. init lists parked Claude-* folders that hold an
 # account no profile registers and suggests profile adopt for them.
+
+# v0.2 anchor: tables online
+
+# v0.2 anchor: tables pins
+
+# v0.2 anchor: tables artifacts
+
+# v0.2 anchor: tables legacy

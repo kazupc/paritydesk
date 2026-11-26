@@ -44,12 +44,21 @@ var (
 // be read without keeping old Go types around.
 var migrations = map[int]func(doc map[string]json.RawMessage) error{
 	0: migrateV0,
+	1: migrateV1,
 }
 
 // migrateV0 upgrades the pre-release layout (no "v" field) to version 1.
 // Version 0 had the same fields; only the version marker is new.
 func migrateV0(doc map[string]json.RawMessage) error {
 	doc["v"] = json.RawMessage("1")
+	return nil
+}
+
+// migrateV1 upgrades version 1 (v0.1) to version 2 (v0.2). Every v0.2
+// field is optional, so only the version marker changes; it keeps an
+// older binary from rewriting a root that holds fields it would drop.
+func migrateV1(doc map[string]json.RawMessage) error {
+	doc["v"] = json.RawMessage("2")
 	return nil
 }
 

@@ -48,7 +48,7 @@ func read(t *testing.T, a sources.Adapter, rc sources.ReadContext) *model.RowSna
 
 func TestRegistryCoversEveryRow(t *testing.T) {
 	reg := all.Registry()
-	for _, r := range model.AllRows {
+	for _, r := range implementedRows() {
 		if a, ok := reg[r]; !ok || a.Row() != r {
 			t.Errorf("row %s has no adapter", r)
 		}
@@ -227,7 +227,7 @@ func TestComposedSharedTargets(t *testing.T) {
 	var edits []plan.Edit
 	want := map[model.RowID]*model.RowSnapshot{}
 	shared := map[string][]model.RowID{}
-	for _, row := range model.AllRows {
+	for _, row := range implementedRows() {
 		d, res := syncRow(t, e, reg[row], src, dst, rs, rd)
 		want[row] = d
 		for _, ed := range res.Edits {
@@ -244,7 +244,7 @@ func TestComposedSharedTargets(t *testing.T) {
 		t.Fatalf("expected several rows on the config mirror, got %v", shared[sources.DesktopConfigFile])
 	}
 	testkit.Apply(t, dst, edits)
-	for _, row := range model.AllRows {
+	for _, row := range implementedRows() {
 		got := read(t, reg[row], e.rc(t, dst, rd, row))
 		t.Run(string(row), func(t *testing.T) { assertSameItems(t, got, want[row]) })
 	}
@@ -293,7 +293,7 @@ func TestPlanCompose(t *testing.T) {
 	dst := e.root.AddFolder(t, testkit.Rich("Claude", 2))
 	reg := all.Registry()
 	var edits []plan.Edit
-	for _, row := range model.AllRows {
+	for _, row := range implementedRows() {
 		_, res := syncRow(t, e, reg[row], src, dst, rs, rd)
 		edits = append(edits, res.Edits...)
 	}
@@ -353,7 +353,7 @@ func TestOtherAccountsUntouched(t *testing.T) {
 	}
 	reg := all.Registry()
 	var edits []plan.Edit
-	for _, row := range model.AllRows {
+	for _, row := range implementedRows() {
 		desired, res := syncRow(t, e, reg[row], src, dst, rs, rd)
 		b, _ := json.Marshal(desired)
 		if strings.Contains(string(b), "decoy") || strings.Contains(string(b), testkit.FakeSession(71)) {
