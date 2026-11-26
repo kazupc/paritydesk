@@ -269,6 +269,7 @@ func (o *Orchestrator) Doctor(ctx context.Context, opts DoctorOptions) ([]Check,
 	dr.onlineChecks(root, m)
 
 	// v0.2 anchor: doctor artifacts
+	dr.artifactsChecks(m)
 
 	return dr.checks, nil
 }

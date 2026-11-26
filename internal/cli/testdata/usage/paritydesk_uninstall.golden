@@ -3,6 +3,7 @@ usage: paritydesk uninstall [flags]
 Remove paritydesk's state; every data folder is kept
 
 flags:
+  --keep-artifacts             keep the artifact archive (saved pages and their history) (default true)
   --keep-backups               keep backup generations (default true)
   --keep-state                 keep the state directory as well
   --yes                        do not ask

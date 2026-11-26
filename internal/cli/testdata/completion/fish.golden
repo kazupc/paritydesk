@@ -5,7 +5,9 @@
 function __paritydesk_subs
     switch "$argv[1]"
         case ''
-            printf '%s\n' backups completion config doctor generations help history init log online plan profile rebase recover rollback status switch sync uninstall verify version
+            printf '%s\n' artifacts backups completion config doctor generations help history init log online plan profile rebase recover rollback status switch sync uninstall verify version
+        case 'artifacts'
+            printf '%s\n' allow forget import-legacy ingest plan skip status
         case 'backups'
             printf '%s\n' prune purge
         case 'config'
@@ -21,6 +23,14 @@ end
 
 function __paritydesk_value_flags
     switch "$argv[1]"
+        case 'artifacts allow'
+            printf '%s\n' --profile
+        case 'artifacts import-legacy'
+            printf '%s\n' --from --map
+        case 'artifacts plan'
+            printf '%s\n' --profile
+        case 'artifacts status'
+            printf '%s\n' --profile
         case 'backups prune'
             printf '%s\n' --older-than
         case 'doctor'
@@ -89,6 +99,7 @@ end
 complete -c paritydesk -f
 
 # Commands
+complete -c paritydesk -n '__paritydesk_at \'\'' -a artifacts -d 'Keep claude.ai artifacts the same on every profile (beta)'
 complete -c paritydesk -n '__paritydesk_at \'\'' -a backups -d 'Prune or purge backup generations'
 complete -c paritydesk -n '__paritydesk_at \'\'' -a completion -d 'Print a shell completion script'
 complete -c paritydesk -n '__paritydesk_at \'\'' -a config -d 'Show, locate or validate the config file'
@@ -110,6 +121,13 @@ complete -c paritydesk -n '__paritydesk_at \'\'' -a sync -d 'Re-apply the shared
 complete -c paritydesk -n '__paritydesk_at \'\'' -a uninstall -d 'Remove paritydesk\'s state; every data folder is kept'
 complete -c paritydesk -n '__paritydesk_at \'\'' -a verify -d 'Check that the app kept what the last run wrote'
 complete -c paritydesk -n '__paritydesk_at \'\'' -a version -d 'Print the version'
+complete -c paritydesk -n '__paritydesk_at \'artifacts\'' -a allow -d 'Decide about one artifact (Terminal only)'
+complete -c paritydesk -n '__paritydesk_at \'artifacts\'' -a forget -d 'Stop tracking an artifact (Terminal only)'
+complete -c paritydesk -n '__paritydesk_at \'artifacts\'' -a import-legacy -d 'Import the artifact archive of an earlier folder-swap script'
+complete -c paritydesk -n '__paritydesk_at \'artifacts\'' -a ingest -d 'Record a finished sync round now'
+complete -c paritydesk -n '__paritydesk_at \'artifacts\'' -a plan -d 'Preview what a sync on a profile would do (approximate)'
+complete -c paritydesk -n '__paritydesk_at \'artifacts\'' -a skip -d 'Stop syncing an artifact (it stays in the archive)'
+complete -c paritydesk -n '__paritydesk_at \'artifacts\'' -a status -d 'Show the artifact archive'
 complete -c paritydesk -n '__paritydesk_at \'backups\'' -a prune -d 'Apply the retention policy'
 complete -c paritydesk -n '__paritydesk_at \'backups\'' -a purge -d 'Remove every generation'
 complete -c paritydesk -n '__paritydesk_at \'config\'' -a path -d 'Print the config file path'
@@ -126,6 +144,25 @@ complete -c paritydesk -n '__paritydesk_at \'profile\'' -a remove -d 'Unregister
 complete -c paritydesk -n '__paritydesk_at \'profile\'' -a rename -d 'Rename a profile'
 
 # Flags of each command
+complete -c paritydesk -n '__paritydesk_at \'artifacts allow\'' -l capabilities -d 'sync it although it declares capabilities'
+complete -c paritydesk -n '__paritydesk_at \'artifacts allow\'' -l create -d 'create it on a profile although the title is taken there'
+complete -c paritydesk -n '__paritydesk_at \'artifacts allow\'' -l profile -x -d 'profile alias (default: the active profile)'
+complete -c paritydesk -n '__paritydesk_at \'artifacts allow\'' -l public -d 'publish to public copies (implies --shared)'
+complete -c paritydesk -n '__paritydesk_at \'artifacts allow\'' -l rehome -d 'stop tracking a copy in an organization the profile no longer uses'
+complete -c paritydesk -n '__paritydesk_at \'artifacts allow\'' -l restore -d 'create it again on a profile where it was deleted'
+complete -c paritydesk -n '__paritydesk_at \'artifacts allow\'' -l resume -d 'sync a skipped or ignored artifact again'
+complete -c paritydesk -n '__paritydesk_at \'artifacts allow\'' -l roundtrip -d 'allow publishing again after a page read back differently'
+complete -c paritydesk -n '__paritydesk_at \'artifacts allow\'' -l shared -d 'publish to copies shared with other people'
+complete -c paritydesk -n '__paritydesk_at \'artifacts allow\'' -l yes -d 'do not ask'
+complete -c paritydesk -n '__paritydesk_at \'artifacts forget\'' -l yes -d 'do not ask'
+complete -c paritydesk -n '__paritydesk_at \'artifacts import-legacy\'' -l apply -d 'import (default: dry run; Terminal only)'
+complete -c paritydesk -n '__paritydesk_at \'artifacts import-legacy\'' -l from -x -d 'absolute path of the old archive folder (required)'
+complete -c paritydesk -n '__paritydesk_at \'artifacts import-legacy\'' -l map -x -d '<account-uuid>=<alias>; may be repeated'
+complete -c paritydesk -n '__paritydesk_at \'artifacts import-legacy\'' -l yes -d 'do not ask'
+complete -c paritydesk -n '__paritydesk_at \'artifacts plan\'' -l profile -x -d 'profile alias (default: the active profile)'
+complete -c paritydesk -n '__paritydesk_at \'artifacts status\'' -l all -d 'include forgotten and ignored artifacts'
+complete -c paritydesk -n '__paritydesk_at \'artifacts status\'' -l profile -x -d 'profile alias (default: the active profile)'
+complete -c paritydesk -n '__paritydesk_at \'artifacts status\'' -l titles -d 'include titles in --json output'
 complete -c paritydesk -n '__paritydesk_at \'backups prune\'' -l older-than -x -d 'with --scratch: only sets older than this many days'
 complete -c paritydesk -n '__paritydesk_at \'backups prune\'' -l scratch -d 'remove the kept sets of scratch files removed by earlier switches (asks first)'
 complete -c paritydesk -n '__paritydesk_at \'backups prune\'' -l yes -d 'do not ask'
@@ -166,6 +203,7 @@ complete -c paritydesk -n '__paritydesk_at \'sync\'' -l allow-deletions -x -d 'a
 complete -c paritydesk -n '__paritydesk_at \'sync\'' -l json-progress -d 'NDJSON progress on stderr'
 complete -c paritydesk -n '__paritydesk_at \'sync\'' -l no-launch -d 'do not relaunch Claude'
 complete -c paritydesk -n '__paritydesk_at \'sync\'' -l yes -d 'do not ask'
+complete -c paritydesk -n '__paritydesk_at \'uninstall\'' -l keep-artifacts -d 'keep the artifact archive (saved pages and their history)'
 complete -c paritydesk -n '__paritydesk_at \'uninstall\'' -l keep-backups -d 'keep backup generations'
 complete -c paritydesk -n '__paritydesk_at \'uninstall\'' -l keep-state -d 'keep the state directory as well'
 complete -c paritydesk -n '__paritydesk_at \'uninstall\'' -l yes -d 'do not ask'
@@ -185,5 +223,5 @@ complete -c paritydesk -n '__paritydesk_at \'plan\'' -a '(command paritydesk __a
 complete -c paritydesk -n '__paritydesk_at \'profile remove\'' -a '(command paritydesk __aliases 2>/dev/null)'
 complete -c paritydesk -n '__paritydesk_at \'profile rename\'' -a '(command paritydesk __aliases 2>/dev/null)'
 complete -c paritydesk -n '__paritydesk_at \'switch\'' -a '(command paritydesk __aliases 2>/dev/null)'
-complete -c paritydesk -n '__paritydesk_at \'help\'' -a 'backups completion config doctor generations help history init log online plan profile rebase recover rollback status switch sync uninstall verify version'
+complete -c paritydesk -n '__paritydesk_at \'help\'' -a 'artifacts backups completion config doctor generations help history init log online plan profile rebase recover rollback status switch sync uninstall verify version'
 complete -c paritydesk -n '__paritydesk_at \'completion\'' -a 'bash fish zsh'

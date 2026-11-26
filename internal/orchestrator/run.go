@@ -723,6 +723,7 @@ func (r *run) preview(ctx context.Context) error {
 	}
 	r.setPlan(r.p2.Plan)
 	r.onlinePreview()
+	r.artifactsPreview()
 	return nil
 }
 

@@ -374,6 +374,50 @@ B. These steps are run by the maintainer, never by an agent.
   is not older than the change.
 
 <!-- v0.2 anchor: artifacts -->
+## Artifact sync (v0.2)
+
+Use only scratch artifacts with fictional content. Until R-AR-4 passes,
+README and CHANGELOG say "capture only (beta)" and the embedded manifest
+keeps `publish_via = "off"`; R-AR-3, R-AR-4, R-AR-6 and R-AR-7 run with a
+manifest override that sets `publish_via = "files"` (or `"version"`).
+
+- R-AR-1. Shapes: with a temporary logging hook on a scratch artifact,
+  record one raw payload of `list_artifacts` (paged), `get_artifact`,
+  `list_files`, `read_declaration`, `read_artifact`, `publish_files`
+  (PreToolUse and PostToolUse `tool_input`: is `uri` present?) and
+  `read_file` with `paths`. Note the reminder's position and first words
+  (fill `reminder_prefixes`), whether list titles are wrapped, and which
+  tool family the session offers. Confirm `[artifacts.fields]`; remove the
+  hook.
+- R-AR-2. A scratch page of about 900 KiB, once formatted and once
+  minified: the hook payload carries the whole part and the chain saves
+  it. Calibrate `read_limit_lines` and `round_bytes`.
+- R-AR-3. Round trip: create a scratch artifact on A, sync on A, switch,
+  sync on B: `artifacts status` shows `roundtrip exact`, no doubled
+  wrapper, the same title.
+- R-AR-4 (gate). Transport `files`: the outbox grant card appears and is
+  accepted, `publish_files` accepts the outbox path, one approval card per
+  publish; note whether the preview pane opens and whether the model reads
+  the file first. If the grant or path is refused, repeat with
+  `publish_via = "version"` and a page under 256 KiB. Only after one
+  transport passed may README and CHANGELOG claim publishing and the
+  embedded manifest ship that transport.
+- R-AR-5. Refusal texts: a type-made artifact, a stale `base_version`
+  (edit the copy on B between inspect and publish), a deleted artifact, a
+  public target; fill `[artifacts.refusals]`.
+- R-AR-6. Conflict: edit on both accounts; the later edit wins on both and
+  the earlier one is in history. A rename on B only reaches A.
+- R-AR-7. Delete the copy on B: reported, A's copy untouched, never
+  created again until `allow --restore`.
+- R-AR-8. A page with a declared capability is skipped until `allow
+  --capabilities` in Terminal; the same command inside Claude exits 2.
+- R-AR-9. Legacy import of a copy of an earlier archive (dry run, then
+  `--apply`); the first sync verifies the imported copies before any
+  publish.
+- R-AR-10. Change the account inside Claude without a switch, run the
+  skill: `blocked`, nothing recorded; note whether a new org line was
+  logged. Interrupt a sync, then ask Claude to publish a page of your own:
+  not denied (pause and done disarm).
 
 <!-- v0.2 anchor: legacy-adopt -->
 ## Adopting folders of an earlier script (v0.2)

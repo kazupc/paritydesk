@@ -1,0 +1,125 @@
+{
+ "chain": "art-20261126T100000Z-00000001",
+ "phase": "inventory",
+ "steps": [
+  {
+   "role": "inv_page",
+   "tool": "mcp__claude-artifacts__list_artifacts",
+   "input": {
+    "limit": 100,
+    "paged": true
+   },
+   "needs": [
+    "replica",
+    "read:r000"
+   ],
+   "data": {
+    "role": "inv_page",
+    "limit": 100,
+    "parse": {
+     "fields": {
+      "list_items": [
+       "artifacts"
+      ],
+      "mine_bool": [
+       "mine"
+      ],
+      "next_cursor": [
+       "next_cursor"
+      ],
+      "notice": [
+       "notice"
+      ],
+      "owner": [
+       "rel"
+      ],
+      "slug": [
+       "slug"
+      ],
+      "soft_deleted": [
+       "soft_deleted"
+      ],
+      "title": [
+       "title"
+      ],
+      "updated_at": [
+       "updated_at"
+      ],
+      "url": [
+       "url"
+      ],
+      "version": [
+       "version",
+       "version_id"
+      ]
+     },
+     "owner_mine": "mine",
+     "others_marker": "\u003cartifact-content-authored-by-others/\u003e",
+     "wrapper_tag_pattern": "^untrusted-document-[0-9a-f]{8,64}$",
+     "version_pattern": "^[A-Za-z0-9._:-]{1,128}$"
+    }
+   }
+  },
+  {
+   "role": "inv_page",
+   "tool": "mcp__claude-artifacts__list_artifacts",
+   "input": null,
+   "after": [
+    0
+   ],
+   "needs": [
+    "replica",
+    "read:r000"
+   ],
+   "data": {
+    "role": "inv_page",
+    "page": 1,
+    "limit": 100,
+    "parse": {
+     "fields": {
+      "list_items": [
+       "artifacts"
+      ],
+      "mine_bool": [
+       "mine"
+      ],
+      "next_cursor": [
+       "next_cursor"
+      ],
+      "notice": [
+       "notice"
+      ],
+      "owner": [
+       "rel"
+      ],
+      "slug": [
+       "slug"
+      ],
+      "soft_deleted": [
+       "soft_deleted"
+      ],
+      "title": [
+       "title"
+      ],
+      "updated_at": [
+       "updated_at"
+      ],
+      "url": [
+       "url"
+      ],
+      "version": [
+       "version",
+       "version_id"
+      ]
+     },
+     "owner_mine": "mine",
+     "others_marker": "\u003cartifact-content-authored-by-others/\u003e",
+     "wrapper_tag_pattern": "^untrusted-document-[0-9a-f]{8,64}$",
+     "version_pattern": "^[A-Za-z0-9._:-]{1,128}$"
+    }
+   },
+   "templated": true,
+   "dormant": true
+  }
+ ]
+}

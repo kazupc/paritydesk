@@ -307,6 +307,80 @@ const (
 	PinsReasonOther                   Msg = "pins.reason.other"
 
 	// v0.2 anchor: artifacts
+	ArtifactsOff                  Msg = "artifacts.off"
+	ArtifactsErrOutsideApp        Msg = "artifacts.err_outside_app"
+	ArtifactsErrTerminalOnly      Msg = "artifacts.err_terminal_only"
+	ArtifactsErrToolsMissing      Msg = "artifacts.err_tools_missing"
+	ArtifactsErrReadOnly          Msg = "artifacts.err_read_only"
+	ArtifactsErrBusy              Msg = "artifacts.err_busy"
+	ArtifactsErrManifestInvalid   Msg = "artifacts.err_manifest_invalid"
+	ArtifactsErrBlobCorrupt       Msg = "artifacts.err_blob_corrupt"
+	ArtifactsErrRoundInvalid      Msg = "artifacts.err_round_invalid"
+	ArtifactsErrNeedsYes          Msg = "artifacts.err_needs_yes"
+	ArtifactsErrUnknownPair       Msg = "artifacts.err_unknown_pair"
+	ArtifactsErrLegacyPath        Msg = "artifacts.err_legacy_path"
+	ArtifactsErrLegacyFormat      Msg = "artifacts.err_legacy_format"
+	ArtifactsReconcileFirst       Msg = "artifacts.reconcile_first"
+	ArtifactsReplicaUnknown       Msg = "artifacts.replica_unknown"
+	ArtifactsReplicaChanged       Msg = "artifacts.replica_changed"
+	ArtifactsInventoryForeign     Msg = "artifacts.inventory_foreign"
+	ArtifactsRoundsCapped         Msg = "artifacts.rounds_capped"
+	ArtifactsPaused               Msg = "artifacts.paused"
+	ArtifactsLoopCapped           Msg = "artifacts.loop_capped"
+	ArtifactsPublishUnavailable   Msg = "artifacts.publish_unavailable"
+	ArtifactsGrantDeclined        Msg = "artifacts.grant_declined"
+	ArtifactsGateClosed           Msg = "artifacts.gate_closed"
+	ArtifactsOtherOrgHint         Msg = "artifacts.other_org_hint"
+	ArtifactsForgetChainActive    Msg = "artifacts.forget_chain_active"
+	ArtifactsQHeader              Msg = "artifacts.q_header"
+	ArtifactsQText                Msg = "artifacts.q_text"
+	ArtifactsQApply               Msg = "artifacts.q_apply"
+	ArtifactsQApplyDesc           Msg = "artifacts.q_apply_desc"
+	ArtifactsQSkip                Msg = "artifacts.q_skip"
+	ArtifactsQSkipDesc            Msg = "artifacts.q_skip_desc"
+	ArtifactsDoneSummary          Msg = "artifacts.done_summary"
+	ArtifactsDoneDetails          Msg = "artifacts.done_details"
+	ArtifactsDoneDeleted          Msg = "artifacts.done_deleted"
+	ArtifactsDoneIgnored          Msg = "artifacts.done_ignored"
+	ArtifactsDoneRootBusy         Msg = "artifacts.done_root_busy"
+	ArtifactsWarnInventorySuspect Msg = "artifacts.warn_inventory_suspect"
+	ArtifactsWarnPairCollision    Msg = "artifacts.warn_pair_collision"
+	ArtifactsStatusSummary        Msg = "artifacts.status_summary"
+	ArtifactsStatusNone           Msg = "artifacts.status_none"
+	ArtifactsAskCapabilities      Msg = "artifacts.ask_capabilities"
+	ArtifactsAskShared            Msg = "artifacts.ask_shared"
+	ArtifactsAskRoundtrip         Msg = "artifacts.ask_roundtrip"
+	ArtifactsAskForget            Msg = "artifacts.ask_forget"
+	ArtifactsAskRehome            Msg = "artifacts.ask_rehome"
+	ArtifactsAskRestore           Msg = "artifacts.ask_restore"
+	ArtifactsAskCreate            Msg = "artifacts.ask_create"
+	ArtifactsAskResume            Msg = "artifacts.ask_resume"
+	ArtifactsAskImport            Msg = "artifacts.ask_import"
+	ArtifactsAllowed              Msg = "artifacts.allowed"
+	ArtifactsSkippedPair          Msg = "artifacts.skipped_pair"
+	ArtifactsForgotten            Msg = "artifacts.forgotten"
+	ArtifactsIngested             Msg = "artifacts.ingested"
+	ArtifactsNothingToIngest      Msg = "artifacts.nothing_to_ingest"
+	ArtifactsImportSummary        Msg = "artifacts.import_summary"
+	ArtifactsImportMapHint        Msg = "artifacts.import_map_hint"
+	ArtifactsImportChainActive    Msg = "artifacts.import_chain_active"
+	ArtifactsImportApplied        Msg = "artifacts.import_applied"
+	OnlineArtifactsNext           Msg = "online.artifacts_next"
+	PlanArtifactsDue              Msg = "plan.artifacts_due"
+	PlanArtifactsUnsynced         Msg = "plan.artifacts_unsynced"
+	HookArtifactsDue              Msg = "hook.artifacts_due"
+	DoctorArtifactsOK             Msg = "doctor.artifacts_ok"
+	DoctorArtifactsBad            Msg = "doctor.artifacts_bad"
+	DoctorArtifactsOff            Msg = "doctor.artifacts_off"
+	ArtifactsOffReconcile         Msg = "artifacts.off_reconcile"
+	ArtifactsPlanSummary          Msg = "artifacts.plan_summary"
+	ArtifactsNoTitle              Msg = "artifacts.no_title"
+	ArtifactsRenameFailed         Msg = "artifacts.rename_failed"
+	DoctorArtifactsUnreadable     Msg = "doctor.artifacts_manifest_unreadable"
+	DoctorArtifactsInvalid        Msg = "doctor.artifacts_manifest_invalid"
+	DoctorArtifactsBlobsMissing   Msg = "doctor.artifacts_blobs_missing"
+	DoctorArtifactsGrantEachSync  Msg = "doctor.artifacts_publishing_grant"
+	DoctorArtifactsCaptureOnly    Msg = "doctor.artifacts_publishing_off"
 
 	// v0.2 anchor: legacy-adopt
 	LegacyHeaderDry                  Msg = "legacy.header.dry"
@@ -715,6 +789,80 @@ var catalog = map[Msg]string{
 	PinsReasonOther:                   "it could not be read",
 
 	// v0.2 anchor: artifacts
+	ArtifactsOff:                  "Artifact sync is off (sync.artifacts in the config, or not supported on this Claude version).",
+	ArtifactsErrOutsideApp:        "Artifact sync runs inside Claude: use /paritydesk:artifacts in a Code session.",
+	ArtifactsErrTerminalOnly:      "Run this in Terminal: decisions about artifacts are not taken inside Claude.",
+	ArtifactsErrToolsMissing:      "This Claude session does not offer the artifact tools paritydesk uses, so nothing was synced. Try a new Code session; see paritydesk doctor.",
+	ArtifactsErrReadOnly:          "Read-only mode: the artifact archive is not changed.",
+	ArtifactsErrBusy:              "Another paritydesk command is updating the artifact archive. Try again in a moment.",
+	ArtifactsErrManifestInvalid:   "The artifact archive's manifest is not valid, so nothing was changed. Its previous copies are next to it (manifest.prev-*.json).",
+	ArtifactsErrBlobCorrupt:       "A file in the artifact archive does not match its checksum, so nothing was changed. Run paritydesk doctor.",
+	ArtifactsErrRoundInvalid:      "paritydesk could not build the next artifact step, so nothing more was done. Run /paritydesk:artifacts again; if it repeats, see paritydesk doctor.",
+	ArtifactsErrNeedsYes:          "This needs a confirmation. Run it in Terminal and answer the question.",
+	ArtifactsErrUnknownPair:       "No artifact with that id or slug is in the archive. paritydesk artifacts status lists them.",
+	ArtifactsErrLegacyPath:        "The folder to import must be an absolute path to a real folder outside paritydesk's and Claude's own folders.",
+	ArtifactsErrLegacyFormat:      "The folder holds no artifact manifest this version can read (formats 1 and 2).",
+	ArtifactsReconcileFirst:       "paritydesk has other changes waiting for this profile. Run /paritydesk:reconcile first, then /paritydesk:artifacts.",
+	ArtifactsReplicaUnknown:       "paritydesk cannot tell from Claude's log which account Claude is using now, so nothing was synced. Quit and reopen Claude, then run /paritydesk:artifacts again.",
+	ArtifactsReplicaChanged:       "Claude is not on the account this sync started with, so it stopped and nothing more was recorded. Run /paritydesk:artifacts again on the right account.",
+	ArtifactsInventoryForeign:     "The artifact list did not come from this profile's account, so nothing was recorded. Check that Claude is on the right account, then try again.",
+	ArtifactsRoundsCapped:         "Artifact sync stopped after its round limit; run /paritydesk:artifacts again to continue.",
+	ArtifactsPaused:               "Artifact sync paused; nothing is held in this session. Run /paritydesk:artifacts again to continue where it stopped.",
+	ArtifactsLoopCapped:           "Artifact sync is not finished yet. Run /paritydesk:artifacts again to continue where it stopped.",
+	ArtifactsPublishUnavailable:   "Claude did not accept paritydesk's file for publishing, so nothing was published. Artifacts are still saved; see paritydesk doctor.",
+	ArtifactsGrantDeclined:        "Publishing needs access to paritydesk's outbox folder, which was not granted, so nothing was published this time. Artifacts are still saved.",
+	ArtifactsGateClosed:           "A published page read back differently from the archive, so publishing is paused for this Claude version. The archive and every copy are unchanged since then; see paritydesk artifacts status.",
+	ArtifactsOtherOrgHint:         "Some copies belong to another organization of this profile. To publish there again, run paritydesk artifacts allow <id> --rehome --profile <name> in Terminal.",
+	ArtifactsForgetChainActive:    "This artifact is part of a sync that is running; try again after it finished.",
+	ArtifactsQHeader:              "Artifacts",
+	ArtifactsQText:                "To match the other profiles, paritydesk will publish %d update(s) and %d new artifact(s) on %s; %d of them replace a change made here (kept in paritydesk's history). Claude will ask you to allow access to paritydesk's outbox folder and to approve each publish, and may open each page. Declining a card skips that artifact this time.",
+	ArtifactsQApply:               "Publish",
+	ArtifactsQApplyDesc:           "Publish from paritydesk's archive; new copies stay private",
+	ArtifactsQSkip:                "Not now",
+	ArtifactsQSkipDesc:            "Nothing is published; the next sync offers this again",
+	ArtifactsDoneSummary:          "Artifacts on %s: %d saved, %d published (%d new), %d conflict(s) (newer kept, older in history), %d skipped.",
+	ArtifactsDoneDetails:          "For titles and details run paritydesk artifacts status in Terminal.",
+	ArtifactsDoneDeleted:          "%d artifact(s) were deleted on %s; the other profiles keep theirs. paritydesk never deletes artifacts.",
+	ArtifactsDoneIgnored:          "%d artifact(s) cannot be synced (several files, a type, a live document, capabilities or another author); they are checked again when they change.",
+	ArtifactsDoneRootBusy:         "paritydesk is busy with another run; it closes this sync's record with the next paritydesk command.",
+	ArtifactsWarnInventorySuspect: "Unusually many artifacts look deleted on %s, so none was recorded as deleted this time.",
+	ArtifactsWarnPairCollision:    "An artifact could not be added to the archive (id collision); it is skipped.",
+	ArtifactsStatusSummary:        "%d artifact(s): %d in step, %d to publish, %d deleted somewhere, %d skipped, %d cannot be synced.",
+	ArtifactsStatusNone:           "No artifacts are in paritydesk's archive yet. Run /paritydesk:artifacts in a Code session to save them.",
+	ArtifactsAskCapabilities:      "This artifact declares capabilities (%s). Its page is copied without them: on the other profile it may not work until you declare them there. Sync it anyway?",
+	ArtifactsAskShared:            "Copies of this artifact are shared with other people. Publishing changes what they see. Allow?",
+	ArtifactsAskRoundtrip:         "Publishing was paused because a page read back differently. Allow publishing again for this Claude version?",
+	ArtifactsAskForget:            "Stop tracking this artifact? Its archived versions stay on this Mac; nothing changes in any account.",
+	ArtifactsAskRehome:            "The copy on %s belongs to an organization this profile no longer uses. Stop tracking it and create a new copy on the next sync?",
+	ArtifactsAskRestore:           "The copy on %s was deleted there. Create a new copy on the next sync?",
+	ArtifactsAskCreate:            "Create a new copy on %s on the next sync, even though an artifact with the same title may be there?",
+	ArtifactsAskResume:            "Sync this artifact again?",
+	ArtifactsAskImport:            "Import these artifacts into paritydesk's archive? The old folder is not changed.",
+	ArtifactsAllowed:              "Recorded. The next /paritydesk:artifacts uses it.",
+	ArtifactsSkippedPair:          "paritydesk no longer syncs this artifact. Its archived versions are kept.",
+	ArtifactsForgotten:            "paritydesk no longer tracks this artifact. Its archived versions stay on this Mac.",
+	ArtifactsIngested:             "The last round of the artifact sync is in the archive.",
+	ArtifactsNothingToIngest:      "No finished artifact round is waiting to be recorded.",
+	ArtifactsImportSummary:        "%d artifact(s) found; %d can be imported (%d without content, read on the next sync).",
+	ArtifactsImportMapHint:        "%d account(s) in the old archive match no profile's current account; use --map <account>=<alias> to import their copies.",
+	ArtifactsImportChainActive:    "An artifact sync is running; import after it finished.",
+	ArtifactsImportApplied:        "Imported %d artifact(s) into paritydesk's archive. The old folder was not changed.",
+	OnlineArtifactsNext:           "Some artifacts from another profile are not on this account yet: run /paritydesk:artifacts to publish them.",
+	PlanArtifactsDue:              "  artifacts     %d to publish on %s (run /paritydesk:artifacts after the switch)",
+	PlanArtifactsUnsynced:         "  artifacts     %s was not checked since it became active (run /paritydesk:artifacts first to carry its edits)",
+	HookArtifactsDue:              "paritydesk: some artifacts from another profile are not on this account yet. Tell the user and offer to run /paritydesk:artifacts.",
+	DoctorArtifactsOK:             "Artifacts: archive readable (%d artifact(s)), publishing %s",
+	DoctorArtifactsBad:            "Artifacts: archive problem: %s",
+	DoctorArtifactsOff:            "Artifacts: not synced (turned off, or not supported on this Claude version)",
+	ArtifactsOffReconcile:         "Artifact sync is off because paritydesk's online layer is off (online.reconcile = \"off\" in the config).",
+	ArtifactsPlanSummary:          "read %d, publish %d, create %d, deleted %d, skipped %d, new here %d",
+	ArtifactsNoTitle:              "(no title)",
+	ArtifactsRenameFailed:         "the artifact archive could not record the new profile name; run paritydesk artifacts status",
+	DoctorArtifactsUnreadable:     "manifest.json cannot be read",
+	DoctorArtifactsInvalid:        "manifest.json is not valid",
+	DoctorArtifactsBlobsMissing:   "%d archived page(s) are missing",
+	DoctorArtifactsGrantEachSync:  "available (grant needed each sync)",
+	DoctorArtifactsCaptureOnly:    "off (capture only)",
 
 	// v0.2 anchor: legacy-adopt
 	LegacyHeaderDry:                  "Folders next to Claude (dry run; nothing is changed):",

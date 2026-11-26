@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/kazupc/paritydesk/internal/artifacts"
 	"github.com/kazupc/paritydesk/internal/config"
 	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
@@ -30,7 +31,8 @@ type uninstallView struct {
 // touched, and nothing is removed while a run is open or the run lock is
 // held elsewhere. When no profile is active it prints the single mv that makes a
 // parked profile active again. State is removed unless --keep-state;
-// backups are kept unless --keep-backups=false; the config file is kept.
+// backups are kept unless --keep-backups=false, and so is the artifact
+// archive unless --keep-artifacts=false; the config file is kept.
 func runUninstall(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 	if err := e.refuseReadOnly("uninstall"); err != nil {
 		return err
@@ -70,18 +72,24 @@ func runUninstall(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) err
 		v.Warnings = append(v.Warnings, i18n.T(i18n.UninstallNoStatus))
 	}
 
+	// fixed marks the folders paritydesk owns by their exact place under
+	// the support directory (online queue, artifact archive): they are
+	// removed whatever they hold. Every other folder must pass ownedDir,
+	// so a mistyped --state-dir cannot remove a user's own folder.
 	type target struct {
-		path string
-		keep bool
+		path  string
+		keep  bool
+		fixed bool
 	}
 	targets := []target{
-		{filepath.Join(paths.SupportDir, HookBinaryFile), false},
-		{filepath.Join(paths.SupportDir, online.DirName), false},
-		{paths.RunDir, false},
-		{filepath.Join(paths.SupportDir, "locks"), false},
-		{paths.StateDir, getBool(fs, "keep-state")},
-		{paths.GenDir, getBool(fs, "keep-backups")},
-		{paths.LogDir, getBool(fs, "keep-state")},
+		{filepath.Join(paths.SupportDir, HookBinaryFile), false, false},
+		{filepath.Join(paths.SupportDir, online.DirName), false, true},
+		{paths.RunDir, false, false},
+		{filepath.Join(paths.SupportDir, "locks"), false, false},
+		{paths.StateDir, getBool(fs, "keep-state"), false},
+		{paths.GenDir, getBool(fs, "keep-backups"), false},
+		{filepath.Join(paths.SupportDir, artifacts.DirName), getBool(fs, "keep-artifacts"), true},
+		{paths.LogDir, getBool(fs, "keep-state"), false},
 	}
 	for _, t := range targets {
 		if _, err := os.Lstat(t.path); err != nil {
@@ -91,7 +99,7 @@ func runUninstall(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) err
 			v.Kept = append(v.Kept, t.path)
 			continue
 		}
-		if err := removeOwned(t.path); err != nil {
+		if err := removeOwned(t.path, t.fixed); err != nil {
 			return err
 		}
 		v.Removed = append(v.Removed, t.path)
@@ -162,7 +170,10 @@ var errNotOwned = errors.New("cli: refusing to remove a directory paritydesk doe
 // removeOwned removes one of paritydesk's own files or directories after
 // checkRemovable. A state directory named by --state-dir must hold
 // root.json, or be empty, so a mistyped flag cannot remove anything else.
-func removeOwned(p string) error {
+// fixed is true only for a folder at its exact place under the support
+// directory (never one a flag or variable names): it is paritydesk's by
+// where it is, not by its name.
+func removeOwned(p string, fixed bool) error {
 	if err := checkRemovable(p); err != nil {
 		return err
 	}
@@ -173,7 +184,7 @@ func removeOwned(p string) error {
 	if fi.Mode()&os.ModeSymlink != 0 {
 		return os.Remove(p)
 	}
-	if fi.IsDir() && !ownedDir(p) {
+	if fi.IsDir() && !fixed && !ownedDir(p) {
 		return errNotOwned
 	}
 	return os.RemoveAll(p)

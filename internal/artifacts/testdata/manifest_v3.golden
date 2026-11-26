@@ -1,0 +1,93 @@
+{
+ "v": 3,
+ "seq": 17,
+ "updated_at": "2026-11-26T10:20:00Z",
+ "gate": {
+  "roundtrip": "exact",
+  "class": "",
+  "app_version": "7.37095.0",
+  "at": "2026-11-26T10:20:00Z"
+ },
+ "profiles": {
+  "home": {
+   "replica": {
+    "account": "00000000-0000-4000-8000-000000000001",
+    "org": "00000000-0000-4000-8000-000000000002"
+   },
+   "last_inventory_at": "2026-11-26T10:20:00Z",
+   "last_sync_at": "2026-11-26T10:20:00Z",
+   "last_sync_epoch": 12
+  }
+ },
+ "pairs": {
+  "8ab6351216838d1c": {
+   "title": "Quarterly notes",
+   "title_sha": "6cde19940bfd15af60cd6d32e6336ea717bd0736c4cdeb8f18c82d381c6e7830",
+   "title_changed_at": "2026-11-26T10:20:00Z",
+   "created_at": "2026-11-26T10:20:00Z",
+   "content": {
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "bytes": 52311,
+    "lines": 812,
+    "saved_at": "2026-11-26T10:20:00Z",
+    "source_profile": "work",
+    "source_version": "1700000000-0000a",
+    "changed_at": "2026-11-26T10:20:00Z",
+    "icon": "notes"
+   },
+   "copies": {
+    "work": {
+     "replica": {
+      "account": "00000000-0000-4000-8000-000000000003",
+      "org": "00000000-0000-4000-8000-000000000004"
+     },
+     "slug": "00000000-0000-4000-8000-000000000010",
+     "url": "https://claude.ai/artifact/00000000-0000-4000-8000-000000000010",
+     "state": "live",
+     "origin": "recorded",
+     "read": "owner",
+     "synced_version": "1700000000-0000a",
+     "synced_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "seen_version": "1700000000-0000a",
+     "seen_title_sha": "6cde19940bfd15af60cd6d32e6336ea717bd0736c4cdeb8f18c82d381c6e7830",
+     "seen_at": "2026-11-26T10:20:00Z"
+    }
+   },
+   "history": [
+    {
+     "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "title": "Quarterly notes (old)",
+     "saved_at": "2026-11-26T10:20:00Z",
+     "source_profile": "home",
+     "source_version": "1700000000-0000b",
+     "reason": "conflict_lost"
+    }
+   ],
+   "flags": {
+    "skipped": "",
+    "multi_file": false,
+    "type_made": false,
+    "live_doc": false,
+    "co_authored": false,
+    "capabilities": {
+     "state": "none",
+     "digest": "",
+     "names": [],
+     "allowed_digest": ""
+    },
+    "allow_shared": false,
+    "allow_public": false,
+    "allow_create": [],
+    "restore": []
+   }
+  }
+ },
+ "ignored": {
+  "00000000-0000-4000-8000-000000000011": {
+   "alias": "home",
+   "reason": "multi_file",
+   "version": "1700000000-0000c",
+   "at": "2026-11-26T10:20:00Z"
+  }
+ }
+}

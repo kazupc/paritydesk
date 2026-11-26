@@ -12,6 +12,7 @@ import (
 
 	"github.com/kazupc/paritydesk/internal/app"
 	"github.com/kazupc/paritydesk/internal/apply"
+	"github.com/kazupc/paritydesk/internal/artifacts"
 	"github.com/kazupc/paritydesk/internal/clock"
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/config"
@@ -20,6 +21,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/gen"
 	"github.com/kazupc/paritydesk/internal/hook"
 	"github.com/kazupc/paritydesk/internal/ids"
+	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/online"
 	"github.com/kazupc/paritydesk/internal/orchestrator"
 	"github.com/kazupc/paritydesk/internal/plan"
@@ -152,9 +154,17 @@ func buildDeps(ctx context.Context, g *globalFlags, in wireInput) (orchestrator.
 	}
 	isApp := locatedIsApp(plat, cfg.App.BundleID)
 	var ol orchestrator.Online
+	var osvc *online.Service
 	if cfg.Online.Reconcile != config.OnlineReconcileOff {
-		ol = onlineService(in.Paths.SupportDir, ops, cfg, compat.OnlineSpec{})
+		osvc = onlineService(in.Paths.SupportDir, ops, cfg, compat.OnlineSpec{})
+		ol = osvc
 	}
+	// The archive view is always wired: profile rename and remove keep the
+	// archive's aliases right even while artifact sync is off (an archive
+	// left under an old alias would make every later sync stop as
+	// foreign). Plan lines, due.json and the doctor check are gated on
+	// artifact sync being on (orchestrator.artifactsActive).
+	art := archiveView(in.Paths.SupportDir, ops, cfg, osvc, dataRoot, readOnly, manifests, plat)
 	exec := in.Exec
 	if exec == nil {
 		exec = app.ExecRunner{}
@@ -188,13 +198,67 @@ func buildDeps(ctx context.Context, g *globalFlags, in wireInput) (orchestrator.
 		Worktrees: worktrees.Guard{},
 		Detach: runner.Detacher{RunDir: in.Paths.RunDir, LogDir: in.Paths.LogDir, Binary: in.Executable,
 			UID: os.Getuid(), Launchd: runner.NewLaunchd(exec), Procs: plat.Procs, IsApp: isApp},
-		Plans:    runner.PlanStore{Dir: in.Paths.RunDir},
-		UI:       in.UI,
-		Crash:    flt.crash,
-		Online:   ol,
-		ReadOnly: readOnly,
+		Plans:     runner.PlanStore{Dir: in.Paths.RunDir},
+		UI:        in.UI,
+		Crash:     flt.crash,
+		Online:    ol,
+		Artifacts: art,
+		ReadOnly:  readOnly,
 	}, nil
 }
+
+// archiveView is the orchestrator's view of the artifact archive (plan
+// lines, due.json at P10, profile rename and remove, doctor). The
+// installed Claude's [artifacts] table and version are looked up once,
+// on first use.
+func archiveView(supportDir string, ops fsx.Ops, cfg *config.Config, osvc *online.Service, dataRoot string, readOnly bool,
+	manifests []*compat.Manifest, plat *app.Platform) *lazyArchive {
+	return &lazyArchive{build: func() *artifacts.Service {
+		arch := artifacts.NewArchive(supportDir, ops, compat.ArtifactsSpec{})
+		arch.Lock = artifactsLocker(supportDir)
+		svc := &artifacts.Service{Archive: arch, Online: osvc, Config: cfg, ReadOnly: readOnly, Clock: clock.System{},
+			SupportDir: supportDir, DataRoot: dataRoot}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if b, err := plat.Locate(ctx, cfg.App.BundleID); err == nil {
+			if m, _, err := (compat.Gate{Manifests: manifests}).Manifest(ctx, b.Version); err == nil && m != nil {
+				svc.Spec, svc.OnlineSpec, svc.AppVersion = m.Artifacts, m.Online, b.Version
+				arch.Spec = m.Artifacts
+			}
+		}
+		return svc
+	}}
+}
+
+// lazyArchive builds the archive view on first use, so commands that
+// never touch artifacts do not look up the installed Claude for it.
+type lazyArchive struct {
+	once  sync.Once
+	build func() *artifacts.Service
+	svc   *artifacts.Service
+}
+
+func (l *lazyArchive) get() *artifacts.Service {
+	l.once.Do(func() { l.svc = l.build() })
+	return l.svc
+}
+
+func (l *lazyArchive) Due(a ids.Alias, rep model.Replica) (int, error) { return l.get().Due(a, rep) }
+func (l *lazyArchive) LastSyncEpoch(a ids.Alias) (uint64, bool, error) {
+	return l.get().LastSyncEpoch(a)
+}
+func (l *lazyArchive) WriteDue(ctx context.Context, a ids.Alias, rep model.Replica, epoch uint64) error {
+	return l.get().WriteDue(ctx, a, rep, epoch)
+}
+func (l *lazyArchive) RenameProfile(ctx context.Context, from, to ids.Alias) error {
+	return l.get().RenameProfile(ctx, from, to)
+}
+func (l *lazyArchive) RemoveProfile(ctx context.Context, a ids.Alias) error {
+	return l.get().RemoveProfile(ctx, a)
+}
+
+// Doctor is the doctor view (orchestrator's artifactsDoctor).
+func (l *lazyArchive) Doctor() (int, string, error) { return l.get().Doctor() }
 
 // onlineService returns the online layer over <supportDir>/online, with
 // the online lock in <supportDir>/locks and the built-in providers
@@ -205,7 +269,16 @@ func onlineService(supportDir string, ops fsx.Ops, cfg *config.Config, spec comp
 	store := online.NewStore(supportDir, ops)
 	store.Lock = onlineLocker(supportDir)
 	return &online.Service{Store: store, Config: cfg.Online, Clock: clock.System{}, Mono: online.SystemMono{},
-		Providers: online.Registry(), Settings: online.NewSettings(spec, cfg.Online)}
+		Providers: onlineRegistry(compat.ArtifactsSpec{}), Settings: online.NewSettings(spec, cfg.Online)}
+}
+
+// onlineRegistry is the online layer's provider registry: the built-in
+// providers and, appended (A10), the artifacts provider in its guard
+// form (every artifact transport's tools are declared, so a queue of
+// either transport validates; calls still pass only as exact offered
+// steps). In a switch's P5 Build it yields no steps.
+func onlineRegistry(spec compat.ArtifactsSpec) []online.Provider {
+	return append(online.Registry(), artifacts.Provider{Spec: spec, Guard: true})
 }
 
 // onlineLocker takes <supportDir>/locks/online.lock (flock), never the
@@ -254,7 +327,7 @@ func realToolDeps(_ context.Context, e *env) (hook.ToolDeps, error) {
 	dir := filepath.Join(sd, online.DirName)
 	store := online.NewStore(sd, online.CreateOnly(fsx.Default(), dir))
 	return hook.ToolDeps{Store: store, Mode: online.GuardMode(cfg.Online.Guard), Mono: online.SystemMono{},
-		Clock: clock.System{}, Providers: online.Registry()}, nil
+		Clock: clock.System{}, Providers: onlineRegistry(compat.ArtifactsSpec{})}, nil
 }
 
 // realOnline builds the `online` commands' environment: config, a
@@ -295,6 +368,7 @@ func realOnline(ctx context.Context, e *env) (*onlineEnv, error) {
 			if ms, merr := compat.Load(filepath.Join(paths.SupportDir, "compat.d")); merr == nil {
 				if m, _, serr := (compat.Gate{Manifests: ms}).Manifest(lctx, b.Version); serr == nil && m != nil {
 					o.spec, sig = m.Online, m.Signals
+					o.art, o.appVersion = m.Artifacts, b.Version
 				}
 			}
 		}
@@ -313,7 +387,9 @@ func realOnline(ctx context.Context, e *env) (*onlineEnv, error) {
 			return org, ok && err == nil
 		}
 	}
+	o.dataRoot = dataRoot
 	o.svc = onlineService(paths.SupportDir, ops, cfg, o.spec)
+	o.svc.Providers = onlineRegistry(o.art)
 	return o, nil
 }
 
@@ -380,6 +456,18 @@ func holderCheck(plat *app.Platform) apply.HolderCheck {
 	}
 }
 
+// artifactsDueReader reads the artifact archive's due.json (at most 4
+// KiB, read-only; malformed or oversized means none).
+func artifactsDueReader(supportDir string) func() (hook.ArtifactsDue, bool) {
+	return func() (hook.ArtifactsDue, bool) {
+		d := artifacts.NewArchive(supportDir, fsx.ReadOnly(fsx.Default()), compat.ArtifactsSpec{}).LoadDue()
+		if d == nil {
+			return hook.ArtifactsDue{}, false
+		}
+		return hook.ArtifactsDue{Seq: d.Seq, Profile: string(d.Profile), Epoch: d.Epoch, Count: d.Count}, true
+	}
+}
+
 // hookTimeout bounds the SessionStart hook (the plugin allows 5 s).
 const hookTimeout = 3 * time.Second
 
@@ -404,10 +492,12 @@ func realHookDeps(_ context.Context, e *env, pluginVersion string) (hook.Deps, e
 	if err != nil {
 		return hook.Deps{}, err
 	}
-	d := hook.Deps{State: st, PluginVersion: pluginVersion, BinaryVersion: versionString(), Mode: cfg.Online.Reconcile}
+	d := hook.Deps{State: st, PluginVersion: pluginVersion, BinaryVersion: versionString(), Mode: cfg.Online.Reconcile,
+		ArtifactsOn: cfg.Sync.Artifacts}
 	if paths.SupportDir == defaultSupportDir(home) {
 		dir := filepath.Join(paths.SupportDir, online.DirName)
 		d.Online = online.NewStore(paths.SupportDir, online.CreateOnly(fsx.Default(), dir))
+		d.ArtifactsDue = artifactsDueReader(paths.SupportDir)
 	}
 	plat, err := app.NewDarwin(app.DarwinConfig{Home: home, BundleID: cfg.App.BundleID, OpenFileScan: app.ScanMode(cfg.App.OpenFileScan)})
 	if err != nil {

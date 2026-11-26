@@ -1,0 +1,22 @@
+usage: paritydesk artifacts <status|plan|ingest|allow|skip|forget|import-legacy>
+
+Keep claude.ai artifacts the same on every profile (beta)
+
+commands:
+  allow        Decide about one artifact (Terminal only)
+  forget       Stop tracking an artifact (Terminal only)
+  import-legacy Import the artifact archive of an earlier folder-swap script
+  ingest       Record a finished sync round now
+  plan         Preview what a sync on a profile would do (approximate)
+  skip         Stop syncing an artifact (it stays in the archive)
+  status       Show the artifact archive
+
+global flags:
+  --app-support-dir string     paritydesk support directory
+  --ascii                      ASCII only
+  --config string              config file (also PARITYDESK_CONFIG)
+  --json                       print one JSON document
+  --no-color                   no colour (also NO_COLOR, TERM=dumb)
+  --plain                      plain lines, no tables or spinners
+  --read-only                  plan only; never write (also PARITYDESK_READONLY=1)
+  --state-dir string           state directory (also PARITYDESK_STATE_DIR)

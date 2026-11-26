@@ -158,6 +158,34 @@ func TestBuildDepsValidatesConfig(t *testing.T) {
 	}
 }
 
+// TestBuildDepsWiresArchiveWhenSyncOff: profile rename and remove keep
+// the artifact archive's aliases right even while artifact sync or the
+// online layer is off, so the archive view is always wired.
+func TestBuildDepsWiresArchiveWhenSyncOff(t *testing.T) {
+	for name, body := range map[string]string{
+		"sync.artifacts off":   "version = 1\n[sync]\nartifacts = false\n",
+		"online.reconcile off": "version = 1\n[online]\nreconcile = \"off\"\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			in := wireFor(home, true, &refusingRunner{})
+			if err := os.MkdirAll(filepath.Dir(in.Paths.ConfigFile), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(in.Paths.ConfigFile, []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			d, err := buildDeps(context.Background(), &globalFlags{}, in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if d.Artifacts == nil {
+				t.Fatal("archive view not wired")
+			}
+		})
+	}
+}
+
 // TestBuildDepsFaults: buildDeps wires PARITYDESK_FAULT and refuses the
 // pause fault for the real app's bundle id even with the e2e marker set.
 func TestBuildDepsFaults(t *testing.T) {

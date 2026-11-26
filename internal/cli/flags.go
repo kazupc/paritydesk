@@ -46,6 +46,9 @@ func parseCategories(flagName, s string) ([]model.Category, error) {
 	var out []model.Category
 	for _, part := range strings.Split(s, ",") {
 		c := model.Category(strings.TrimSpace(part))
+		if c == model.CatArtifacts {
+			return nil, usageErrorf("--%s: artifacts are synced by /paritydesk:artifacts, not by switch", flagName)
+		}
 		if !slices.Contains(model.AllCategories, c) {
 			return nil, usageErrorf("--%s: unknown category %q (one of %s)", flagName, string(c), strings.Join(categoryNames(), ","))
 		}

@@ -1,0 +1,118 @@
+{
+ "chain": "art-20261126T100000Z-00000001",
+ "phase": "publish",
+ "steps": [
+  {
+   "role": "grant",
+   "tool": "mcp__ccd_directory__request_directory",
+   "input": {
+    "path": "/SUPPORT/artifacts/outbox"
+   },
+   "needs": [
+    "replica",
+    "read:r000",
+    "decision:artifacts_publish"
+   ],
+   "data": {
+    "role": "grant",
+    "parse": {
+     "others_marker": "\u003cartifact-content-authored-by-others/\u003e",
+     "version_pattern": "^[A-Za-z0-9._:-]{1,128}$"
+    }
+   }
+  },
+  {
+   "role": "update",
+   "pair": "8ab6351216838d1c",
+   "slug": "00000000-0000-4000-8000-000000000010",
+   "tool": "mcp__claude-artifacts__publish_files",
+   "input": {
+    "base_version": "1700000000-0000a",
+    "files": [
+     {
+      "as": "index.html",
+      "path": "/SUPPORT/artifacts/outbox/dc4f0ee3f3eb9c711aa33bf18aaabf87df20b19a1d46513f2623bead679b7e6d.html"
+     }
+    ],
+    "slug": "00000000-0000-4000-8000-000000000010",
+    "title": "Notes"
+   },
+   "after": [
+    0
+   ],
+   "needs": [
+    "replica",
+    "read:r000",
+    "decision:artifacts_publish"
+   ],
+   "data": {
+    "role": "update",
+    "pair": "8ab6351216838d1c",
+    "slug": "00000000-0000-4000-8000-000000000010",
+    "blob_sha": "dc4f0ee3f3eb9c711aa33bf18aaabf87df20b19a1d46513f2623bead679b7e6d",
+    "title": true,
+    "parse": {
+     "fields": {
+      "slug": [
+       "slug"
+      ],
+      "url": [
+       "url"
+      ],
+      "version": [
+       "version",
+       "version_id"
+      ]
+     },
+     "others_marker": "\u003cartifact-content-authored-by-others/\u003e",
+     "version_pattern": "^[A-Za-z0-9._:-]{1,128}$"
+    }
+   }
+  },
+  {
+   "role": "create",
+   "pair": "ba66c3370afdd54f",
+   "tool": "mcp__claude-artifacts__publish_files",
+   "input": {
+    "files": [
+     {
+      "as": "index.html",
+      "path": "/SUPPORT/artifacts/outbox/039334f4e11bb6e2c58febdc0351b8a6e3420c77d52ebe95ea5c70f6dd5115cd.html"
+     }
+    ],
+    "icon": "page",
+    "title": "Other"
+   },
+   "after": [
+    0
+   ],
+   "needs": [
+    "replica",
+    "read:r000",
+    "decision:artifacts_publish"
+   ],
+   "data": {
+    "role": "create",
+    "pair": "ba66c3370afdd54f",
+    "blob_sha": "039334f4e11bb6e2c58febdc0351b8a6e3420c77d52ebe95ea5c70f6dd5115cd",
+    "title": true,
+    "parse": {
+     "fields": {
+      "slug": [
+       "slug"
+      ],
+      "url": [
+       "url"
+      ],
+      "version": [
+       "version",
+       "version_id"
+      ]
+     },
+     "others_marker": "\u003cartifact-content-authored-by-others/\u003e",
+     "version_pattern": "^[A-Za-z0-9._:-]{1,128}$"
+    }
+   }
+  }
+ ]
+}

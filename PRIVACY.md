@@ -151,6 +151,15 @@ every other entry the compatibility manifest marks as never touched.
   doctor and plan lines print counts, never ids.
 
 <!-- v0.2 anchor: artifacts -->
+**Artifacts** (only when you run `/paritydesk:artifacts`): paritydesk
+keeps the pages of your own claude.ai artifacts in
+`<SupportDir>/artifacts` (folders 0700, files 0600): page content and
+older versions, titles in the manifest, artifact ids and their URLs per
+profile. Inventories keep only a hash of each title. Pages another person
+wrote to are never saved. Nothing in the archive leaves the Mac;
+`paritydesk doctor --bundle` includes only counts. `paritydesk uninstall`
+keeps the archive unless `--keep-artifacts=false`; `paritydesk artifacts
+forget` stops tracking an artifact but keeps its saved versions.
 
 <!-- v0.2 anchor: legacy-adopt -->
 - **Adopting folders of an earlier script** (`profile adopt

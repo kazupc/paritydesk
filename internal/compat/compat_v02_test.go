@@ -225,8 +225,10 @@ func TestEmbeddedManifestsLoadWithV02Anchors(t *testing.T) {
 		if m.Online.Enabled != (m.Name == "7.x") {
 			t.Errorf("%s: online.enabled = %v", m.Name, m.Online.Enabled)
 		}
-		if m.Artifacts.Enabled {
-			t.Errorf("%s: v0.2 tables present before their units", m.Name)
+		// Artifact sync is on for 7.x only, and ships capture only
+		// (publish_via = "off") until release step R-AR-4 passes.
+		if m.Artifacts.Enabled != (m.Name == "7.x") || (m.Artifacts.Enabled && m.Artifacts.PublishVia != "off") {
+			t.Errorf("%s: artifacts enabled = %v, publish_via %q", m.Name, m.Artifacts.Enabled, m.Artifacts.PublishVia)
 		}
 		if len(m.Legacy.ScopedDirs) != 4 || len(m.Legacy.Stubs) != 1 {
 			t.Errorf("%s: [legacy] layouts missing: %+v", m.Name, m.Legacy)
@@ -250,7 +252,11 @@ func TestOverrideWithV02TablesDecodes(t *testing.T) {
 	// ... and its pins row (write_path = "none") is replaced by the
 	// sample's.
 	base = strings.Replace(base, "[[row]]\nrow = \"pins\"\n# Where 6.x keeps pins is not verified: not carried in this version.\nwrite_path = \"none\"\n", "", 1)
-	writeOverride(t, dir, "override.toml", base+v02Tables)
+	// ... and its [artifacts] table (enabled = false) by the sample's,
+	// which an override of 6.x may not enable (spec-artifacts 11.3).
+	base = strings.Replace(base, "[artifacts]\nenabled = false\n", "", 1)
+	tables := strings.Replace(v02Tables, "[artifacts]\nenabled = true\n", "[artifacts]\nenabled = false\n", 1)
+	writeOverride(t, dir, "override.toml", base+tables)
 	ms, err := compat.Load(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -293,7 +299,7 @@ func TestOverrideWithV02TablesDecodes(t *testing.T) {
 		t.Errorf("online %+v", o)
 	}
 	a := m.Artifacts
-	if !a.Enabled || a.Server != "claude-artifacts" || a.MaxContentBytes != 16777216 || a.ResultGraceReads != "60s" ||
+	if a.Enabled || a.Server != "claude-artifacts" || a.MaxContentBytes != 16777216 || a.ResultGraceReads != "60s" ||
 		a.Fields.OwnerMine != "mine" || !reflect.DeepEqual(a.Fields.Version, []string{"version", "version_id"}) ||
 		len(a.Refusals) != 6 || !hasKey(a.Refusals, "too_large") {
 		t.Errorf("artifacts %+v", a)

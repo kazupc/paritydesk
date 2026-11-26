@@ -108,11 +108,15 @@ func newRunView(r *orchestrator.Result) runView {
 		ov = &render.OnlinePlanView{PinsAdd: s.PinsAdd, PinsRemove: s.PinsRemove, Sidebar: s.Sidebar,
 			PinsUnreadable: unreadable, PinsPreviewUnavailable: preview}
 	}
+	var av *render.ArtifactsPlanView
+	if a := r.Artifacts; a != nil {
+		av = &render.ArtifactsPlanView{Unsynced: string(a.Unsynced), Due: a.Due, To: string(a.To)}
+	}
 	// Without a target the run stopped before planning: no plan to show.
 	if v.To != "" {
 		pv := render.WithScratch(render.PlanView{
 			From: string(v.From), To: string(v.To), Approximate: v.Approximate,
-			FirstSync: v.NeedsConfirmation, Summary: v.Summary, Busy: busy, BusyWait: r.BusyWait, Online: ov,
+			FirstSync: v.NeedsConfirmation, Summary: v.Summary, Busy: busy, BusyWait: r.BusyWait, Online: ov, Artifacts: av,
 			Seeded: r.Plan != nil && r.Plan.Seeded,
 		}, r.Plan)
 		v.Scratch = pv.Scratch

@@ -380,6 +380,29 @@ paritydesk; `paritydesk rebase` clears the check (every row then starts
 as on a first sync).
 
 <!-- v0.2 anchor: artifacts -->
+## Artifact sync is blocked or stopped
+
+- *"cannot tell from Claude's log which account Claude is using"*:
+  Claude's log does not show the account and organization, or shows an
+  account change inside Claude after them. Quit and reopen Claude, then
+  run `/paritydesk:artifacts` again. Nothing was recorded.
+- *"The artifact list did not come from this profile's account"*: the
+  list named an artifact recorded for another profile. Check which
+  account Claude is on; nothing was recorded.
+- *Publishing paused for this Claude version*: a published page read back
+  differently from the archive. The archive and every copy are unchanged
+  since then; `paritydesk artifacts status` shows the gate. After an
+  update of Claude or paritydesk, `paritydesk artifacts allow --roundtrip`
+  (in Terminal) allows one verified publish again.
+- *A sync stopped half-way*: `/paritydesk:artifacts` continues where it
+  stopped. While a sync runs in a session, Claude's own artifact tools are
+  paused there; `paritydesk online cancel` in Terminal ends it at once.
+- *An artifact was overwritten*: the archive keeps every replaced page in
+  its history (`paritydesk artifacts status`), and the older version stays
+  in `<SupportDir>/artifacts/blobs`.
+- *An artifact was deleted on one account*: paritydesk records the
+  deletion and never deletes the other copies; `paritydesk artifacts
+  allow <id> --restore --profile <name>` creates it again there.
 
 <!-- v0.2 anchor: legacy-adopt -->
 ## Adopting folders from an earlier script stops or keeps leftovers

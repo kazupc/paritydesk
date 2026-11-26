@@ -319,7 +319,11 @@ func (o *Orchestrator) ProfileRename(ctx context.Context, from, to ids.Alias) er
 	}
 	renameAlias(s.root, from, to)
 	o.rewriteMarker(s.root, to, p)
-	return o.commit(s.root)
+	if err := o.commit(s.root); err != nil {
+		return err
+	}
+	o.artifactsRenamed(ctx, from, to)
+	return nil
 }
 
 // errKeepFolder means the folder keeps its old name (recorded in the
@@ -467,6 +471,7 @@ func (o *Orchestrator) ProfileRemove(ctx context.Context, alias ids.Alias) error
 	if err := o.commit(s.root); err != nil {
 		return err
 	}
+	o.artifactsRemoved(ctx, alias)
 	if err := o.d.State.GC(s.root); err != nil {
 		o.progress(P10Commit, "warn", "unreferenced state objects could not be removed")
 	}

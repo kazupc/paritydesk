@@ -58,6 +58,7 @@ waiting changes at any time.
 **Pins** (Claude 7.x): which Code sessions are pinned is carried too. paritydesk reads the pin list read-only and asks inside Claude before it pins or unpins anything (`/paritydesk:reconcile`, one approval card per other session); when unpinning a session would also unpin sessions under it, those are pinned again, or the unpin waits with a warning. A pin list that cannot be read only skips pins for that switch ([ADR 0005](docs/adr/0005-online-layer.md); not yet confirmed on a real Mac, release checklist R-PIN). `sync.pins = false` turns it off.
 
 <!-- v0.2 anchor: artifacts -->
+**Artifacts** (beta, **capture only**): `/paritydesk:artifacts` in a Code session saves the account's claude.ai artifacts into paritydesk's archive on this Mac, newest change winning and older versions kept in history. Publishing them to your other profiles is built but stays off until it has been confirmed on a real Mac (release checklist R-AR-4). paritydesk never deletes an artifact; artifacts with several files, declared capabilities or another author are skipped ([ADR 0006](docs/adr/0006-artifact-sync.md)).
 
 <!-- v0.2 anchor: legacy-adopt -->
 **Coming from an earlier folder-swap script?** If your other accounts are parked as `Claude-<Name>` folders next to `Claude`, `paritydesk profile adopt --from-legacy` registers them all at once, keeps their names, and can move other accounts' leftovers into a backup it never prunes. Start with the dry run in [docs/migration-from-legacy.md](docs/migration-from-legacy.md).

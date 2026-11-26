@@ -1,0 +1,21 @@
+{
+ "artifacts": {
+  "00000000-0000-4000-8000-000000000201": {
+   "owner": "00000000-0000-4000-8000-000000000001",
+   "owner_label": "Canary Label",
+   "title": "Fictional v1",
+   "sha256": "a7949ddecfe0fef0a236a86dce19831bf3e8da1dbab6cf3c211f1b6b423e26e2",
+   "path": "pages/a.html",
+   "total_lines": 2,
+   "saved_at": "2026-11-01T10:00:00",
+   "version": "1700000000-0000e",
+   "url": "https://claude.ai/artifact/00000000-0000-4000-8000-000000000201",
+   "mirrors": {
+    "00000000-0000-4000-8000-000000000003": {
+     "slug": "00000000-0000-4000-8000-000000000202",
+     "from_version": "1700000000-0000e"
+    }
+   }
+  }
+ }
+}

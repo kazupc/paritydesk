@@ -4,7 +4,8 @@
 
 _paritydesk_subs() {
     case "$1" in
-        '') echo 'backups completion config doctor generations help history init log online plan profile rebase recover rollback status switch sync uninstall verify version' ;;
+        '') echo 'artifacts backups completion config doctor generations help history init log online plan profile rebase recover rollback status switch sync uninstall verify version' ;;
+        'artifacts') echo 'allow forget import-legacy ingest plan skip status' ;;
         'backups') echo 'prune purge' ;;
         'config') echo 'path show validate' ;;
         'generations') echo 'list show' ;;
@@ -15,6 +16,11 @@ _paritydesk_subs() {
 
 _paritydesk_flags() {
     case "$1" in
+        'artifacts allow') echo '--capabilities --create --profile --public --rehome --restore --resume --roundtrip --shared --yes' ;;
+        'artifacts forget') echo '--yes' ;;
+        'artifacts import-legacy') echo '--apply --from --map --yes' ;;
+        'artifacts plan') echo '--profile' ;;
+        'artifacts status') echo '--all --profile --titles' ;;
         'backups prune') echo '--older-than --scratch --yes' ;;
         'backups purge') echo '--yes' ;;
         'doctor') echo '--bundle --bundle-logs --grant-automation' ;;
@@ -28,13 +34,17 @@ _paritydesk_flags() {
         'status') echo '--short' ;;
         'switch') echo '--accept-worktree-risk --allow-deletions --confirm-first-sync --confirmed-plan --detach --json-progress --no-launch --no-reopen --only --reopen-session --skip --yes' ;;
         'sync') echo '--allow-deletions --json-progress --no-launch --yes' ;;
-        'uninstall') echo '--keep-backups --keep-state --yes' ;;
+        'uninstall') echo '--keep-artifacts --keep-backups --keep-state --yes' ;;
     esac
     echo '--app-support-dir --ascii --config --json --no-color --plain --read-only --state-dir'
 }
 
 _paritydesk_value_flags() {
     case "$1" in
+        'artifacts allow') echo '--profile' ;;
+        'artifacts import-legacy') echo '--from --map' ;;
+        'artifacts plan') echo '--profile' ;;
+        'artifacts status') echo '--profile' ;;
         'backups prune') echo '--older-than' ;;
         'doctor') echo '--bundle --bundle-logs' ;;
         'init') echo '--alias --label' ;;

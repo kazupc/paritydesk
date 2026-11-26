@@ -6,7 +6,8 @@
 
 _paritydesk_subs() {
   case $1 in
-    ('') reply=('backups:Prune or purge backup generations' 'completion:Print a shell completion script' 'config:Show, locate or validate the config file' 'doctor:Check the installation, folders and app compatibility' 'generations:List or show backup generations' 'help:Show help for a command' 'history:List past runs' 'init:Set up paritydesk for the account in the app now' 'log:Show the log of a run' 'online:Show or drop changes waiting to be applied in Claude' 'plan:Preview what a switch would change (approximate)' 'profile:Manage profiles' 'rebase:Forget every sync base; the next run is a first sync' 'recover:Finish or undo an interrupted run' 'rollback:Restore a generation without overwriting newer work' 'status:Show the active profile and anything pending' 'switch:Switch to another profile' 'sync:Re-apply the shared state to the active profile' 'uninstall:Remove paritydesk'\''s state; every data folder is kept' 'verify:Check that the app kept what the last run wrote' 'version:Print the version') ;;
+    ('') reply=('artifacts:Keep claude.ai artifacts the same on every profile (beta)' 'backups:Prune or purge backup generations' 'completion:Print a shell completion script' 'config:Show, locate or validate the config file' 'doctor:Check the installation, folders and app compatibility' 'generations:List or show backup generations' 'help:Show help for a command' 'history:List past runs' 'init:Set up paritydesk for the account in the app now' 'log:Show the log of a run' 'online:Show or drop changes waiting to be applied in Claude' 'plan:Preview what a switch would change (approximate)' 'profile:Manage profiles' 'rebase:Forget every sync base; the next run is a first sync' 'recover:Finish or undo an interrupted run' 'rollback:Restore a generation without overwriting newer work' 'status:Show the active profile and anything pending' 'switch:Switch to another profile' 'sync:Re-apply the shared state to the active profile' 'uninstall:Remove paritydesk'\''s state; every data folder is kept' 'verify:Check that the app kept what the last run wrote' 'version:Print the version') ;;
+    ('artifacts') reply=('allow:Decide about one artifact (Terminal only)' 'forget:Stop tracking an artifact (Terminal only)' 'import-legacy:Import the artifact archive of an earlier folder-swap script' 'ingest:Record a finished sync round now' 'plan:Preview what a sync on a profile would do (approximate)' 'skip:Stop syncing an artifact (it stays in the archive)' 'status:Show the artifact archive') ;;
     ('backups') reply=('prune:Apply the retention policy' 'purge:Remove every generation') ;;
     ('config') reply=('path:Print the config file path' 'show:Print the effective config' 'validate:Validate the config file') ;;
     ('generations') reply=('list:List generations' 'show:Show one generation') ;;
@@ -18,6 +19,11 @@ _paritydesk_subs() {
 
 _paritydesk_flags() {
   case $1 in
+    ('artifacts allow') reply=('--capabilities:sync it although it declares capabilities' '--create:create it on a profile although the title is taken there' '--profile:profile alias (default: the active profile)' '--public:publish to public copies (implies --shared)' '--rehome:stop tracking a copy in an organization the profile no longer uses' '--restore:create it again on a profile where it was deleted' '--resume:sync a skipped or ignored artifact again' '--roundtrip:allow publishing again after a page read back differently' '--shared:publish to copies shared with other people' '--yes:do not ask') ;;
+    ('artifacts forget') reply=('--yes:do not ask') ;;
+    ('artifacts import-legacy') reply=('--apply:import (default: dry run; Terminal only)' '--from:absolute path of the old archive folder (required)' '--map:<account-uuid>=<alias>; may be repeated' '--yes:do not ask') ;;
+    ('artifacts plan') reply=('--profile:profile alias (default: the active profile)') ;;
+    ('artifacts status') reply=('--all:include forgotten and ignored artifacts' '--profile:profile alias (default: the active profile)' '--titles:include titles in --json output') ;;
     ('backups prune') reply=('--older-than:with --scratch: only sets older than this many days' '--scratch:remove the kept sets of scratch files removed by earlier switches (asks first)' '--yes:do not ask') ;;
     ('backups purge') reply=('--yes:do not ask') ;;
     ('doctor') reply=('--bundle:write a redacted support archive (tar.gz) to this new file' '--bundle-logs:newest run logs to put in the archive' '--grant-automation:ask macOS for Automation permission now') ;;
@@ -31,7 +37,7 @@ _paritydesk_flags() {
     ('status') reply=('--short:one line; never opens Local Storage') ;;
     ('switch') reply=('--accept-worktree-risk:switch even if a worktree with uncommitted changes loses its registration' '--allow-deletions:allow up to N deletions per category past the breaker' '--confirm-first-sync:confirm the first-sync union that the confirmed plan showed' '--confirmed-plan:hash of the plan you confirmed (printed by paritydesk plan --json)' '--detach:run as a detached launchd job' '--json-progress:NDJSON progress on stderr' '--no-launch:do not relaunch Claude' '--no-reopen:do not reopen the invoking session' '--only:categories to carry, comma-separated: sessions,environments,order,sidebar,pins,prefs,worktrees,scratch,window,mcp' '--reopen-session:Claude Code session id of the invoking session (set by the plugin; empty: no reopen)' '--skip:categories to leave alone, comma-separated' '--yes:do not ask (destructive differences after the preview still ask)') ;;
     ('sync') reply=('--allow-deletions:allow up to N deletions per category past the breaker' '--json-progress:NDJSON progress on stderr' '--no-launch:do not relaunch Claude' '--yes:do not ask') ;;
-    ('uninstall') reply=('--keep-backups:keep backup generations' '--keep-state:keep the state directory as well' '--yes:do not ask') ;;
+    ('uninstall') reply=('--keep-artifacts:keep the artifact archive (saved pages and their history)' '--keep-backups:keep backup generations' '--keep-state:keep the state directory as well' '--yes:do not ask') ;;
     (*) reply=() ;;
   esac
   reply+=('--app-support-dir:paritydesk support directory' '--ascii:ASCII only' '--config:config file (also PARITYDESK_CONFIG)' '--json:print one JSON document' '--no-color:no colour (also NO_COLOR, TERM=dumb)' '--plain:plain lines, no tables or spinners' '--read-only:plan only; never write (also PARITYDESK_READONLY=1)' '--state-dir:state directory (also PARITYDESK_STATE_DIR)')
@@ -39,6 +45,10 @@ _paritydesk_flags() {
 
 _paritydesk_value_flags() {
   case $1 in
+    ('artifacts allow') reply=(--profile) ;;
+    ('artifacts import-legacy') reply=(--from --map) ;;
+    ('artifacts plan') reply=(--profile) ;;
+    ('artifacts status') reply=(--profile) ;;
     ('backups prune') reply=(--older-than) ;;
     ('doctor') reply=(--bundle --bundle-logs) ;;
     ('init') reply=(--alias --label) ;;

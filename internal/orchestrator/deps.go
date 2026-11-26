@@ -6,6 +6,7 @@ import (
 
 	"github.com/kazupc/paritydesk/internal/app"
 	"github.com/kazupc/paritydesk/internal/apply"
+	"github.com/kazupc/paritydesk/internal/artifacts"
 	"github.com/kazupc/paritydesk/internal/clock"
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/config"
@@ -188,6 +189,9 @@ type Deps struct {
 	Crash func(after Phase) bool
 	// Online is the online layer (online.Service); nil turns it off.
 	Online Online
+	// Artifacts is artifact sync's archive view (artifacts.Service); nil
+	// turns it off.
+	Artifacts artifacts.ArtifactsView
 	// ReadOnly plans only (--read-only, PARITYDESK_READONLY=1): no run
 	// lock, no state commit, no config save, no plan save, no runner
 	// submit; FS is fsx.ReadOnly and KV is kv.ReadOnly.
