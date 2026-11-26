@@ -323,6 +323,8 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 - The pinned pairing organization in `doctor`; v0.1 reports the active
   organization only.
 - Japanese messages and README.
+- Buttons (Switch / Cancel) for the confirmation that `/paritydesk:switch`
+  asks; it asks in plain text for now.
 
 ### Removed
 

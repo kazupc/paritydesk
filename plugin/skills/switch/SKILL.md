@@ -1,5 +1,6 @@
 ---
 name: switch
+argument-hint: "[profile]"
 description: Switch the Claude desktop app to another paritydesk profile (account) and carry sessions, environments and the sidebar across. Use when the user asks to switch accounts with paritydesk or runs /paritydesk:switch.
 ---
 

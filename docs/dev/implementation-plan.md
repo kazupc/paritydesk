@@ -43,6 +43,7 @@ opens a network connection.
 | Native libproc fd scan | The fixed-argv `lsof` path is correct, only slower |
 | `profile adopt --from-legacy`, legacy archive import | One-off migration; generic `profile adopt` covers folders |
 | Scratch-workspaces handling for worktrees | Shape not yet observed |
+| Buttons for the switch confirmation | `/paritydesk:switch` asks for the yes in plain text; asking with the question tool (Switch / Cancel buttons) is requested and not yet built |
 | Native multi-account signal from main.log | Signal not confirmed (S11); v0.1 uses folder account history (the manifest pattern stays empty until confirmed) |
 | Pinned pairing org shown in `doctor` | Needs a confirmed main.log signal for the pairing org; `doctor` reports the active org only |
 
