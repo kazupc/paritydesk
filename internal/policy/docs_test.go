@@ -37,6 +37,7 @@ func TestDocsExist(t *testing.T) {
 		"README.md", "PRIVACY.md", "SECURITY.md", "DISCLAIMER.md", "CONTRIBUTING.md", "CHANGELOG.md",
 		"docs/architecture.md", "docs/if-something-goes-wrong.md", "docs/release-checklist.md",
 		"docs/adr/0003-online-reconcile.md",
+		"docs/migration-from-legacy.md",
 	} {
 		if _, err := os.Stat(filepath.Join(repoRoot(t), filepath.FromSlash(rel))); err != nil {
 			t.Errorf("%s: %v", rel, err)

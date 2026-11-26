@@ -1,0 +1,26 @@
+Adopting folders next to Claude:
+  Claude (in use) -> profile work (account 0000…, org 0000…)
+  Claude-Home -> profile home (account 0000…, org 0000…)
+  Claude-Old is left out: it holds the same account as Claude-Home; pass --legacy-exclude with the folder you no longer use
+Directories of other accounts inside a folder:
+  Claude-Home/claude-code-sessions/0000…: data of another account (work) (12 files, 40.0 KiB) - moved into backup generation 4
+  Claude-Home/claude-code-sessions/0000…/0000…: an empty directory of this account under another account's organization (1 files, 98 B) - kept for now: a process is using the folder
+  Claude-Home/local-agent-mode-sessions/0000…: paritydesk cannot tell what this is; it may belong to this folder (4 files, 2.0 KiB) - kept: do not delete it by hand
+  Claude-Home/local-agent-mode-sessions/0000…: data of another account (work) (2 files, 10 B) - kept: bring its sessions home first (see docs/migration-from-legacy.md)
+    1 of its entries are not in Claude; they may exist nowhere else
+  Claude-Home/scratch-workspaces/0000…: data of another account (work) (3 files, 0 B) - kept: sessions may still use it
+Sync bases from values every folder already agrees on:
+  environments: 3 agree, 1 differ
+  sessions: 310 agree, 7 differ
+  sidebar-view: not seeded (the values could not be read)
+The first switch still asks you to confirm. Where the folders differ, nothing is deleted and the copy changed last wins.
+The marker of home could not be written; its first switch merges without deleting.
+Registered 2 profile(s): work, home.
+Moved 1 of 2 directories from Claude-Home into backup generation 4. It is kept until you remove it; paritydesk rollback 4 puts them back.
+Next steps:
+  1. Stop using the earlier switch script: remove its alias, launcher, menu item or scheduled job, so only paritydesk moves these folders. Keep its file until your first paritydesk switch works.
+  2. Remove any Claude Code skill, command or hook that called the earlier script.
+  3. If the earlier script kept copies of your folders, they hold your data unencrypted: restrict them with chmod 700, or delete them once paritydesk works for you.
+  4. Install the Claude Code plugin: /plugin marketplace add kazupc/paritydesk, then /plugin install paritydesk@paritydesk.
+  5. Preview the first switch with paritydesk plan.
+Data folders: 1 directories moved into a backup generation; nothing is deleted.

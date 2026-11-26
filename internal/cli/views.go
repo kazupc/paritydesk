@@ -112,6 +112,7 @@ func newRunView(r *orchestrator.Result) runView {
 		pv := render.WithScratch(render.PlanView{
 			From: string(v.From), To: string(v.To), Approximate: v.Approximate,
 			FirstSync: v.NeedsConfirmation, Summary: v.Summary, Busy: busy, BusyWait: r.BusyWait, Online: ov,
+			Seeded: r.Plan != nil && r.Plan.Seeded,
 		}, r.Plan)
 		v.Scratch = pv.Scratch
 		v.Lines = render.PlanLines(pv)

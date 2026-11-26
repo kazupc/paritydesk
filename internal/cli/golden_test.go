@@ -92,6 +92,20 @@ var jsonCases = []struct {
 	{name: "init", args: []string{"init", "--alias", "work", "--label", "Work", "--unmanaged"}},
 	{name: "profile_list", args: []string{"profile", "list"}},
 	{name: "profile_adopt", args: []string{"profile", "adopt", "home", "Claude-home", "--unmanaged"}},
+	{name: "profile_adopt_legacy_dry", args: []string{"profile", "adopt", "--from-legacy", "--legacy-alias", "Claude=work"}},
+	{name: "profile_adopt_legacy_apply", args: []string{"profile", "adopt", "--from-legacy", "--apply", "--legacy-alias", "Claude=work",
+		"--unmanaged", "--legacy-plan", legacyHash}},
+	{name: "profile_adopt_legacy_nothing", args: []string{"profile", "adopt", "--from-legacy"}, setup: func(h *harness) {
+		h.svc.legacyDry = legacyNothingFixture()
+	}},
+	{name: "profile_adopt_legacy_no_active", args: []string{"profile", "adopt", "--from-legacy"}, setup: func(h *harness) {
+		h.svc.legacyDry = legacyNoActiveFixture()
+	}},
+	{name: "profile_adopt_legacy_degraded", args: []string{"profile", "adopt", "--from-legacy", "--apply", "--legacy-managed", "home",
+		"--legacy-alias", "Claude=work", "--legacy-plan", legacyHash}, code: 32, setup: func(h *harness) {
+		h.svc.legacyApply = legacyDegradedFixture()
+		h.svc.legacyErr = pderr.New(pderr.Degraded, "profile adopt", "some leftovers were kept for now")
+	}},
 	{name: "profile_add", args: []string{"profile", "add", "client", "--managed"}},
 	{name: "profile_rename", args: []string{"profile", "rename", "home", "personal"}},
 	{name: "profile_remove", args: []string{"profile", "remove", "home"}},

@@ -167,3 +167,19 @@ func isHexHash(s string) bool {
 	}
 	return true
 }
+
+// multiFlag is a repeatable string flag.
+type multiFlag []string
+
+func (m *multiFlag) String() string { return strings.Join(*m, ",") }
+
+// Set appends one value.
+func (m *multiFlag) Set(v string) error {
+	*m = append(*m, v)
+	return nil
+}
+
+// Get returns the values (flag.Getter).
+func (m *multiFlag) Get() any { return []string(*m) }
+
+func getStrings(fs *flag.FlagSet, name string) []string { return value(fs, name).([]string) }

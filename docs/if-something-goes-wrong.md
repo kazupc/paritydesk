@@ -353,5 +353,22 @@ through Claude's own tools. Open a Code session and run
 <!-- v0.2 anchor: artifacts -->
 
 <!-- v0.2 anchor: legacy-adopt -->
+## Adopting folders from an earlier script stops or keeps leftovers
+
+`paritydesk profile adopt --from-legacy` explains each folder it leaves
+out and how to fix it ([migration-from-legacy.md](migration-from-legacy.md)).
+
+- "the folders changed since the dry run": a folder was renamed, added or
+  changed between the dry run and `--apply`; run the dry run again and use
+  its new command. "the flags differ from the dry run's": use exactly the
+  command the dry run printed.
+- Exit 32 with "kept for now": Claude was running (for leftovers inside
+  `Claude`) or a process used the folder; quit Claude and run again.
+- A directory marked "do not delete it by hand" may belong to the folder
+  itself; leave it.
+- Moved leftovers are in a pinned backup generation:
+  `paritydesk rollback <n>` puts them back; a bare `paritydesk rollback`
+  never picks it.
+
 
 <!-- v0.2 anchor: i18n-ja -->

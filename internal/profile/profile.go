@@ -26,6 +26,9 @@ type Folder struct {
 	Replicas    []model.Replica      // session directories found
 	Marker      *model.Marker        // nil if absent or unparsable
 	ID          fsx.FileID
+	// ScanErr is ScanErrUnreadable when ScanLenient could not identify the
+	// folder (every other field but Name, Path and Active is then empty).
+	ScanErr string
 }
 
 // Scanner lists and identifies folders.

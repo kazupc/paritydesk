@@ -45,6 +45,9 @@ type Generations interface {
 	List() ([]gen.Info, error)
 	Load(n uint64) (*gen.Manifest, error)
 	DeleteIncomplete(n uint64) (bool, error)
+	// DeleteUnmoved deletes a legacy-quarantine generation into which
+	// nothing was moved (profile adopt --from-legacy, recover).
+	DeleteUnmoved(n uint64) (bool, error)
 	Prune(p gen.PrunePolicy) error
 	Purge() error
 	Restore(ctx context.Context, in gen.RestoreInput) (gen.RestoreReport, error)
@@ -54,6 +57,12 @@ type Generations interface {
 // FolderScanner lists and identifies data folders (profile.Scanner).
 type FolderScanner interface {
 	Scan(ctx context.Context) ([]profile.Folder, error)
+	// ScanLenient returns a folder it cannot identify with ScanErr set
+	// instead of failing (profile adopt --from-legacy).
+	ScanLenient(ctx context.Context) ([]profile.Folder, error)
+	// Identify identifies one folder by name (the identity re-checks of a
+	// quarantine run).
+	Identify(ctx context.Context, name string) (profile.Folder, error)
 }
 
 // AppControl is everything the orchestrator asks of the app (app.Platform).

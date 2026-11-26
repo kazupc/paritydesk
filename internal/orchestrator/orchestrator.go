@@ -190,6 +190,8 @@ type Service interface {
 	Doctor(ctx context.Context, opts DoctorOptions) ([]Check, error)
 	Init(ctx context.Context, opts InitOptions) error
 	ProfileAdopt(ctx context.Context, alias ids.Alias, folder string, managed bool) error
+	// AdoptLegacy is profile adopt --from-legacy (dry run unless Apply).
+	AdoptLegacy(ctx context.Context, opts LegacyOptions) (*LegacyResult, error)
 	ProfileAdd(ctx context.Context, alias ids.Alias, managed bool) error
 	ProfileRename(ctx context.Context, from, to ids.Alias) error
 	ProfileRemove(ctx context.Context, alias ids.Alias) error

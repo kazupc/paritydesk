@@ -32,9 +32,48 @@ func isDataFolderName(name string) bool {
 	return name == ids.DefaultFolder || (strings.HasPrefix(name, ids.DefaultFolder+"-") && len(name) > len(ids.DefaultFolder)+1)
 }
 
+// ScanErrUnreadable is Folder.ScanErr of a folder ScanLenient could not
+// identify (its session directories, marker or file id could not be read).
+const ScanErrUnreadable = "the folder could not be read"
+
 // Scan lists Claude and Claude-* directories (not symlinks) and identifies
-// each. It never writes.
+// each. It never writes. It fails as a whole when one folder cannot be
+// identified.
 func (s Scanner) Scan(ctx context.Context) ([]Folder, error) {
+	return s.scan(ctx, false)
+}
+
+// ScanLenient is Scan, except that a folder whose session directories,
+// marker or file id cannot be read is returned with ScanErr set (constant
+// text) instead of failing the whole scan. A data root that cannot be read
+// still fails.
+func (s Scanner) ScanLenient(ctx context.Context) ([]Folder, error) {
+	return s.scan(ctx, true)
+}
+
+// Identify identifies one folder of the data root by name (Claude or
+// Claude-<x>), as Scan does; a symlink or a missing folder is an error.
+func (s Scanner) Identify(ctx context.Context, name string) (Folder, error) {
+	if err := ctx.Err(); err != nil {
+		return Folder{}, err
+	}
+	if s.FS == nil || s.ReadIdentity == nil || s.ListReplicas == nil {
+		return Folder{}, errors.New("profile: identify: scanner is not fully configured")
+	}
+	if !isDataFolderName(name) || filepath.Base(name) != name {
+		return Folder{}, fmt.Errorf("profile: identify: not a data folder name")
+	}
+	fi, err := os.Lstat(filepath.Join(s.DataRoot, name))
+	if err != nil {
+		return Folder{}, fmt.Errorf("profile: identify: %w", err)
+	}
+	if !fi.IsDir() {
+		return Folder{}, fmt.Errorf("profile: identify: %s is not a directory", name)
+	}
+	return s.identify(name)
+}
+
+func (s Scanner) scan(ctx context.Context, lenient bool) ([]Folder, error) {
 	if s.FS == nil || s.ReadIdentity == nil || s.ListReplicas == nil {
 		return nil, errors.New("profile: scan: scanner is not fully configured")
 	}
@@ -56,7 +95,11 @@ func (s Scanner) Scan(ctx context.Context) ([]Folder, error) {
 		}
 		f, err := s.identify(e.Name())
 		if err != nil {
-			return nil, err
+			if !lenient {
+				return nil, err
+			}
+			f = Folder{Name: e.Name(), Path: filepath.Join(s.DataRoot, e.Name()), Active: e.Name() == ids.DefaultFolder,
+				ScanErr: ScanErrUnreadable, IdentityErr: IdentityUnreadable}
 		}
 		out = append(out, f)
 	}

@@ -220,13 +220,16 @@ func TestEmbeddedManifestsLoadWithV02Anchors(t *testing.T) {
 			}
 		}
 		// The online layer is on for 7.x only (6.x has no confirmed tool
-		// texts). Until their units land, the other v0.2 tables are
-		// absent: artifact sync is off and no legacy layout is declared.
+		// texts). Artifact sync is off until its unit lands. The legacy
+		// layouts are declared (legacy-adopt).
 		if m.Online.Enabled != (m.Name == "7.x") {
 			t.Errorf("%s: online.enabled = %v", m.Name, m.Online.Enabled)
 		}
-		if m.Artifacts.Enabled || len(m.Legacy.ScopedDirs) != 0 {
+		if m.Artifacts.Enabled {
 			t.Errorf("%s: v0.2 tables present before their units", m.Name)
+		}
+		if len(m.Legacy.ScopedDirs) != 4 || len(m.Legacy.Stubs) != 1 {
+			t.Errorf("%s: [legacy] layouts missing: %+v", m.Name, m.Legacy)
 		}
 		for _, r := range []model.RowID{model.RowScratch, model.RowSidebarCollapse, model.RowSidebarSeed, model.RowPins} {
 			if pendingV02[r] {
@@ -241,8 +244,9 @@ func TestEmbeddedManifestsLoadWithV02Anchors(t *testing.T) {
 func TestOverrideWithV02TablesDecodes(t *testing.T) {
 	dir := t.TempDir()
 	// The embedded 6.x manifest has its own [online] table (enabled =
-	// false); the override replaces it with the full sample.
-	base := strings.Replace(embeddedText(t), "[online]\nenabled = false\n", "", 1)
+	// false) and [legacy] layouts; the override replaces them with the
+	// full sample.
+	base := strings.Replace(withoutLegacy(t, embeddedText(t)), "[online]\nenabled = false\n", "", 1)
 	writeOverride(t, dir, "override.toml", base+v02Tables)
 	ms, err := compat.Load(dir)
 	if err != nil {
@@ -299,7 +303,7 @@ func TestOverrideWithV02TablesDecodes(t *testing.T) {
 }
 
 func TestV02TablesRejectUnknownKeys(t *testing.T) {
-	base := embeddedText(t)
+	base := withoutLegacy(t, embeddedText(t))
 	for name, extra := range map[string]string{
 		"online":           "\n[online]\nsurprise = 1\n",
 		"online.pins":      "\n[online.pins]\nsurprise = 1\n",
@@ -335,4 +339,16 @@ func testReplica() model.Replica {
 func hasKey(m map[string][]string, k string) bool {
 	_, ok := m[k]
 	return ok
+}
+
+// withoutLegacy cuts the embedded [legacy] section (the last block of the
+// manifest, below its anchor), so a test can append its own.
+func withoutLegacy(t *testing.T, text string) string {
+	t.Helper()
+	const head = "\n# ---------------------------------------------------------------- legacy migration"
+	i := strings.Index(text, head)
+	if i < 0 {
+		t.Fatal("the manifest has no legacy migration section")
+	}
+	return text[:i] + "\n"
 }

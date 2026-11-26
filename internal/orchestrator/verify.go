@@ -95,7 +95,7 @@ func (o *Orchestrator) Verify(ctx context.Context) (*VerifyResult, error) {
 // lastRunInto returns the newest generation whose run entered alias.
 func lastRunInto(root *state.Root, alias ids.Alias) (state.GenerationRef, bool) {
 	for i := len(root.Generations) - 1; i >= 0; i-- {
-		if g := root.Generations[i]; g.Target == alias {
+		if g := root.Generations[i]; g.Target == alias && g.Purpose == "" {
 			return g, true
 		}
 	}

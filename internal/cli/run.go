@@ -476,6 +476,20 @@ func runProfileList(ctx context.Context, e *env, _ *flag.FlagSet, _ []string) er
 }
 
 func runProfileAdopt(ctx context.Context, e *env, fs *flag.FlagSet, args []string) error {
+	if getBool(fs, flagFromLegacy) {
+		if len(args) > 0 {
+			return usageErrorf("profile adopt --from-legacy takes no arguments")
+		}
+		return runProfileAdoptLegacy(ctx, e, fs)
+	}
+	if len(args) != 2 {
+		return usageErrorf("%s %s", fs.Name(), "<alias> <folder>")
+	}
+	for _, name := range legacyOnlyFlags {
+		if flagSet(fs, name) {
+			return usageErrorf("--%s needs --%s", name, flagFromLegacy)
+		}
+	}
 	alias, err := parseAlias(args[0])
 	if err != nil {
 		return err

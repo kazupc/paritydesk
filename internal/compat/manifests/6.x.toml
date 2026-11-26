@@ -722,3 +722,52 @@ enabled = false
 # v0.2 anchor: tables artifacts
 
 # v0.2 anchor: tables legacy
+# ---------------------------------------------------------------- legacy migration
+#
+# Used only by profile adopt --from-legacy. The layout is carried over from
+# 7.x (read from the app's code on 7.37095.0) and was not re-read on 6.x
+# code; the 6.x classification lists the same top-level entries:
+#   claude-code-sessions/{acct}/{org}, local-agent-mode-sessions/{acct}/{org},
+#   local-agent-mode-sessions/skills-plugin/{org}/{acct} and {acct}-builtins
+#   (org first, account second: SNn(org, acct) at the getPluginDir write
+#   site), scratch-workspaces/{acct}/{org}.
+# A first level of local-agent-mode-sessions may also be the folder's
+# install id (ant-did) or an 8-hex short id (3P mode): those are only
+# reported. Scratch workspaces are reported only: carried sessions may
+# point into them. The skip_names org id is one the app always reads.
+[legacy]
+ignore_names = [".DS_Store"]
+agree_ignoring_roles = ["account_bound", "grant", "run_state", "resume_mark"]
+
+[[legacy.stub]]
+file = "scheduled-tasks.json"
+empty_members = ["scheduledTasks", "recordedSkips", "recordedPlaceSkips", "runRetries"]
+flag_members = ["sundayAliasBoundaryStamped", "dayFieldsOrBoundaryStamped"]
+
+[[legacy.scoped_dir]]
+id = "code-sessions"
+root = "claude-code-sessions"
+layout = "{acct}/{org}"
+quarantine = true
+unique_check = true
+
+[[legacy.scoped_dir]]
+id = "agent-sessions"
+root = "local-agent-mode-sessions"
+layout = "{acct}/{org}"
+skip_names = ["skills-plugin"]
+quarantine = true
+unique_check = true
+
+[[legacy.scoped_dir]]
+id = "agent-skills"
+root = "local-agent-mode-sessions/skills-plugin"
+layout = "{org}/{acct}"
+skip_names = ["00000000-0000-4000-8000-000000000001"]
+quarantine = true
+
+[[legacy.scoped_dir]]
+id = "scratch-workspaces"
+root = "scratch-workspaces"
+layout = "{acct}/{org}"
+quarantine = false

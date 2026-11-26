@@ -107,6 +107,8 @@ func (s *Store) Restore(ctx context.Context, in RestoreInput) (RestoreReport, er
 			d, err = r.createdDir(e)
 		case EntryLink:
 			d, err = r.createdLink(e)
+		case EntryQuarantineDir:
+			d, err = r.tree(e)
 		default:
 			continue
 		}

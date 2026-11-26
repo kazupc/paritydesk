@@ -77,6 +77,12 @@ type fakeService struct {
 	// result.
 	confirmIn orchestrator.OnlineConfirmInput
 	confirm2  *orchestrator.OnlineConfirmResult
+	// legacyOpts are the options of every AdoptLegacy call; legacyDry and
+	// legacyApply are its results (legacyErr is returned with an apply).
+	legacyOpts  []orchestrator.LegacyOptions
+	legacyDry   *orchestrator.LegacyResult
+	legacyApply *orchestrator.LegacyResult
+	legacyErr   error
 }
 
 func newFakeService() *fakeService {
@@ -90,7 +96,9 @@ func newFakeService() *fakeService {
 				{Alias: "home", Folder: "Claude-home", Account: "0000\u2026", Managed: true},
 			},
 		},
-		verify: &orchestrator.VerifyResult{SessionFocused: true, PairingOK: true, BridgeSeen: true},
+		verify:      &orchestrator.VerifyResult{SessionFocused: true, PairingOK: true, BridgeSeen: true},
+		legacyDry:   legacyDryFixture(),
+		legacyApply: legacyApplyFixture(),
 	}
 }
 
@@ -262,19 +270,46 @@ func (f *fakeService) OnlineCancel(_ context.Context, queue string) (bool, error
 	return true, f.record("online-cancel", queue)
 }
 
+func (f *fakeService) AdoptLegacy(_ context.Context, o orchestrator.LegacyOptions) (*orchestrator.LegacyResult, error) {
+	f.legacyOpts = append(f.legacyOpts, o)
+	if err := f.record("adopt-legacy"); err != nil {
+		return nil, err
+	}
+	if o.Apply {
+		r := *f.legacyApply
+		return &r, f.legacyErr
+	}
+	r := *f.legacyDry
+	r.Folders = append([]orchestrator.LegacyFolder(nil), r.Folders...)
+	for i := range r.Folders {
+		// The alias the person typed resolves the active folder.
+		if a := o.Aliases["Claude"]; a != "" && r.Folders[i].Active && r.Folders[i].Reason == "needs_alias" {
+			r.Folders[i].Alias, r.Folders[i].AliasSource, r.Folders[i].Status, r.Folders[i].Reason = a, "flag", "adopt", ""
+		}
+	}
+	return &r, nil
+}
+
 var _ orchestrator.Service = (*fakeService)(nil)
 
 // fakeGens is a generationStore.
 type fakeGens struct {
 	purged bool
 	pruned *gen.PrunePolicy
+	// pinned adds a pinned quarantine generation to List.
+	pinned bool
 }
 
 func (g *fakeGens) List() ([]gen.Info, error) {
-	return []gen.Info{
+	list := []gen.Info{
 		{N: 1, RunID: "run-0001", Alias: "work", Created: fixedTime, Entries: 3, LevelDB: true, Complete: true, Bytes: 2048},
 		{N: 2, RunID: "run-0002", Alias: "home", Created: fixedTime.Add(time.Hour), Entries: 1, Complete: false, Bytes: 10},
-	}, nil
+	}
+	if g.pinned {
+		list = append(list, gen.Info{N: 3, RunID: "run-0003", Alias: "home", Created: fixedTime, Entries: 2, Complete: true,
+			Pinned: true, Purpose: gen.PurposeLegacyQuarantine})
+	}
+	return list, nil
 }
 
 func (g *fakeGens) Load(n uint64) (*gen.Manifest, error) {
@@ -326,6 +361,7 @@ func newHarness(t *testing.T) *harness {
 		home:       func() (string, error) { return h.home, nil },
 		executable: func() (string, error) { return h.exe, nil },
 		isTerminal: func(any) bool { return h.tty },
+		isTTY:      func(any) bool { return h.tty },
 		now:        func() time.Time { return fixedTime },
 		service: func(_ context.Context, e *env, ui orchestrator.UI) (orchestrator.Service, error) {
 			h.g, h.ui = e.g, ui

@@ -48,6 +48,17 @@ var hiddenFlags = map[string]bool{
 	orchestrator.FlagAfterRun:   true,
 }
 
+// hiddenUsage starts the usage string of a flag that is accepted but not
+// listed in usage text, help or completion. Hiding is per flag, not per
+// name, so a flag of the same name on another command stays visible.
+const hiddenUsage = "(hidden) "
+
+// isHidden reports whether a flag is left out of usage text and
+// completion: an internal flag name, or a usage starting with hiddenUsage.
+func isHidden(f *flag.Flag) bool {
+	return hiddenFlags[f.Name] || strings.HasPrefix(f.Usage, hiddenUsage)
+}
+
 func (g *globalFlags) register(fs *flag.FlagSet) {
 	fs.BoolVar(&g.JSON, "json", g.JSON, "print one JSON document")
 	fs.BoolVar(&g.Plain, "plain", g.Plain, "plain lines, no tables or spinners")
@@ -290,7 +301,7 @@ func printUsage(w io.Writer, c *command, fs *flag.FlagSet, path string) {
 func printFlags(w io.Writer, fs *flag.FlagSet, title string, keep func(string) bool) {
 	var lines []string
 	fs.VisitAll(func(f *flag.Flag) {
-		if !keep(f.Name) || hiddenFlags[f.Name] {
+		if !keep(f.Name) || isHidden(f) {
 			return
 		}
 		typ, usage := flag.UnquoteUsage(f)
@@ -360,6 +371,34 @@ func managedFlags(fs *flag.FlagSet) {
 	fs.Bool("unmanaged", false, "the account is not managed by an employer or client")
 }
 
+// Hidden flags of profile adopt --from-legacy (spec-legacy-adopt 2.1).
+const (
+	flagFromLegacy    = "from-legacy"
+	flagLegacyApply   = "apply"
+	flagQuarantine    = "quarantine"
+	flagLegacyState   = "legacy-state"
+	flagLegacyAlias   = "legacy-alias"
+	flagLegacyExclude = "legacy-exclude"
+	flagLegacyManaged = "legacy-managed"
+	flagLegacyPlan    = "legacy-plan"
+	flagLegacyNoSeed  = "legacy-no-seed"
+)
+
+// adoptFlags registers --managed, --unmanaged and the hidden flags of the
+// legacy mode.
+func adoptFlags(fs *flag.FlagSet) {
+	managedFlags(fs)
+	fs.Bool(flagFromLegacy, false, hiddenUsage+"adopt every folder an earlier folder-swap script left next to Claude")
+	fs.Bool(flagLegacyApply, false, hiddenUsage+"make the changes (default: dry run)")
+	fs.Bool(flagQuarantine, false, hiddenUsage+"with --apply: move other accounts' leftovers into a backup generation (needs a terminal)")
+	fs.String(flagLegacyState, "", hiddenUsage+"absolute path of the earlier script's state file (a hint only)")
+	fs.Var(&multiFlag{}, flagLegacyAlias, hiddenUsage+"<folder>=<alias>; may be repeated")
+	fs.Var(&multiFlag{}, flagLegacyExclude, hiddenUsage+"leave this folder out; may be repeated")
+	fs.String(flagLegacyManaged, "", hiddenUsage+"comma list of new aliases that are managed; every other new profile is unmanaged")
+	fs.String(flagLegacyPlan, "", hiddenUsage+"plan hash printed by the dry run")
+	fs.Bool(flagLegacyNoSeed, false, hiddenUsage+"register only; seed no sync bases")
+}
+
 // flagJSONProgress selects NDJSON progress events on stderr.
 const flagJSONProgress = "json-progress"
 
@@ -375,7 +414,7 @@ func root() *command {
 		}, runInit),
 		group("profile", "<list|adopt|add|rename|remove>", "Manage profiles", false,
 			leaf("list", "", "List profiles", 0, 0, nil, runProfileList),
-			leaf("adopt", "<alias> <folder>", "Register a parked folder after checking its identity", 2, 2, managedFlags, runProfileAdopt),
+			leaf("adopt", "<alias> <folder>", "Register a parked folder after checking its identity", 0, 2, adoptFlags, runProfileAdopt),
 			leaf("add", "<alias>", "Add an account without signing out of any other", 1, 1, managedFlags, runProfileAdd),
 			leaf("rename", "<alias> <new-alias>", "Rename a profile", 2, 2, nil, runProfileRename),
 			leaf("remove", "<alias>", "Unregister a profile; its folder is kept", 1, 1, nil, runProfileRemove),

@@ -353,6 +353,20 @@ On a Mac with app 7.x, the plugin 0.2.0 installed and two profiles A and B.
 <!-- v0.2 anchor: artifacts -->
 
 <!-- v0.2 anchor: legacy-adopt -->
+## Adopting folders of an earlier script (v0.2)
+
+Use fictional accounts only.
+
+- **L-1** With `Claude` and two parked `Claude-<Name>` folders made by
+  swapping folders by hand, run the dry run: every folder is listed with
+  its alias and masked account; nothing changed on disk.
+- **L-2** Apply in Terminal: the config keeps the folder names; the first
+  `paritydesk plan` shows the first-switch line and no deletion; switch
+  and switch back.
+- **L-3** Put a directory of account A inside B's folder; apply with
+  `--quarantine`: it moves into a pinned generation; `backups prune`
+  keeps it; `rollback <n>` puts it back; `backups purge` warns first.
+
 
 <!-- v0.2 anchor: i18n-ja -->
 

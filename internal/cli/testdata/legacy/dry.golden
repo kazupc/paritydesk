@@ -1,0 +1,21 @@
+Folders next to Claude (dry run; nothing is changed):
+  Claude (in use) -> profile work (account 0000…, org 0000…)
+  Claude-Home -> profile home (account 0000…, org 0000…)
+  Claude-Old is left out: it holds the same account as Claude-Home; pass --legacy-exclude with the folder you no longer use
+Directories of other accounts inside a folder:
+  Claude-Home/claude-code-sessions/0000…: data of another account (work) (12 files, 40.0 KiB) - can be moved aside
+  Claude-Home/claude-code-sessions/0000…/0000…: an empty directory of this account under another account's organization (1 files, 98 B) - can be moved aside
+  Claude-Home/local-agent-mode-sessions/0000…: paritydesk cannot tell what this is; it may belong to this folder (4 files, 2.0 KiB) - kept: do not delete it by hand
+  Claude-Home/local-agent-mode-sessions/0000…: data of another account (work) (2 files, 10 B) - kept: bring its sessions home first (see docs/migration-from-legacy.md)
+    1 of its entries are not in Claude; they may exist nowhere else
+  Claude-Home/scratch-workspaces/0000…: data of another account (work) (3 files, 0 B) - kept: sessions may still use it
+Sync bases from values every folder already agrees on:
+  environments: 3 agree, 1 differ
+  sessions: 310 agree, 7 differ
+  sidebar-view: not seeded (the values could not be read)
+The first switch still asks you to confirm. Where the folders differ, nothing is deleted and the copy changed last wins.
+This was a dry run. Run again with --apply to register these profiles.
+Plan 0123456789abcdef0123456789abcdef.fedcba9876543210fedcba9876543210. Without a terminal, apply it with: paritydesk profile adopt --from-legacy --apply --legacy-alias Claude=work --legacy-plan 0123456789abcdef0123456789abcdef.fedcba9876543210fedcba9876543210
+Run again in Terminal with --apply --quarantine to move 2 of them into a backup generation. Nothing is deleted; paritydesk rollback <generation> puts them back.
+Moving leftovers needs Terminal: run this dry run's command there with --apply --quarantine added (no --legacy-plan); it asks before it changes anything.
+Data folders: 0 directories would be moved into a backup generation; nothing is deleted.

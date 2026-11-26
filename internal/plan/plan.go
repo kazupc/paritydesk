@@ -204,6 +204,10 @@ type Plan struct {
 	// NeedsConfirmation is set when any row merged as a union because its
 	// base was invalid (exit 21 when non-interactive).
 	NeedsConfirmation bool `json:"needs_confirmation,omitempty"`
+	// Seeded is set for the first switch into or out of a profile whose
+	// bases profile adopt --from-legacy seeded (it also sets
+	// NeedsConfirmation).
+	Seeded bool `json:"seeded,omitempty"`
 	// ScratchNotes are the limits row scratch's notices name (memory
 	// only, set while planning; nil for a plan read from a file).
 	ScratchNotes *ScratchNotes `json:"-"`
@@ -252,6 +256,9 @@ type hashed struct {
 	Ops               []hashedOp     `json:"ops"`
 	Changes           []model.Change `json:"changes"`
 	NeedsConfirmation bool           `json:"nc,omitempty"`
+	// Seeded is omitted when false, so plan hashes without it are
+	// unchanged.
+	Seeded bool `json:"sd,omitempty"`
 }
 
 // Hash returns a stable hex sha256 over the plan (see hashed). A nil plan
@@ -261,7 +268,7 @@ func (p *Plan) Hash() string {
 		return ""
 	}
 	h := hashed{Version: p.Version, From: p.From, To: p.Target.Alias, Replica: p.Target.Replica,
-		Ops: make([]hashedOp, len(p.Ops)), Changes: p.Changes, NeedsConfirmation: p.NeedsConfirmation}
+		Ops: make([]hashedOp, len(p.Ops)), Changes: p.Changes, NeedsConfirmation: p.NeedsConfirmation, Seeded: p.Seeded}
 	for i, o := range p.Ops {
 		h.Ops[i] = hashedOp{Kind: o.Kind, Row: o.Row, Rows: o.Rows, Path: o.Path, Key: o.Key,
 			Pre: o.PreHash, Post: o.PostHash, Destructive: o.Destructive, Secret: o.Secret,
