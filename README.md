@@ -87,12 +87,17 @@ Run `paritydesk init` once after installing.
 
 ## Install the Claude Code plugin
 
-The plugin adds the `/paritydesk:switch` command and a SessionStart hook. From a clone of this repository, in Claude Code:
+The plugin adds the `/paritydesk:switch` command and a SessionStart hook. In Claude Code (the Code tab of the desktop app or the `claude` command line):
 
 ```
-/plugin marketplace add /path/to/paritydesk
+/plugin marketplace add kazupc/paritydesk
 /plugin install paritydesk@paritydesk
 ```
+
+Where `/plugin` is not available, the same works from a terminal:
+`claude plugin marketplace add kazupc/paritydesk`, then
+`claude plugin install paritydesk@paritydesk`. To try a change to the
+plugin from a clone, add the clone's path instead of `kazupc/paritydesk`.
 
 Run `paritydesk init` once before using it. The SessionStart hook finds the binary through the path that `paritydesk init` records, but `/paritydesk:switch` runs `paritydesk` from the `PATH` of Claude Code's shell, so the binary must be on that `PATH` too (and it should be the same binary).
 
