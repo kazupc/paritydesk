@@ -363,6 +363,11 @@ func renameAlias(root *state.Root, from, to ids.Alias) {
 	if root.Contested != nil {
 		root.Contested = rekey(root.Contested, from, to)
 	}
+	// The pins freshness probe follows the profile like its bases.
+	if since, ok := root.PinsProbes[from]; ok {
+		delete(root.PinsProbes, from)
+		root.PinsProbes[to] = since
+	}
 	if root.Active == from {
 		root.Active = to
 	}
@@ -453,6 +458,9 @@ func (o *Orchestrator) ProfileRemove(ctx context.Context, alias ids.Alias) error
 	}
 	delete(s.root.Profiles, alias)
 	dropAliasKeys(s.root, alias)
+	// Its pins freshness probe goes with its bases; a profile added later
+	// under this alias must not inherit it.
+	clearPinsProbe(s.root, alias)
 	if s.root.Previous == alias {
 		s.root.Previous = ""
 	}

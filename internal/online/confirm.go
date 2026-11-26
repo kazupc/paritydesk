@@ -21,6 +21,8 @@ type ConfirmBases struct {
 	// Contested are T's contested sidebar-view entries by item key.
 	Contested map[string]model.Contested
 	Spec      compat.OnlineSidebarSpec
+	// PinsBase is T's pins base (nil: none; union next time anyway).
+	PinsBase *model.RowSnapshot
 }
 
 // ConfirmEdits are what a confirmation changes in root.
@@ -37,6 +39,9 @@ type ConfirmEdits struct {
 	// BasesAdvanced counts base items moved; ContestedCleared contested
 	// entries removed.
 	BasesAdvanced, ContestedCleared int
+	// Pins is the pins part (spec-pins 9): T's new pins base, its
+	// confirmed steps and how many changed the list.
+	Pins PinsConfirm
 }
 
 // ConfirmPlan decides, for the done steps not confirmed yet, which base
@@ -104,6 +109,16 @@ func ConfirmPlan(rec *state.OnlineRecord, steps []Step, b ConfirmBases) ConfirmE
 		e.SidebarBase = base
 	}
 	sort.Strings(e.ContestedDelete)
+	confirmed := map[StepID]bool{}
+	for _, id := range rec.Confirmed {
+		confirmed[StepID(id)] = true
+	}
+	if pc, err := PinsBaseAfter(b.PinsBase, steps, confirmed, EverUnknown(steps)); err == nil {
+		e.Pins = pc
+		for _, id := range pc.Confirmed {
+			e.Confirmed = append(e.Confirmed, string(id))
+		}
+	}
 	return e
 }
 

@@ -250,7 +250,7 @@ func TestCreateOnlyFS(t *testing.T) {
 func TestCleanupRemovesOrphanQueue(t *testing.T) {
 	s := testService(t)
 	d := Draft{Steps: []Step{ProbeStep(), pinStep("p000", pinInput, StatusPending)}}
-	s.Providers = append(Registry(), testPins{})
+	s.Providers = append(baseRegistry(), testPins{})
 	publish(t, s, d)
 	root := state.NewRoot("/d")
 	root.Epoch, root.Active = 4, "home"
@@ -311,7 +311,7 @@ func TestCaptureUsable(t *testing.T) {
 }
 
 func TestValidateRefusesForeignTools(t *testing.T) {
-	pols := Policies(append(Registry(), testPins{}))
+	pols := Policies(append(baseRegistry(), testPins{}))
 	base := func() *Queue {
 		return &Queue{V: 1, ID: tQueue, Phase: PhaseReconcile, Steps: []Step{ProbeStep(), pinStep("p000", pinInput, StatusPending)}}
 	}
@@ -420,7 +420,7 @@ func TestStepsSHAImmutable(t *testing.T) {
 }
 
 func TestStoreLeaseHelpers(t *testing.T) {
-	s := testService(t, append(Registry(), testPins{})...)
+	s := testService(t, append(baseRegistry(), testPins{})...)
 	rec := publish(t, s, Draft{Steps: []Step{ProbeStep(), func() Step {
 		p := pinStep("p000", pinInput, StatusPending)
 		p.Needs = []string{"read:r000"}

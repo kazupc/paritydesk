@@ -32,6 +32,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/sources/prefs"
 	"github.com/kazupc/paritydesk/internal/sources/worktrees"
 	"github.com/kazupc/paritydesk/internal/state"
+	"github.com/kazupc/paritydesk/internal/store/idb"
 	"github.com/kazupc/paritydesk/internal/store/kv"
 	"github.com/kazupc/paritydesk/internal/store/kv/leveldb"
 )
@@ -67,7 +68,8 @@ var errRealRunnerInTest = errors.New("cli: the real command runner is refused un
 // and sources.DiscoverReplicas, profile.Resolve, app.NewDarwin,
 // compat.Gate over compat.Load, leveldb.New (always over the unwrapped
 // fsx.Default(), confined to its temp root <data_root>/.paritydesk-tmp),
-// all.Registry, rows.Registry and rows.PostMerge, plan.Compose and
+// all.RegistryWith (row pins over idb.Cloner in the same temp root),
+// rows.Registry and rows.PostMerge, plan.Compose and
 // plan.Validate, prefs.PermissionAcks, apply.Applier, sources.Directory,
 // worktrees.Guard, runner.Detacher (IsApp = app.IsAppProcess bound to the
 // located bundle), runner.PlanStore{RunDir}, and the render-backed UI.
@@ -128,6 +130,13 @@ func buildDeps(ctx context.Context, g *globalFlags, in wireInput) (orchestrator.
 	if err != nil {
 		return orchestrator.Deps{}, err
 	}
+	// The pins row reads IndexedDB from a private per-file clone in the
+	// same temporary root (spec-pins 4.2); leftovers of a crash go first.
+	cloner, err := idb.NewCloner(filepath.Join(dataRoot, TempDirName), base)
+	if err != nil {
+		return orchestrator.Deps{}, err
+	}
+	_ = cloner.SweepTemp()
 	var kvo kv.Opener = opener
 	if readOnly {
 		kvo = kv.ReadOnly(opener)
@@ -167,7 +176,7 @@ func buildDeps(ctx context.Context, g *globalFlags, in wireInput) (orchestrator.
 		App:            plat,
 		Compat:         compat.Gate{Manifests: manifests},
 		KV:             kvo,
-		Adapters:       all.Registry(),
+		Adapters:       all.RegistryWith(all.Options{IDB: cloner.Read}),
 		Rows:           rows.Registry(),
 		PostMerge:      rows.PostMerge,
 		Compose:        plan.Compose,

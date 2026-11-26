@@ -70,6 +70,15 @@ func checkEmbedded(t *testing.T, m *compat.Manifest) {
 			}
 		case model.RowSidebarCollapse, model.RowSidebarSeed:
 			checkSidebarOffline(t, m, s)
+		case model.RowPins:
+			// Written only through the app's tools, on 7.x (spec-pins 5).
+			want := compat.PathNone
+			if m.Name == "7.x" {
+				want = compat.PathOn
+			}
+			if s.WritePath != want || (want == compat.PathOn) != (s.IDB != nil) {
+				t.Errorf("%s: %+v", r, s)
+			}
 		default:
 			if s.WritePath != compat.PathOff {
 				t.Errorf("%s: write path %s", r, s.WritePath)

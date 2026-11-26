@@ -41,10 +41,10 @@ func newOnlineWorld(t *testing.T) *onlineWorld {
 	return &onlineWorld{realWorld: w, svc: svc}
 }
 
-// alwaysPin is a test provider (the pins unit owns the real one) that
+// alwaysPin is a test provider standing in for the real pins provider: it
 // queues one pin step on every build, for runs whose sidebar has nothing
-// to change: a sidebar field whose prior already equals the intent gets
-// no step.
+// to change (a sidebar field whose prior already equals the intent gets
+// no step).
 type alwaysPin struct{}
 
 func (alwaysPin) Name() string                              { return "pins-test" }
@@ -147,7 +147,7 @@ func TestOnlineSwitchPublishes(t *testing.T) {
 	}
 	// Back to a, the sidebar sort a had is already a's: no sidebar step.
 	// A test pin step keeps the next queue non-empty.
-	w.svc.Providers = append(online.Registry(), alwaysPin{})
+	w.svc.Providers = []online.Provider{online.ProbeProvider(), online.SidebarProvider(), alwaysPin{}}
 	// The P2 preview of the next switch counts without publishing.
 	prev, err := w.orch().Preview(context.Background(), PreviewOptions{To: "a"})
 	if err != nil || prev.Online == nil || prev.Online.Queued || prev.Online.Sidebar != 0 || prev.Online.PinsAdd != 1 {
@@ -177,7 +177,7 @@ func TestOnlineSyncKeepsEpoch(t *testing.T) {
 	epoch := w.root().Epoch
 	// A sync changes no sidebar value (prior equals intent), so a test pin
 	// step gives it something to queue.
-	w.svc.Providers = append(online.Registry(), alwaysPin{})
+	w.svc.Providers = []online.Provider{online.ProbeProvider(), online.SidebarProvider(), alwaysPin{}}
 	w.app.running = true
 	res, err := w.orch().Sync(context.Background(), SyncOptions{Yes: true})
 	if err != nil || res.Code != pderr.OK {

@@ -344,7 +344,7 @@ type Summary struct {
 	Sidebar     int    `json:"sidebar"`
 	Other       int    `json:"other"`
 	PinsSource  string `json:"pins_source"`
-	PinsReason  string `json:"pins_reason,omitempty"`
+	PinsReason  string `json:"pins_reason"`
 	Queued      bool   `json:"queued"`
 }
 

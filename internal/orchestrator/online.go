@@ -42,6 +42,10 @@ type Online interface {
 	SetLaunched(ctx context.Context, queueID string, t time.Time) error
 	// Finish marks a queue complete for its caller and removes the lease.
 	Finish(ctx context.Context, queueID string, c online.Caller) (*online.Queue, error)
+	// Provides reports whether a provider builds steps of kind k.
+	Provides(k online.Kind) bool
+	// QueueCounts are a queue's counts, with the providers' own counts.
+	QueueCounts(q *online.Queue) online.Counts
 }
 
 var _ Online = (*online.Service)(nil)
@@ -65,10 +69,10 @@ func (o *Orchestrator) defaultSupportDir() bool {
 }
 
 // onlineBuild builds the online draft from a plan's merge outputs (P2
-// approximate, P5 final).
-func (r *run) onlineBuild(pl *planned, approximate bool) online.Draft {
+// approximate, P5 final), and returns the input it was built from.
+func (r *run) onlineBuild(pl *planned, approximate bool) (online.Draft, online.BuildInput) {
 	if !r.o.onlineActive(r.manifest) || pl == nil {
-		return online.Draft{}
+		return online.Draft{}, online.BuildInput{}
 	}
 	outs := map[model.RowID]*rows.Output{}
 	cur := map[model.RowID]*model.RowSnapshot{}
@@ -83,7 +87,8 @@ func (r *run) onlineBuild(pl *planned, approximate bool) online.Draft {
 		ReopenSession: r.invoking, Approximate: approximate, Phase: online.PhaseReconcile,
 		Limits: plan.Limits{MaxDeleteFraction: cfg.Limits.MaxDeleteFraction, MaxDeleteMin: cfg.Limits.MaxDeleteMin},
 	}
-	return r.d().Online.Build(in)
+	r.pinsBuild(context.Background(), pl, &in)
+	return r.d().Online.Build(in), in
 }
 
 // onlineSummary is Result.Online for a draft (nil when nothing is
@@ -98,24 +103,58 @@ func onlineSummary(d online.Draft, queued bool) *online.Summary {
 	return s
 }
 
-// onlinePreview is P2's online part: the approximate counts.
+// shownOnlineWarnings are the draft warnings that go into
+// Result.Warnings (the rest goes to the run log): a provider that failed,
+// and the pin provider's reasons for changes it did not queue (spec-pins
+// 8.2, 8.5: the warning says why, and what unpinning by hand does).
+// Settings Claude's tools cannot set are expected (for example a group-by
+// by environment) and stay in the run log.
+var shownOnlineWarnings = map[string]bool{
+	string(i18n.OnlineWarnBuildFailed):       true,
+	string(i18n.OnlineWarnPinsFamilyBlocked): true,
+	string(i18n.OnlineWarnPinsHidden):        true,
+	string(i18n.OnlineWarnPinsCapped):        true,
+}
+
+// onlinePreview is P2's online part: the approximate counts. The pin
+// provider's warnings are shown with the plan (plan --json carries them);
+// P5 replaces them with the final draft's.
 func (r *run) onlinePreview() {
-	d := r.onlineBuild(r.p2, true)
-	r.res.Online = onlineSummary(d, false)
+	d, in := r.onlineBuild(r.p2, true)
+	r.res.Online = r.pinsSummary(r.p2, onlineSummary(d, false), in, true)
 	for _, w := range d.Warnings {
-		r.o.progress(P2Preview, StatusInfo, w.Text)
+		if shownOnlineWarnings[w.Msg] && w.Msg != string(i18n.OnlineWarnBuildFailed) {
+			r.warn(P2Preview, w.Text)
+			r.previewWarns = append(r.previewWarns, w.Text)
+		} else {
+			r.o.progress(P2Preview, StatusInfo, w.Text)
+		}
 	}
+}
+
+// dropPreviewWarns removes the warnings P2's approximate draft added.
+func (r *run) dropPreviewWarns() {
+	for _, t := range r.previewWarns {
+		if i := slices.Index(r.res.Warnings, t); i >= 0 {
+			r.res.Warnings = slices.Delete(r.res.Warnings, i, i+1)
+		}
+	}
+	r.previewWarns = nil
 }
 
 // onlineHarvest is P5's online part: the final draft.
 func (r *run) onlineHarvest() {
-	r.draft = r.onlineBuild(r.p5, false)
-	r.res.Online = onlineSummary(r.draft, false)
+	var in online.BuildInput
+	r.draft, in = r.onlineBuild(r.p5, false)
+	r.res.Online = r.pinsSummary(r.p5, onlineSummary(r.draft, false), in, false)
+	if r.p5 != nil && r.p5.Pins != nil && r.p5.Pins.SProbePassed {
+		// S's read passed the freshness probe and becomes its base in the
+		// P5 commit (spec-pins 6.4 item 7).
+		clearPinsProbe(r.root, r.S.Profile.Alias)
+	}
+	r.dropPreviewWarns()
 	for _, w := range r.draft.Warnings {
-		// Settings Claude's tools cannot set are expected (for example a
-		// group-by by environment): run log only. A provider that failed
-		// is worth a warning.
-		if w.Msg == string(i18n.OnlineWarnBuildFailed) {
+		if shownOnlineWarnings[w.Msg] {
 			r.warn(P5Harvest, w.Text)
 		} else {
 			r.o.progress(P5Harvest, StatusInfo, w.Text)
@@ -286,7 +325,7 @@ func (o *Orchestrator) OnlineConfirm(ctx context.Context, in OnlineConfirmInput)
 		return &OnlineConfirmResult{State: online.StateStale, Queue: in.Queue}, nil
 	}
 	res := &OnlineConfirmResult{State: string(online.QueueComplete), Queue: q.ID, Profile: q.Profile, Steps: q.Steps,
-		Counts: online.QueueCounts(q, nil), RootBusy: rootBusy}
+		Counts: d.Online.QueueCounts(q), RootBusy: rootBusy}
 	if rootBusy {
 		return res, nil
 	}
@@ -340,6 +379,9 @@ func (o *Orchestrator) confirmPending(ctx context.Context, root *state.Root, m *
 	if ref, ok := root.Bases[kT.String()]; ok {
 		bases.SidebarBase = o.object(ref)
 	}
+	if ref, ok := root.Bases[state.BaseKey{Alias: rec.Profile, Replica: rec.Replica, Row: model.RowPins}.String()]; ok {
+		bases.PinsBase = o.object(ref)
+	}
 	for _, c := range contestedFor(root, kT) {
 		bases.Contested[c.Key] = c
 	}
@@ -351,6 +393,14 @@ func (o *Orchestrator) confirmPending(ctx context.Context, root *state.Root, m *
 	}
 	e := online.ConfirmPlan(rec, steps, bases)
 	res := &OnlineConfirmResult{BasesAdvanced: e.BasesAdvanced, ContestedCleared: e.ContestedCleared}
+	if moved, err := o.pinsConfirmed(root, rec, e.Pins); err != nil {
+		return nil, err
+	} else if moved {
+		res.changed = true
+		if e.Pins.Moved {
+			res.BasesAdvanced++
+		}
+	}
 	if e.SidebarBase != nil {
 		ref, err := d.State.PutSnapshot(e.SidebarBase)
 		if err != nil {
@@ -503,7 +553,7 @@ func (o *Orchestrator) verifyConfirm(ctx context.Context, root *state.Root, m *c
 	}
 	rec.State = string(online.QueueComplete)
 	if steps, err := o.d.Online.Resolved(ctx, rec.Queue); err == nil && steps != nil {
-		rec.Counts = online.QueueCounts(&online.Queue{Steps: steps}, nil)
+		rec.Counts = o.d.Online.QueueCounts(&online.Queue{Steps: steps})
 	}
 	return o.commit(root)
 }

@@ -1,0 +1,17 @@
+{
+  "id": "pins",
+  "header": "Pins",
+  "text": "To match work, paritydesk will pin 2 and unpin 2 session(s) here. Claude may ask you to approve each change to another session (up to 4). This is the first time pins are carried between these profiles: the pins of both are combined, and nothing is unpinned. Unpinning a session can also unpin the sessions under it; paritydesk then pins 1 of them again. 1 session(s) stay pinned here this time; see the warning in the plan.",
+  "options": [
+    {
+      "id": "apply",
+      "label": "Apply pin changes",
+      "description": "Claude may ask before each change to another session"
+    },
+    {
+      "id": "skip",
+      "label": "Skip pins this time",
+      "description": "Pins stay as they are; the next switch offers this again"
+    }
+  ]
+}

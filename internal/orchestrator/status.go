@@ -263,6 +263,7 @@ func (o *Orchestrator) Doctor(ctx context.Context, opts DoctorOptions) ([]Check,
 	dr.scratchChecks(ctx, m, root)
 
 	// v0.2 anchor: doctor pins
+	dr.pinsChecks(ctx, m, root)
 
 	// v0.2 anchor: doctor online
 	dr.onlineChecks(root, m)

@@ -76,6 +76,28 @@ func (darwinOps) Clone(src, dst string) error {
 	return nil
 }
 
+// CloneFileOnly clones one regular file with clonefile(2) and never falls
+// back to a byte copy: a volume that cannot clone (EXDEV, ENOTSUP) gives
+// ErrUnsupported. The source's last component is not followed.
+func (darwinOps) CloneFileOnly(src, dst string) error {
+	fi, err := os.Lstat(src)
+	if err != nil {
+		return err
+	}
+	if !fi.Mode().IsRegular() {
+		return ErrNotRegular
+	}
+	err = unix.Clonefile(src, dst, cloneFlags)
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, unix.EXDEV), errors.Is(err, unix.ENOTSUP):
+		return fmt.Errorf("fsx: clone %s: %w", filepath.Base(src), ErrUnsupported)
+	default:
+		return &os.LinkError{Op: "clonefile", Old: src, New: dst, Err: err}
+	}
+}
+
 // copyTree copies a file, symlink or directory tree without following
 // symlinks, keeping permission bits. dst must not exist.
 func copyTree(src, dst string) error {

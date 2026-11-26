@@ -293,7 +293,7 @@ func (o *Orchestrator) rebaseRestored(ctx context.Context, root *state.Root, m *
 			rows = append(rows, e.Row)
 		}
 	}
-	snaps, err := o.rereadRows(ctx, m, folder, rep, rows, nil)
+	snaps, err := o.rereadRowsPins(ctx, m, folder, rep, rows, nil, o.pinsRereadFacts(root, a, rep))
 	for _, row := range rows {
 		k := state.BaseKey{Alias: a, Replica: rep, Row: row}.String()
 		snap, ok := snaps[row]
@@ -370,6 +370,7 @@ func (o *Orchestrator) Rebase(ctx context.Context) error {
 	}
 	root.Bases = map[string]state.Ref{}
 	root.Contested = nil
+	root.PinsProbes = nil
 	o.dropOnline(ctx, root, "rebase")
 	for _, ps := range root.Profiles {
 		ps.SeededFrom = ""

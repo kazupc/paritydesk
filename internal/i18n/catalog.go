@@ -276,6 +276,35 @@ const (
 	DoctorOnlineOff              Msg = "doctor.online_off"
 
 	// v0.2 anchor: pins
+	OnlineQPinsKeep                   Msg = "online.q_pins_keep"
+	OnlineQPinsUnion                  Msg = "online.q_pins_union"
+	OnlineQPinsBlocked                Msg = "online.q_pins_blocked"
+	OnlineWarnPinsReason              Msg = "online.warn_pins_reason"
+	OnlineWarnPinsFamilyBlocked       Msg = "online.warn_pins_family_blocked"
+	OnlineWarnPinsHidden              Msg = "online.warn_pins_hidden"
+	OnlineWarnPinsMirror              Msg = "online.warn_pins_mirror"
+	OnlineRetryPinsRemovalLate        Msg = "online.retry_pins_removal_late"
+	PlanOnlinePinsPreviewUnavailable  Msg = "plan.online_pins_preview_unavailable"
+	DoctorOnlinePinsIDBCount          Msg = "doctor.online_pins_idb_count"
+	DoctorOnlinePinsMirrorCount       Msg = "doctor.online_pins_mirror_count"
+	DoctorOnlinePinsUnavailableReason Msg = "doctor.online_pins_unavailable_reason"
+	DoctorOnlinePinsStale             Msg = "doctor.online_pins_stale"
+	DoctorOnlinePinsMirrorDiffers     Msg = "doctor.online_pins_mirror_differs"
+	DoctorOnlinePinsOff               Msg = "doctor.online_pins_off"
+	PinsReasonDirAbsent               Msg = "pins.reason.dir_absent"
+	PinsReasonKeyAbsent               Msg = "pins.reason.key_absent"
+	PinsReasonAmbiguous               Msg = "pins.reason.ambiguous"
+	PinsReasonUnsupported             Msg = "pins.reason.unsupported"
+	PinsReasonBlobWrapped             Msg = "pins.reason.blob_wrapped"
+	PinsReasonVersion                 Msg = "pins.reason.version"
+	PinsReasonTorn                    Msg = "pins.reason.torn"
+	PinsReasonUnclean                 Msg = "pins.reason.unclean"
+	PinsReasonPending                 Msg = "pins.reason.pending"
+	PinsReasonTooLarge                Msg = "pins.reason.too_large"
+	PinsReasonBackend                 Msg = "pins.reason.backend"
+	PinsReasonFormat                  Msg = "pins.reason.format"
+	PinsReasonStaleStore              Msg = "pins.reason.stale_store"
+	PinsReasonOther                   Msg = "pins.reason.other"
 
 	// v0.2 anchor: artifacts
 
@@ -655,6 +684,35 @@ var catalog = map[Msg]string{
 	DoctorOnlineOff:              "Changes inside Claude are off (online.reconcile = \"off\", or this Claude version has no online support)",
 
 	// v0.2 anchor: pins
+	OnlineQPinsKeep:                   "Unpinning a session can also unpin the sessions under it; paritydesk then pins %d of them again.",
+	OnlineQPinsUnion:                  "This is the first time pins are carried between these profiles: the pins of both are combined, and nothing is unpinned.",
+	OnlineQPinsBlocked:                "%d session(s) stay pinned here this time; see the warning in the plan.",
+	OnlineWarnPinsReason:              "Reason: %s.",
+	OnlineWarnPinsFamilyBlocked:       "%d pinned session(s) were not unpinned: unpinning them would also unpin sessions under them that paritydesk cannot pin again (archived or scheduled). Unpinning them yourself in Claude unpins those too.",
+	OnlineWarnPinsHidden:              "%d pinned session(s) were not unpinned because their sidebar section is hidden; Claude refuses that change. Show the section or unpin them yourself.",
+	OnlineWarnPinsMirror:              "Pins in %s were read from Claude's backup list, because the main list cannot be read.",
+	OnlineRetryPinsRemovalLate:        "An unpin was not retried: sessions were already pinned again after it, and retrying could unpin them. It is offered again at the next switch.",
+	PlanOnlinePinsPreviewUnavailable:  "  pins          not shown now (Claude is saving them); read again after Claude quits",
+	DoctorOnlinePinsIDBCount:          "Pins: read from Claude's IndexedDB (%d pinned session(s))",
+	DoctorOnlinePinsMirrorCount:       "Pins: read from Claude's backup list, because the main list cannot be read (%s) (%d pinned session(s))",
+	DoctorOnlinePinsUnavailableReason: "Pins: Claude's pin list cannot be read (%s); pins are not carried",
+	DoctorOnlinePinsStale:             "Pins: Claude no longer saves pins where paritydesk reads them; pins are not carried. Update paritydesk; `paritydesk rebase` clears this check.",
+	DoctorOnlinePinsMirrorDiffers:     "Pins: Claude's backup list differs from its main list; paritydesk uses the main list",
+	DoctorOnlinePinsOff:               "Pins: not carried (turned off)",
+	PinsReasonDirAbsent:               "the pin list was not found",
+	PinsReasonKeyAbsent:               "the pin list was not found",
+	PinsReasonAmbiguous:               "more than one pin list was found",
+	PinsReasonUnsupported:             "it is stored in a format paritydesk does not know",
+	PinsReasonBlobWrapped:             "its value is stored as a file paritydesk does not read",
+	PinsReasonVersion:                 "its format version is not known to paritydesk",
+	PinsReasonTorn:                    "it changed while it was being read",
+	PinsReasonUnclean:                 "Claude did not close it cleanly last time, or the file is damaged",
+	PinsReasonPending:                 "Claude had not finished saving it",
+	PinsReasonTooLarge:                "it is larger than paritydesk reads",
+	PinsReasonBackend:                 "Claude stores it in a kind of database paritydesk does not read",
+	PinsReasonFormat:                  "its contents are not in the expected shape",
+	PinsReasonStaleStore:              "Claude no longer saves pins where paritydesk reads them",
+	PinsReasonOther:                   "it could not be read",
 
 	// v0.2 anchor: artifacts
 

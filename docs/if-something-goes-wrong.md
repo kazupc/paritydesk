@@ -349,6 +349,35 @@ through Claude's own tools. Open a Code session and run
   so the changes are not applied; `paritydesk doctor` says so.
 
 <!-- v0.2 anchor: pins -->
+## Pins are not carried
+
+The plan says "pins not carried this time" and a warning names the profile
+and the reason. paritydesk could not read that folder's pin list, so it
+left the pins of both profiles exactly as they were; every other row was
+carried as usual.
+
+- **"Claude had not finished saving it" / "it changed while it was being
+  read"** (in a preview: "not shown now"): quit Claude and run the switch
+  or `paritydesk doctor` again.
+- **"Claude did not close it cleanly last time"**: open and quit Claude
+  once, then try again.
+- **A format paritydesk does not know** (a newer Claude): update
+  paritydesk. Until then pins are read from Claude's backup list when it
+  has one (`doctor` says "backup list").
+- **Some pins stayed although the other profile unpinned them**: the
+  warning says why. Unpinning a session also unpins the pinned sessions
+  under it; when paritydesk cannot pin those again (archived sessions,
+  scheduled runs) or the session's section is hidden, it leaves the pin
+  and the next switch offers it again. Unpinning it yourself in Claude
+  also unpins the sessions under it.
+
+## The pins check fails ("no longer saves pins where paritydesk reads them")
+
+After paritydesk changed pins inside Claude, the pin list it reads did
+not change, so this Claude version keeps pins somewhere else. Pins are
+not carried while this lasts, and nothing else is affected. Update
+paritydesk; `paritydesk rebase` clears the check (every row then starts
+as on a first sync).
 
 <!-- v0.2 anchor: artifacts -->
 

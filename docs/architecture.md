@@ -211,6 +211,21 @@ Locks: run lock, then the online lock (`<SupportDir>/locks/online.lock`);
 [ADR 0005](adr/0005-online-layer.md).
 
 <!-- v0.2 anchor: pins -->
+### Pins (v0.2)
+
+| Piece | Where | What |
+|---|---|---|
+| Reader | `internal/store/idb` (`Cloner`, `ReadString`, `idbtest` for fixtures) | one string key of Claude's IndexedDB (LevelDB, comparator `idb_cmp1`): per-file clone without `LOCK`/`LOG*`, own manifest, table and log replay, newest entry wins, Blink/V8 string decode; every unknown format degrades to a stable reason |
+| Adapter | `internal/sources/pins` | row `pins` (set of local session ids); Claude's backup list (`starred-local-code-sessions`) when the main list is absent or in an unknown format; absence counts as "no pins" only without a valid non-empty base and without `isStarred` evidence; freshness probe after confirmed changes; `Ops` never edits |
+| Merge | `internal/rows` (`keyedModule{pins}`, `Ancestors`, `ExcludedSessionIDs`) | set with per-profile bases, the newer side by live epoch; excluded sessions leave every input |
+| Steps | `internal/online/pins.go`, `confirm_pins.go`; `appsim` (test-only port of the app's family map and cascade) | unpins first, adds and keeps dormant until they settle, keeps for pinned family members, blocked and hidden unpins, cap by atomic groups; `PinsBaseAfter` moves T's base only to what is known, dropping ids an unpin may have cascaded over |
+| Orchestrator | `internal/orchestrator/pins.go`, `doctor_pins.go` | side facts, sessions read for `--only pins`, the row skipped alone when unreadable, the P10 fallback to the P5 read, probes |
+
+Deviation from the design's plan example: unpins are not part of the
+DESTRUCTIVE line or its digest. That line describes offline operations
+that run without further asking; unpins never run offline, each is asked
+inside Claude and is counted in the plan's `online` line. Facts and
+decisions: [ADR 0005](adr/0005-online-layer.md), section "Pins".
 
 <!-- v0.2 anchor: artifacts -->
 

@@ -144,6 +144,32 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   checklist R-ON-1 to R-ON-9). 6.x gets no online steps.
 
 <!-- v0.2 anchor: pins -->
+- Added: row `pins` carries which Code sessions are pinned. paritydesk
+  reads the pin list read-only from Claude's IndexedDB (a private per-file
+  clone, pure Go, no database open) and, when that cannot be read, from
+  Claude's own backup list; it never writes either. Pins are applied
+  through the online layer: one `set_pinned` call per session after the
+  pins question, unpins first, then pins; when unpinning a session would
+  also unpin pinned sessions under it, those are pinned again (or the
+  unpin is held back with a warning when they cannot be: archived or
+  scheduled runs, or a hidden section). See ADR 0005, section "Pins".
+- Added: `plan`, `switch` and `sync` JSON `online` gains `pins_keep`,
+  `pins_blocked`, `pins_source` (`idb`, `mirror`, `none`) and
+  `pins_reason` (always present; `""` unless the source is `none`);
+  `doctor` gains the checks `pins` and `pins-mirror`; a pin list that
+  cannot be read skips only the pins row (other rows and every base are
+  unchanged) with a warning naming the reason. An unpin held back (family
+  members that cannot be pinned again, a hidden section, the step cap)
+  is explained in the result's `warnings`, `plan` included.
+- Changed: unpins are not counted in the DESTRUCTIVE line or its digest:
+  each one is asked inside Claude (the pins question and an approval card
+  per other session) and counted in the plan's `online` line.
+- Changed: `sync.pins` (default on) turns the row off; it is carried only
+  while `online.reconcile` is not `off`, and never on 6.x.
+- Not yet confirmed on a real Mac: the pin list's database ids from the
+  metadata keys, the cascade and keep steps with a fork and a hand-off,
+  the hidden-section deferral, a clean read right after Claude quits, and
+  the backup list's time stamp (release checklist R-PIN-1 to R-PIN-5).
 
 <!-- v0.2 anchor: artifacts -->
 

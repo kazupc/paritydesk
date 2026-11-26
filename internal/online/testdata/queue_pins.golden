@@ -1,0 +1,203 @@
+[
+  {
+    "id": "r000",
+    "kind": "read",
+    "tool": "mcp__ccd_session_mgmt__get_session",
+    "input": {
+      "session_id": "self"
+    },
+    "status": "pending",
+    "needs": [],
+    "after": [],
+    "card": false,
+    "offered": 0,
+    "attempts": 0,
+    "reason": "",
+    "expect": {
+      "format": "json-object"
+    }
+  },
+  {
+    "id": "p000",
+    "kind": "pin",
+    "tool": "mcp__ccd_sidebar__set_pinned",
+    "input": {
+      "pinned": false,
+      "session_id": "local_00000000-0000-4000-8000-000000000001"
+    },
+    "status": "pending",
+    "needs": [
+      "decision:pins",
+      "read:r000"
+    ],
+    "after": [],
+    "card": true,
+    "offered": 0,
+    "attempts": 0,
+    "reason": "",
+    "expect": {
+      "format": "text",
+      "ok": [
+        "Session unpinned.",
+        "The session was already unpinned."
+      ],
+      "refusals": [
+        "This session's section is hidden"
+      ],
+      "unknown": [
+        "The app window didn't answer."
+      ]
+    },
+    "data": {
+      "op": "remove",
+      "desc": [
+        "local_00000000-0000-4000-8000-000000000002",
+        "local_00000000-0000-4000-8000-000000000003"
+      ],
+      "union": true,
+      "blocked": 1
+    }
+  },
+  {
+    "id": "p001",
+    "kind": "pin",
+    "tool": "mcp__ccd_sidebar__set_pinned",
+    "input": {
+      "pinned": false,
+      "session_id": "local_00000000-0000-4000-8000-000000000004"
+    },
+    "status": "pending",
+    "needs": [
+      "decision:pins",
+      "read:r000"
+    ],
+    "after": [],
+    "card": true,
+    "offered": 0,
+    "attempts": 0,
+    "reason": "",
+    "expect": {
+      "format": "text",
+      "ok": [
+        "Session unpinned.",
+        "The session was already unpinned."
+      ],
+      "refusals": [
+        "This session's section is hidden"
+      ],
+      "unknown": [
+        "The app window didn't answer."
+      ]
+    },
+    "data": {
+      "op": "remove",
+      "union": true,
+      "blocked": 1
+    }
+  },
+  {
+    "id": "p002",
+    "kind": "pin",
+    "tool": "mcp__ccd_sidebar__set_pinned",
+    "input": {
+      "pinned": true,
+      "session_id": "local_00000000-0000-4000-8000-000000000005"
+    },
+    "status": "dormant",
+    "needs": [
+      "decision:pins",
+      "read:r000"
+    ],
+    "after": [],
+    "card": false,
+    "offered": 0,
+    "attempts": 0,
+    "reason": "",
+    "expect": {
+      "format": "text",
+      "ok": [
+        "Session pinned.",
+        "The session was already pinned."
+      ],
+      "unknown": [
+        "The app window didn't answer."
+      ]
+    },
+    "data": {
+      "op": "add",
+      "union": true,
+      "blocked": 1
+    }
+  },
+  {
+    "id": "p003",
+    "kind": "pin",
+    "tool": "mcp__ccd_sidebar__set_pinned",
+    "input": {
+      "pinned": true,
+      "session_id": "local_00000000-0000-4000-8000-000000000002"
+    },
+    "status": "dormant",
+    "needs": [
+      "decision:pins",
+      "read:r000"
+    ],
+    "after": [],
+    "card": true,
+    "offered": 0,
+    "attempts": 0,
+    "reason": "",
+    "expect": {
+      "format": "text",
+      "ok": [
+        "Session pinned.",
+        "The session was already pinned."
+      ],
+      "unknown": [
+        "The app window didn't answer."
+      ]
+    },
+    "data": {
+      "op": "keep",
+      "of": [
+        "local_00000000-0000-4000-8000-000000000001"
+      ],
+      "union": true,
+      "blocked": 1
+    }
+  },
+  {
+    "id": "p004",
+    "kind": "pin",
+    "tool": "mcp__ccd_sidebar__set_pinned",
+    "input": {
+      "pinned": true,
+      "session_id": "local_00000000-0000-4000-8000-000000000003"
+    },
+    "status": "dormant",
+    "needs": [
+      "decision:pins",
+      "read:r000"
+    ],
+    "after": [],
+    "card": true,
+    "offered": 0,
+    "attempts": 0,
+    "reason": "",
+    "expect": {
+      "format": "text",
+      "ok": [
+        "Session pinned.",
+        "The session was already pinned."
+      ],
+      "unknown": [
+        "The app window didn't answer."
+      ]
+    },
+    "data": {
+      "op": "add",
+      "union": true,
+      "blocked": 1
+    }
+  }
+]

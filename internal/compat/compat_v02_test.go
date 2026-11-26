@@ -247,6 +247,9 @@ func TestOverrideWithV02TablesDecodes(t *testing.T) {
 	// false) and [legacy] layouts; the override replaces them with the
 	// full sample.
 	base := strings.Replace(withoutLegacy(t, embeddedText(t)), "[online]\nenabled = false\n", "", 1)
+	// ... and its pins row (write_path = "none") is replaced by the
+	// sample's.
+	base = strings.Replace(base, "[[row]]\nrow = \"pins\"\n# Where 6.x keeps pins is not verified: not carried in this version.\nwrite_path = \"none\"\n", "", 1)
 	writeOverride(t, dir, "override.toml", base+v02Tables)
 	ms, err := compat.Load(dir)
 	if err != nil {

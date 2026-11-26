@@ -122,6 +122,23 @@ type Ops interface {
 	BarrierSync(path string) error
 }
 
+// FileCloner is an optional interface of Ops: it clones one regular file
+// with clonefile(2) only. It returns ErrUnsupported (never a byte copy)
+// when the volume cannot clone. The IndexedDB reader uses it to clone
+// files one by one, so it never has to copy bytes it does not need.
+type FileCloner interface {
+	CloneFileOnly(src, dst string) error
+}
+
+// CloneFileOnly calls o's CloneFileOnly when o implements FileCloner and
+// returns ErrUnsupported otherwise.
+func CloneFileOnly(o Ops, src, dst string) error {
+	if fc, ok := o.(FileCloner); ok {
+		return fc.CloneFileOnly(src, dst)
+	}
+	return ErrUnsupported
+}
+
 // Contained joins root and rel after checking that rel is a clean, relative
 // path that stays under root: not absolute, no "..", no NUL, not empty.
 // It does not touch the filesystem; symlink checks happen at open time.
@@ -168,6 +185,9 @@ func (r readOnly) Mkdir(string, string, fs.FileMode) error { return ErrReadOnly 
 func (r readOnly) Symlink(string, string, string) error    { return ErrReadOnly }
 func (r readOnly) RemoveEmptyDir(string, string) error     { return ErrReadOnly }
 func (r readOnly) BarrierSync(string) error                { return ErrReadOnly }
+
+// CloneFileOnly is refused in read-only mode, like every write.
+func (r readOnly) CloneFileOnly(string, string) error { return ErrReadOnly }
 
 // CheckRemovable validates a RemoveAll target and returns the joined path.
 // It refuses: a root that is empty, relative, unclean or "/"; the user's
@@ -320,6 +340,15 @@ func (c confined) BarrierSync(p string) error {
 		return err
 	}
 	return c.o.BarrierSync(p)
+}
+
+// CloneFileOnly may read from anywhere; only the destination is
+// confined. Wrapped ops without the capability give ErrUnsupported.
+func (c confined) CloneFileOnly(src, dst string) error {
+	if err := c.guard(dst); err != nil {
+		return err
+	}
+	return CloneFileOnly(c.o, src, dst)
 }
 
 func (c confined) ID(p string) (FileID, error)                { return c.o.ID(p) }

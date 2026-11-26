@@ -39,9 +39,15 @@ type FS struct {
 	Free uint64
 	// Now stamps new birth times.
 	Now func() time.Time
+	// CloneUnsupported makes CloneFileOnly return fsx.ErrUnsupported, as
+	// on a volume that cannot clone.
+	CloneUnsupported bool
 }
 
-var _ fsx.Ops = (*FS)(nil)
+var (
+	_ fsx.Ops        = (*FS)(nil)
+	_ fsx.FileCloner = (*FS)(nil)
+)
 
 // New returns an FS with 1 TiB free, bound to the parent directory of
 // t.TempDir(), which holds every directory t.TempDir() returns for this
@@ -174,6 +180,29 @@ func (f *FS) Clone(src, dst string) error {
 			return copyFile(p, target, info.Mode().Perm())
 		}
 	})
+}
+
+// CloneFileOnly copies one regular file (a test stand-in for clonefile)
+// unless CloneUnsupported is set. The call is logged as
+// "CloneFileOnly <src>", so tests can check which sources were opened.
+func (f *FS) CloneFileOnly(src, dst string) error {
+	if err := f.enter("CloneFileOnly", src, src, dst); err != nil {
+		return err
+	}
+	if f.CloneUnsupported {
+		return fsx.ErrUnsupported
+	}
+	fi, err := os.Lstat(src)
+	if err != nil {
+		return err
+	}
+	if !fi.Mode().IsRegular() {
+		return fsx.ErrNotRegular
+	}
+	if _, err := os.Lstat(dst); err == nil {
+		return fs.ErrExist
+	}
+	return copyFile(src, dst, fi.Mode().Perm())
 }
 
 func copyFile(src, dst string, perm fs.FileMode) error {

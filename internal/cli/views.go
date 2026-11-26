@@ -104,8 +104,9 @@ func newRunView(r *orchestrator.Result) runView {
 		s.PinsSource = render.Sanitize(s.PinsSource, 16)
 		s.PinsReason = render.Sanitize(s.PinsReason, 32)
 		v.Online = &s
+		unreadable, preview := render.PinsLineFlags(s.PinsSource, s.PinsReason, v.Approximate)
 		ov = &render.OnlinePlanView{PinsAdd: s.PinsAdd, PinsRemove: s.PinsRemove, Sidebar: s.Sidebar,
-			PinsUnreadable: s.PinsReason == "pins_unreadable"}
+			PinsUnreadable: unreadable, PinsPreviewUnavailable: preview}
 	}
 	// Without a target the run stopped before planning: no plan to show.
 	if v.To != "" {

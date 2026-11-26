@@ -73,6 +73,9 @@ type planned struct {
 	// SoftSkipped are the data-folder-relative paths of row scratch's soft
 	// copies apply left as they were (P7, spec-scratch 3.3).
 	SoftSkipped []string
+	// Pins is what reading row pins found (nil when the row was not
+	// planned).
+	Pins *pinsInfo
 }
 
 // selectRows returns the rows to plan, in model.AllRows order, and the
@@ -97,7 +100,9 @@ func (o *Orchestrator) selectRows(m *compat.Manifest, dec compat.Decision, only,
 			skipped[r] = "skipped by the compatibility check"
 		case !ok:
 			skipped[r] = "not covered by the compatibility manifest"
-		case spec.WritePath != compat.PathOff && spec.WritePath != compat.PathOffVerify:
+		case spec.WritePath == compat.PathOn && !o.onlineRowSelectable(m, r):
+			skipped[r] = reasonOnlineOff
+		case spec.WritePath != compat.PathOff && spec.WritePath != compat.PathOffVerify && spec.WritePath != compat.PathOn:
 			skipped[r] = "not carried in this version"
 		case o.d.Adapters[r] == nil || o.d.Rows[r] == nil:
 			skipped[r] = "no adapter"
@@ -146,7 +151,13 @@ func (o *Orchestrator) buildPlan(ctx context.Context, in planInput) (*planned, e
 				refs = []string{}
 			}
 		}
-		w, err := o.mergeRow(ctx, in, r, acks, outs, refs)
+		var w *rowWork
+		var err error
+		if r == model.RowPins {
+			w, err = o.mergePins(ctx, in, pl, acks)
+		} else {
+			w, err = o.mergeRow(ctx, in, r, acks, outs, refs)
+		}
 		if err == nil && r == model.RowScratch {
 			o.scratchReadNotes(in, w, notes)
 		}
@@ -414,6 +425,12 @@ func (o *Orchestrator) composePlan(ctx context.Context, in planInput, pl *planne
 		}
 		edits = append(edits, res.Edits...)
 		w.Stamps = res.WrittenStamps
+		if w.Spec.WritePath == compat.PathOn {
+			// Applied in the app with the user's answer (the online queue):
+			// not part of the plan's changes, hash, DESTRUCTIVE line or
+			// deletion breaker (spec-pins 7.1, 12.3).
+			continue
+		}
 		p.Changes = append(p.Changes, w.Out.Changes...)
 		p.Changes = append(p.Changes, res.Skipped...)
 		p.Conflicts = append(p.Conflicts, w.Out.Conflicts...)
@@ -446,7 +463,7 @@ func beforeCounts(pl *planned) map[model.Category]int {
 	m := map[model.Category]int{}
 	for r, w := range pl.Work {
 		switch {
-		case w.T == nil:
+		case w.T == nil, w.Spec.WritePath == compat.PathOn:
 		case r == model.RowScratch:
 			m[model.CategoryOf(r)] += scratchCountable(w.T)
 		default:

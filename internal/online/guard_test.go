@@ -61,7 +61,7 @@ func guardQueue(pinStatus StepStatus, decided bool) *Queue {
 func guardInput(q *Queue, tool, input string) GuardInput {
 	l := &Lease{V: 1, Queue: tQueue, Session: tSession, BootID: tBoot, MonoDeadlineNS: 2e12, ExpiresAt: t0.Add(time.Hour)}
 	gi := GuardInput{Mode: GuardArmed, Lease: l, Queue: q, Session: tSession, Tool: tool, Now: t0,
-		Mono: MonoNow{BootID: tBoot, NS: 1e12, OK: true}, Policies: Policies(append(Registry(), testPins{})),
+		Mono: MonoNow{BootID: tBoot, NS: 1e12, OK: true}, Policies: Policies(append(baseRegistry(), testPins{})),
 		Recorded: map[StepID]bool{ProbeStepID: true}, Inflight: map[StepID]int{}}
 	if input != "" {
 		gi.Input = json.RawMessage(input)
@@ -261,7 +261,7 @@ func TestGuardRetryNotCalled(t *testing.T) {
 func TestGuardFloorWinsOverListedStep(t *testing.T) {
 	q := guardQueue(StatusOffered, true)
 	q.Steps[1].Tool = "mcp__ccd_sidebar__delete_group"
-	if err := q.Validate(Policies(append(Registry(), testPins{})), nil); err == nil {
+	if err := q.Validate(Policies(append(baseRegistry(), testPins{})), nil); err == nil {
 		t.Fatal("queue with a floor tool validated")
 	}
 	if d := Decide(guardInput(q, "mcp__ccd_sidebar__delete_group", pinInput)); !d.Deny || d.Reason != i18n.GuardDenyFloor {
@@ -315,3 +315,8 @@ func TestGuardSoundness(t *testing.T) {
 		}
 	})
 }
+
+// baseRegistry is the registry without the real pins provider, for the
+// tests that model pin steps with testPins (the real provider validates
+// its step data and has its own tests in pins_test.go).
+func baseRegistry() []Provider { return []Provider{ProbeProvider(), SidebarProvider()} }
