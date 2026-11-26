@@ -32,7 +32,9 @@ func (o *Orchestrator) Switch(ctx context.Context, opts SwitchOptions) (*Result,
 		}
 	}
 	r.interactive = o.interactive(opts.FromRunner)
-	return r.execute(ctx)
+	res, err := r.execute(ctx)
+	r.notifyEnd(ctx, pderr.CodeOf(err))
+	return res, err
 }
 
 // logOffset records main.log's size first, unless the parent already did.
@@ -75,6 +77,10 @@ func (r *run) execute(ctx context.Context) (*Result, error) {
 		return r.fail(err)
 	}
 	r.launch(cctx)
+	if r.launched {
+		// Announce the switch when Claude is up, not after the checks.
+		r.notify(cctx, notifySwitched)
+	}
 	return r.res, r.finalCode(r.verifyP12(ctx))
 }
 

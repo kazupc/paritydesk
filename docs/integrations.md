@@ -46,9 +46,13 @@ without changing anything:
 outside paritydesk, which Terminal asks you to confirm first. Run
 `paritydesk status` before clicking if you switched accounts by hand.
 
-paritydesk is designed to post a notification when the background switch
-finishes (release checklist step 13). If
-something stopped it, run `paritydesk status` in Terminal. To see the
+paritydesk posts a notification when the background switch has launched
+Claude on the other account, and another one if it stops early or the
+check after launch finds a problem. The text is fixed and names no
+profile. macOS shows it as coming from Script Editor; if it never
+appears, allow notifications for Script Editor in System Settings >
+Notifications. Whatever happened, `paritydesk status` in Terminal says
+where things stand. To see the
 plan before you switch, use `paritydesk plan <alias>` or the `pd`
 function, which asks first.
 

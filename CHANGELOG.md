@@ -134,6 +134,10 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 
 ### Fixed
 
+- A switch started in the background (from a Code session, the menu bar
+  or Raycast) now posts the notification the docs promised: when Claude
+  is up on the other account, or when the switch stops early. It was
+  never sent.
 - `verify` no longer says Claude in Chrome "did not connect" after a
   switch, and `doctor` no longer warns about it. Claude in Chrome connects
   when it is first used, not when Claude starts, so a log without a

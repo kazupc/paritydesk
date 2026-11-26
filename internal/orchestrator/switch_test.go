@@ -851,3 +851,40 @@ func TestVerifyAfterIgnoresAnOlderRun(t *testing.T) {
 		t.Errorf("last verify changed: %+v -> %+v", before, after)
 	}
 }
+
+// TestDetachedSwitchNotifies: nobody watches a detached run, so it posts a
+// notification when Claude is up, and one when it stops early; a run in
+// Terminal posts none.
+func TestDetachedSwitchNotifies(t *testing.T) {
+	t.Run("success is announced once, at launch", func(t *testing.T) {
+		e := newEnv(t)
+		pv, _ := e.orch().Preview(context.Background(), PreviewOptions{To: "b", Save: true})
+		if _, err := e.orch().Switch(context.Background(), SwitchOptions{To: "b", FromRunner: true, ConfirmedPlan: pv.PlanHash, LogOffset: 10}); err != nil {
+			t.Fatal(err)
+		}
+		if len(e.app.notes) != 1 || e.app.notes[0] != notifySwitched {
+			t.Fatalf("notes = %q", e.app.notes)
+		}
+	})
+	t.Run("a stop before the quit is announced", func(t *testing.T) {
+		e := converged(t)
+		pv, _ := e.orch().Preview(context.Background(), PreviewOptions{To: "b", Save: true})
+		e.writeRow(ids.DefaultFolder, model.RowSessions, map[string]any{string(fakeSession(2)): map[string]any{"title": "two"}})
+		_, err := e.orch().Switch(context.Background(), SwitchOptions{To: "b", FromRunner: true, ConfirmedPlan: pv.PlanHash, LogOffset: 10})
+		if codeOf(t, err) != pderr.Declined {
+			t.Fatalf("err = %v", err)
+		}
+		if len(e.app.notes) != 1 || e.app.notes[0] != notifyStopped {
+			t.Fatalf("notes = %q", e.app.notes)
+		}
+	})
+	t.Run("a run in Terminal posts nothing", func(t *testing.T) {
+		e := newEnv(t)
+		if _, err := e.orch().Switch(context.Background(), SwitchOptions{To: "b", Yes: true, ConfirmFirstSync: true, LogOffset: 10}); err != nil {
+			t.Fatal(err)
+		}
+		if len(e.app.notes) != 0 {
+			t.Fatalf("notes = %q", e.app.notes)
+		}
+	})
+}

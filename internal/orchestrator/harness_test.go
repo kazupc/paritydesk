@@ -401,6 +401,7 @@ type fakeApp struct {
 	launches    int
 	badLaunch   int
 	opened      []ids.SessionID
+	notes       []string // notification texts, in order
 	busySeq     [][]ids.SessionID
 	busyCalls   int
 	logSize     int64
@@ -530,8 +531,11 @@ func (a *fakeApp) OpenSession(_ context.Context, id ids.SessionID) error {
 }
 
 func (a *fakeApp) ProbeAutomation(context.Context, string) error { return a.autoErr }
-func (a *fakeApp) Notify(context.Context, string, string) error  { return nil }
-func (a *fakeApp) LogSize() (int64, error)                       { return a.logSize, nil }
+func (a *fakeApp) Notify(_ context.Context, _, text string) error {
+	a.notes = append(a.notes, text)
+	return nil
+}
+func (a *fakeApp) LogSize() (int64, error) { return a.logSize, nil }
 
 func (a *fakeApp) LogEvents(context.Context, int64, compat.Signals, ids.SessionID) ([]app.LogEvent, int64, error) {
 	return a.events, a.logSize, nil

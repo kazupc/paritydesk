@@ -42,7 +42,9 @@ type run struct {
 	confirmedByPerson bool
 	// sMarked: the leaving folder got its marker at P7 (markLeaving).
 	sMarked bool
-	lock    *state.Lock
+	// notified: a detached run already posted a notification.
+	notified bool
+	lock     *state.Lock
 
 	root     *state.Root
 	bundle   app.BundleIdentity
