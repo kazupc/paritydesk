@@ -368,6 +368,10 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 
 ### Fixed
 
+- With `--json`, a result that ends with a non-zero code (a switch that
+  stopped, a verify that found drift) now carries an `error` member, the
+  same object a failed command prints, so scripts and the plugin's skills
+  see why and not only the code.
 - A switch started in the background (from a Code session, the menu bar
   or Raycast) now posts the notification the docs promised: when Claude
   is up on the other account, or when the switch stops early. It was

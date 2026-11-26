@@ -1,1 +1,1 @@
-{"v":1,"drift":["group-order"],"replaced":[],"sign_in_needed":false,"session_focused":true,"pairing_ok":true,"bridge_connected":true,"code":50}
+{"v":1,"drift":["group-order"],"replaced":[],"sign_in_needed":false,"session_focused":true,"pairing_ok":true,"bridge_connected":true,"code":50,"error":{"code":50,"id":"PD-E50","title":"After launch, some values differ from what was written.","safe":"Your data is intact; the drift is recorded.","next":"paritydesk verify","anchor":"verify-drift"}}

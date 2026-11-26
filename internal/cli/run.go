@@ -31,7 +31,15 @@ func (e *env) service(ctx context.Context, ui orchestrator.UI) (orchestrator.Ser
 func (e *env) emit(v any, text func(p *render.Printer), err error) error {
 	p := e.printer()
 	if p.Mode.JSON {
-		if jerr := p.JSON(withDisplay(v, i18n.DisplayLang())); jerr != nil {
+		doc := withDisplay(v, i18n.DisplayLang())
+		var jerr error
+		if err != nil && pderr.CodeOf(err) != pderr.OK {
+			// The result says why it ended with this code.
+			jerr = p.JSONWithError(doc, err)
+		} else {
+			jerr = p.JSON(doc)
+		}
+		if jerr != nil {
 			return jerr
 		}
 		if err != nil {

@@ -102,6 +102,44 @@ func Document(v any) ([]byte, error) {
 	return append(out, '\n'), nil
 }
 
+// JSONWithError writes v as one JSON document with an "error" member
+// added last: the same object a failed command prints on its own (see
+// Error), so a result that ends with a non-zero code also says why. The
+// members of v keep their order.
+func (p *Printer) JSONWithError(v any, err error) error {
+	b, derr := Document(v)
+	if derr != nil {
+		return derr
+	}
+	ev := NewErrorView(err)
+	var pe *pderr.Error
+	if errors.As(err, &pe) && pe.Msg == "" && pe.Err == nil && ev.Message == pe.Error() {
+		// A bare result code carries no detail beyond the catalog entry.
+		ev.Message = ""
+	}
+	if p.Redact != nil {
+		ev.Message = p.Redact(ev.Message)
+	}
+	eb, derr := Document(ev)
+	if derr != nil {
+		return derr
+	}
+	// Both documents start with {"v":N; drop the error's schema member.
+	eb = bytes.TrimSpace(eb)
+	head := fmt.Sprintf(`{"v":%d`, SchemaVersion)
+	body := bytes.TrimPrefix(eb, []byte(head))
+	body = bytes.TrimPrefix(body, []byte(","))
+	body = bytes.TrimSuffix(body, []byte("}"))
+	b = bytes.TrimSpace(b)
+	out := make([]byte, 0, len(b)+len(body)+16)
+	out = append(out, b[:len(b)-1]...)
+	out = append(out, `,"error":{`...)
+	out = append(out, body...)
+	out = append(out, "}}\n"...)
+	_, werr := p.Out.Write(out)
+	return werr
+}
+
 // Line writes one human line. format is a constant format (never catalog
 // text: that goes through Msg or Text); every string argument is
 // sanitized. In JSON mode human lines go to Err so that Out carries only
