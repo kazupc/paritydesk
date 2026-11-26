@@ -52,6 +52,8 @@ Under `sync.exclude`: collapsed project groups follow the same rule; while any g
 <!-- v0.2 anchor: artifacts -->
 
 <!-- v0.2 anchor: legacy-adopt -->
+**Coming from an earlier folder-swap script?** If your other accounts are parked as `Claude-<Name>` folders next to `Claude`, `paritydesk profile adopt --from-legacy` registers them all at once, keeps their names, and can move other accounts' leftovers into a backup it never prunes. Start with the dry run in [docs/migration-from-legacy.md](docs/migration-from-legacy.md).
+
 
 <!-- v0.2 anchor: i18n-ja -->
 

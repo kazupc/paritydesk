@@ -275,12 +275,18 @@ func baseMembers(v merge.Version) []string {
 // unionFixup keeps C1 at member level when the keyed engine decided a key
 // for one side only: while either base is invalid, canonical holds every
 // member of both exporting sides, so no member is ever removed.
+//
+// A union key of a seeded base (merger.unionKey) gets the same treatment.
 func unionFixup(m *merger) error {
-	if !m.union {
+	if !m.union && !m.anyUnionKey {
 		return nil
 	}
 	keys := unionKeys(m.l.items, m.e.items)
 	for _, k := range keys {
+		ku := m.unionKey(k)
+		if !m.union && !ku {
+			continue
+		}
 		var lists [][]string
 		c, hasC := m.canon.Items[k]
 		if hasC {
@@ -298,7 +304,7 @@ func unionFixup(m *merger) error {
 			it, ok := side.v.items[k]
 			// A contested value on a side with an invalid base is read
 			// as absent (C2), as the engine does.
-			if !ok || !side.exports || (!side.v.valid && side.v.isContested(k, &it)) {
+			if !ok || !side.exports || ((!side.v.valid || ku) && side.v.isContested(k, &it)) {
 				continue
 			}
 			sm, err := setMembers(it)

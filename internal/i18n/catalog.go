@@ -231,6 +231,109 @@ const (
 	// v0.2 anchor: artifacts
 
 	// v0.2 anchor: legacy-adopt
+	LegacyHeaderDry                  Msg = "legacy.header.dry"
+	LegacyHeaderApply                Msg = "legacy.header.apply"
+	LegacyFolderAdopt                Msg = "legacy.folder.adopt"
+	LegacyFolderActive               Msg = "legacy.folder.active"
+	LegacyFolderFinish               Msg = "legacy.folder.finish"
+	LegacyFolderRegistered           Msg = "legacy.folder.registered"
+	LegacyFolderSkip                 Msg = "legacy.folder.skip"
+	LegacyOrgUnknown                 Msg = "legacy.org_unknown"
+	LegacyReasonExcluded             Msg = "legacy.reason.excluded"
+	LegacyReasonUnsupportedName      Msg = "legacy.reason.unsupported_name"
+	LegacyReasonReserved             Msg = "legacy.reason.reserved"
+	LegacyReasonUnreadable           Msg = "legacy.reason.unreadable"
+	LegacyReasonForeign              Msg = "legacy.reason.foreign"
+	LegacyReasonNoIdentity           Msg = "legacy.reason.no_identity"
+	LegacyReasonDuplicate            Msg = "legacy.reason.duplicate"
+	LegacyReasonNoAlias              Msg = "legacy.reason.no_alias"
+	LegacyReasonNeedsAlias           Msg = "legacy.reason.needs_alias"
+	LegacyReasonAliasTaken           Msg = "legacy.reason.alias_taken"
+	LegacyReasonAliasCollision       Msg = "legacy.reason.alias_collision"
+	LegacyReasonParkCollision        Msg = "legacy.reason.park_collision"
+	LegacyLeftoverHeader             Msg = "legacy.leftover.header"
+	LegacyLeftoverItem               Msg = "legacy.leftover.item"
+	LegacyLeftoverUnique             Msg = "legacy.leftover.unique"
+	LegacyKindOtherAccount           Msg = "legacy.kind.other_account"
+	LegacyKindUnrecognized           Msg = "legacy.kind.unrecognized"
+	LegacyKindMixedOrgStub           Msg = "legacy.kind.mixed_org_stub"
+	LegacyKindMixedOrg               Msg = "legacy.kind.mixed_org"
+	LegacyActionEligible             Msg = "legacy.action.eligible"
+	LegacyActionReportOnly           Msg = "legacy.action.report_only"
+	LegacyActionDeferred             Msg = "legacy.action.deferred"
+	LegacyActionMoved                Msg = "legacy.action.moved"
+	LegacyActionFailed               Msg = "legacy.action.failed"
+	LegacyWhyUnrecognized            Msg = "legacy.why.unrecognized"
+	LegacyWhyShortID                 Msg = "legacy.why.short_id"
+	LegacyWhyShortIDUnknown          Msg = "legacy.why.short_id_unknown"
+	LegacyWhyHoldsData               Msg = "legacy.why.holds_data"
+	LegacyWhyUniqueSessions          Msg = "legacy.why.unique_sessions"
+	LegacyWhySymlink                 Msg = "legacy.why.symlink"
+	LegacyWhyTooLarge                Msg = "legacy.why.too_large"
+	LegacyWhyScratch                 Msg = "legacy.why.scratch"
+	LegacyWhyOrgUnknown              Msg = "legacy.why.org_unknown"
+	LegacyWhyOtherVolume             Msg = "legacy.why.other_volume"
+	LegacyWhyAppRunning              Msg = "legacy.why.app_running"
+	LegacyWhyInUse                   Msg = "legacy.why.in_use"
+	LegacyWhyFolderChanged           Msg = "legacy.why.folder_changed"
+	LegacyWhyDenied                  Msg = "legacy.why.denied"
+	LegacyWhyMoveFailed              Msg = "legacy.why.move_failed"
+	LegacyLeftoverOffer              Msg = "legacy.leftover.offer"
+	LegacySeedHeader                 Msg = "legacy.seed.header"
+	LegacySeedRow                    Msg = "legacy.seed.row"
+	LegacySeedRowSkipped             Msg = "legacy.seed.row_skipped"
+	LegacySeedNone                   Msg = "legacy.seed.none"
+	LegacySeedFirstSwitch            Msg = "legacy.seed.first_switch"
+	LegacySeedReasonNoSeedFlag       Msg = "legacy.seed.reason.no_seed_flag"
+	LegacySeedReasonNoManifest       Msg = "legacy.seed.reason.no_manifest"
+	LegacySeedReasonTooFew           Msg = "legacy.seed.reason.too_few"
+	LegacySeedReasonHasBases         Msg = "legacy.seed.reason.has_bases"
+	LegacySeedReasonHasCanonical     Msg = "legacy.seed.reason.has_canonical"
+	LegacySeedReasonRunOpen          Msg = "legacy.seed.reason.run_open"
+	LegacySeedReasonHintMidSwitch    Msg = "legacy.seed.reason.hint_mid_switch"
+	LegacySeedReasonDuplicateAccount Msg = "legacy.seed.reason.duplicate_account"
+	LegacySeedReasonProbeFailed      Msg = "legacy.seed.reason.probe_failed"
+	LegacySeedReasonOrgUnknown       Msg = "legacy.seed.reason.org_unknown"
+	LegacySeedReasonUnreadable       Msg = "legacy.seed.reason.unreadable"
+	LegacySeedReasonNoAdapter        Msg = "legacy.seed.reason.no_adapter"
+	LegacyHintUsed                   Msg = "legacy.hint.used"
+	LegacyHintStale                  Msg = "legacy.hint.stale"
+	LegacyHintMidSwitch              Msg = "legacy.hint.mid_switch"
+	LegacyHintDropped                Msg = "legacy.hint.dropped"
+	LegacyWarnRunOpen                Msg = "legacy.warn.run_open"
+	LegacyWarnPendingAdd             Msg = "legacy.warn.pending_add"
+	LegacyWarnNoActive               Msg = "legacy.warn.no_active"
+	LegacyWarnNoActiveIdentity       Msg = "legacy.warn.no_active_identity"
+	LegacyWarnMarker                 Msg = "legacy.warn.marker"
+	LegacyWarnForeign                Msg = "legacy.warn.foreign"
+	LegacyWarnFolderChanged          Msg = "legacy.warn.folder_changed"
+	LegacyWarnLeftoversUnreadable    Msg = "legacy.warn.leftovers_unreadable"
+	LegacyWarnPrintedDiffers         Msg = "legacy.warn.printed_differs"
+	LegacyPlanHash                   Msg = "legacy.plan_hash"
+	LegacyPlanQuarantineTerminal     Msg = "legacy.plan_quarantine_terminal"
+	LegacyDryRun                     Msg = "legacy.dry_run"
+	LegacyNothing                    Msg = "legacy.nothing"
+	LegacyAdopted                    Msg = "legacy.adopted"
+	LegacyQuarantined                Msg = "legacy.quarantined"
+	LegacyNextHeader                 Msg = "legacy.next.header"
+	LegacyNextRetire                 Msg = "legacy.next.retire"
+	LegacyNextSkill                  Msg = "legacy.next.skill"
+	LegacyNextBackups                Msg = "legacy.next.backups"
+	LegacyNextPlugin                 Msg = "legacy.next.plugin"
+	LegacyNextPlan                   Msg = "legacy.next.plan"
+	LegacyDestructive                Msg = "legacy.destructive"
+	LegacyDestructiveDry             Msg = "legacy.destructive.dry"
+	AskLegacyAliasActive             Msg = "ask.legacy_alias_active"
+	AskLegacyAdopt                   Msg = "ask.legacy_adopt"
+	AskLegacyAdoptQuarantine         Msg = "ask.legacy_adopt_quarantine"
+	ErrorLegacyPlanRequired          Msg = "error.legacy_plan_required"
+	ErrorLegacyPlanChanged           Msg = "error.legacy_plan_changed"
+	ErrorLegacyPlanFlags             Msg = "error.legacy_plan_flags"
+	ErrorLegacyQuarantineTerminal    Msg = "error.legacy_quarantine_terminal"
+	PlanFirstSyncSeeded              Msg = "plan.first_sync_seeded"
+	AskFirstSyncSeeded               Msg = "ask.first_sync_seeded"
+	BackupsPinnedWarn                Msg = "backups.pinned_warn"
+	RollbackQuarantineLine           Msg = "rollback.quarantine_line"
 
 	// v0.2 anchor: i18n-ja
 
@@ -458,6 +561,109 @@ var catalog = map[Msg]string{
 	// v0.2 anchor: artifacts
 
 	// v0.2 anchor: legacy-adopt
+	LegacyHeaderDry:                  "Folders next to Claude (dry run; nothing is changed):",
+	LegacyHeaderApply:                "Adopting folders next to Claude:",
+	LegacyFolderAdopt:                "  %s -> profile %s (account %s, org %s)",
+	LegacyFolderActive:               "  %s (in use) -> profile %s (account %s, org %s)",
+	LegacyFolderFinish:               "  %s -> profile %s (finishing an earlier adopt)",
+	LegacyFolderRegistered:           "  %s is already profile %s",
+	LegacyFolderSkip:                 "  %s is left out: %s",
+	LegacyOrgUnknown:                 "unknown",
+	LegacyReasonExcluded:             "excluded with --legacy-exclude",
+	LegacyReasonUnsupportedName:      "paritydesk cannot use this folder name; rename it to Claude-<letters, digits, . _ -> while Claude is not using it",
+	LegacyReasonReserved:             "the name is reserved",
+	LegacyReasonUnreadable:           "paritydesk could not read it (check its permissions)",
+	LegacyReasonForeign:              "it belongs to another account-switching tool",
+	LegacyReasonNoIdentity:           "it holds no signed-in account (%s)",
+	LegacyReasonDuplicate:            "it holds the same account as %s; pass --legacy-exclude with the folder you no longer use",
+	LegacyReasonNoAlias:              "no alias can be made from its name; pass --legacy-alias %s=<alias>",
+	LegacyReasonNeedsAlias:           "it needs an alias; pass --legacy-alias Claude=<alias>",
+	LegacyReasonAliasTaken:           "alias %s is already used; pass --legacy-alias with another alias",
+	LegacyReasonAliasCollision:       "another folder gives the same alias %s; pass --legacy-alias for one of them",
+	LegacyReasonParkCollision:        "parking it would need the name %s, which another folder has; pass --legacy-alias with another alias",
+	LegacyLeftoverHeader:             "Directories of other accounts inside a folder:",
+	LegacyLeftoverItem:               "  %s/%s: %s (%d files, %s) - %s",
+	LegacyLeftoverUnique:             "    %d of its entries are not in %s; they may exist nowhere else",
+	LegacyKindOtherAccount:           "data of another account (%s)",
+	LegacyKindUnrecognized:           "paritydesk cannot tell what this is; it may belong to this folder",
+	LegacyKindMixedOrgStub:           "an empty directory of this account under another account's organization",
+	LegacyKindMixedOrg:               "this account under another account's organization, with data",
+	LegacyActionEligible:             "can be moved aside",
+	LegacyActionReportOnly:           "kept: %s",
+	LegacyActionDeferred:             "kept for now: %s",
+	LegacyActionMoved:                "moved into backup generation %d",
+	LegacyActionFailed:               "could not be moved; it is still in place",
+	LegacyWhyUnrecognized:            "do not delete it by hand",
+	LegacyWhyShortID:                 "it may be a short name the app uses (possibly %s); do not delete it by hand",
+	LegacyWhyShortIDUnknown:          "it may be a short name the app uses; do not delete it by hand",
+	LegacyWhyHoldsData:               "it holds data",
+	LegacyWhyUniqueSessions:          "bring its sessions home first (see docs/migration-from-legacy.md)",
+	LegacyWhySymlink:                 "it is a link",
+	LegacyWhyTooLarge:                "it is too large to fingerprint",
+	LegacyWhyScratch:                 "sessions may still use it",
+	LegacyWhyOrgUnknown:              "this folder's organization is unknown",
+	LegacyWhyOtherVolume:             "the backup folder is on another volume",
+	LegacyWhyAppRunning:              "quit Claude, then run again",
+	LegacyWhyInUse:                   "a process is using the folder",
+	LegacyWhyFolderChanged:           "the folder changed during the run",
+	LegacyWhyDenied:                  "paritydesk never moves this path or something inside it",
+	LegacyWhyMoveFailed:              "an earlier move from this folder failed",
+	LegacyLeftoverOffer:              "Run again in Terminal with --apply --quarantine to move %d of them into a backup generation. Nothing is deleted; paritydesk rollback <generation> puts them back.",
+	LegacySeedHeader:                 "Sync bases from values every folder already agrees on:",
+	LegacySeedRow:                    "  %s: %d agree, %d differ",
+	LegacySeedRowSkipped:             "  %s: not seeded (%s)",
+	LegacySeedNone:                   "No sync bases are seeded (%s). The first switch merges everything and deletes nothing.",
+	LegacySeedFirstSwitch:            "The first switch still asks you to confirm. Where the folders differ, nothing is deleted and the copy changed last wins.",
+	LegacySeedReasonNoSeedFlag:       "--legacy-no-seed was given",
+	LegacySeedReasonNoManifest:       "Claude's version is not covered",
+	LegacySeedReasonTooFew:           "fewer than two profiles",
+	LegacySeedReasonHasBases:         "a profile already has sync bases",
+	LegacySeedReasonHasCanonical:     "paritydesk already holds shared sync state",
+	LegacySeedReasonRunOpen:          "a run is open",
+	LegacySeedReasonHintMidSwitch:    "the earlier script's switch did not finish",
+	LegacySeedReasonDuplicateAccount: "two folders hold the same account",
+	LegacySeedReasonProbeFailed:      "a shape probe failed",
+	LegacySeedReasonOrgUnknown:       "organization unknown",
+	LegacySeedReasonUnreadable:       "the values could not be read",
+	LegacySeedReasonNoAdapter:        "no adapter",
+	LegacyHintUsed:                   "Hint from the earlier script's state file: the account in Claude becomes profile %s.",
+	LegacyHintStale:                  "The earlier script's state file does not match the folders; it was ignored.",
+	LegacyHintMidSwitch:              "The earlier script's state file says a switch did not finish. The folders' own contents decide, and no sync bases are seeded; check the folders before --apply.",
+	LegacyHintDropped:                "Some values in the earlier script's state file were not usable and were ignored.",
+	LegacyWarnRunOpen:                "A paritydesk run is open; run paritydesk recover before --apply.",
+	LegacyWarnPendingAdd:             "A profile add is waiting for its sign-in; run paritydesk recover before --apply.",
+	LegacyWarnNoActive:               "Claude is missing; finish or undo the earlier script's switch first, so one folder is named Claude.",
+	LegacyWarnNoActiveIdentity:       "Claude holds no signed-in account; open Claude, sign in, quit it, then run this again.",
+	LegacyWarnMarker:                 "The marker of %s could not be written; its first switch merges without deleting.",
+	LegacyWarnForeign:                "Another account-switching tool was detected: %s. --apply stops until it is removed.",
+	LegacyWarnFolderChanged:          "%s changed during the run; nothing more was moved from it.",
+	LegacyWarnLeftoversUnreadable:    "The directories inside %s could not be listed; none of them is reported or moved.",
+	LegacyWarnPrintedDiffers:         "The command printed for use without a terminal cannot read the earlier script's state file, so it does not keep the parked folder name that file gives Claude. To keep it, run --apply in Terminal with the same --legacy-state.",
+	LegacyPlanHash:                   "Plan %s. Without a terminal, apply it with: %s",
+	LegacyPlanQuarantineTerminal:     "Moving leftovers needs Terminal: run this dry run's command there with --apply --quarantine added (no --legacy-plan); it asks before it changes anything.",
+	LegacyDryRun:                     "This was a dry run. Run again with --apply to register these profiles.",
+	LegacyNothing:                    "No folder next to Claude needs adopting.",
+	LegacyAdopted:                    "Registered %d profile(s): %s.",
+	LegacyQuarantined:                "Moved %d of %d directories from %s into backup generation %d. It is kept until you remove it; paritydesk rollback %d puts them back.",
+	LegacyNextHeader:                 "Next steps:",
+	LegacyNextRetire:                 "  1. Stop using the earlier switch script: remove its alias, launcher, menu item or scheduled job, so only paritydesk moves these folders. Keep its file until your first paritydesk switch works.",
+	LegacyNextSkill:                  "  2. Remove any Claude Code skill, command or hook that called the earlier script.",
+	LegacyNextBackups:                "  3. If the earlier script kept copies of your folders, they hold your data unencrypted: restrict them with chmod 700, or delete them once paritydesk works for you.",
+	LegacyNextPlugin:                 "  4. Install the Claude Code plugin: /plugin marketplace add kazupc/paritydesk, then /plugin install paritydesk@paritydesk.",
+	LegacyNextPlan:                   "  5. Preview the first switch with paritydesk plan.",
+	LegacyDestructive:                "Data folders: %d directories moved into a backup generation; nothing is deleted.",
+	LegacyDestructiveDry:             "Data folders: %d directories would be moved into a backup generation; nothing is deleted.",
+	AskLegacyAliasActive:             "Alias for the account in Claude now (a-z, 0-9, -): ",
+	AskLegacyAdopt:                   "Register these profiles? [y/N] ",
+	AskLegacyAdoptQuarantine:         "Register these profiles and move %d directories into a backup generation? [y/N] ",
+	ErrorLegacyPlanRequired:          "--apply without a terminal needs --legacy-plan <hash> from a dry run",
+	ErrorLegacyPlanChanged:           "the folders changed since the dry run; run the dry run again",
+	ErrorLegacyPlanFlags:             "the flags differ from the dry run's; use the command the dry run printed",
+	ErrorLegacyQuarantineTerminal:    "--quarantine moves directories and needs a terminal; run it in Terminal",
+	PlanFirstSyncSeeded:              "First switch after adopting folders: values the folders agreed on sync normally; everything else is merged and nothing of it is deleted.",
+	AskFirstSyncSeeded:               "This is the first switch after adopting folders from an earlier script. Continue? [y/N] ",
+	BackupsPinnedWarn:                "%d generation(s) hold directories moved aside by profile adopt --from-legacy; removing them deletes those directories for good.",
+	RollbackQuarantineLine:           "Put back %d directories that profile adopt --from-legacy moved aside from %s; directories recreated since are left as they are.",
 
 	// v0.2 anchor: i18n-ja
 

@@ -1,0 +1,1 @@
+{"v":1,"ok":true,"dry_run":true,"applied":false,"status":"no_active","plan_hash":"0123456789abcdef0123456789abcdef.fedcba9876543210fedcba9876543210","folders":[{"folder":"Claude-Home","active":false,"alias":"home","alias_source":"folder","account":"0000…","status":"adopt"}],"seed":{"seeded":false},"moves":0,"moves_deferred":0,"moves_failed":0,"warnings":["no_active"]}

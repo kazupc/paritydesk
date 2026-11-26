@@ -23,7 +23,16 @@ const (
 	EntryConflict   EntryKind = "conflict"   // a merge loser kept for the record
 	EntryDir        EntryKind = "dir"        // a directory the run created (row scratch)
 	EntryLink       EntryKind = "link"       // a symlink the run created (row scratch)
+	// EntryQuarantineDir is a directory tree moved aside into the
+	// generation's quarantine (profile adopt --from-legacy): PreHash is its
+	// TreeFingerprint before the move, PostHash is "" (absent after it),
+	// Present is true and Row is "".
+	EntryQuarantineDir EntryKind = "quarantine-dir"
 )
+
+// PurposeLegacyQuarantine is Manifest.Purpose of a generation holding
+// leftovers that profile adopt --from-legacy moved aside.
+const PurposeLegacyQuarantine = "legacy-quarantine"
 
 // Entry is one item of a generation.
 //
@@ -60,6 +69,11 @@ type Manifest struct {
 	// directories of row scratch: Restore removes such a directory only
 	// below it, also when the app's manifest is not at hand.
 	ScratchRoot string `json:"scratch_root,omitempty"`
+	// Pinned generations are never pruned and count toward no retention
+	// limit; Purpose says why one was kept ("" for a switch or sync
+	// backup, PurposeLegacyQuarantine).
+	Pinned  bool   `json:"pinned,omitempty"`
+	Purpose string `json:"purpose,omitempty"`
 }
 
 // Info summarizes a generation for listings.
@@ -75,6 +89,9 @@ type Info struct {
 	// ScratchBytes are the bytes of row-scratch stored and quarantined
 	// entries (moved to scratch-kept, not removed, when pruned).
 	ScratchBytes int64 `json:"scratch_bytes"`
+	// Pinned and Purpose are copied from the manifest.
+	Pinned  bool   `json:"pinned,omitempty"`
+	Purpose string `json:"purpose,omitempty"`
 }
 
 // Store manages the generations directory.
@@ -114,4 +131,11 @@ type Writer interface {
 	// Abort removes the incomplete generation (fsx.Ops.RemoveAll with the
 	// generations directory as root).
 	Abort() error
+	// SaveTree records an EntryQuarantineDir for the directory folder/rel
+	// with its TreeFingerprint; it refuses a symlink, a non-directory and
+	// a rel already saved. The caller moves the tree into QuarantineDir
+	// only after Finish.
+	SaveTree(folder, rel string) (Entry, error)
+	// Pin marks the generation pinned with a purpose (before Finish).
+	Pin(purpose string)
 }

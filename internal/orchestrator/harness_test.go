@@ -271,6 +271,18 @@ func (w *fakeGenWriter) Abort() error {
 	return nil
 }
 
+func (w *fakeGenWriter) SaveTree(folder, rel string) (gen.Entry, error) {
+	fp, _, _, err := gen.TreeFingerprint(folder, rel, 0)
+	if err != nil || fp == "" {
+		return gen.Entry{}, errors.New("fake gens: no tree")
+	}
+	e := gen.Entry{Kind: gen.EntryQuarantineDir, Path: rel, Present: true, PreHash: fp}
+	w.g.m.Entries = append(w.g.m.Entries, e)
+	return e, nil
+}
+
+func (w *fakeGenWriter) Pin(purpose string) { w.g.m.Pinned, w.g.m.Purpose = true, purpose }
+
 func (g *fakeGens) List() ([]gen.Info, error) {
 	var out []gen.Info
 	for n, fg := range g.gens {
@@ -295,6 +307,27 @@ func (g *fakeGens) DeleteIncomplete(n uint64) (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+// DeleteUnmoved deletes a complete pinned quarantine generation whose
+// quarantine (qdir) holds none of its paths.
+func (g *fakeGens) DeleteUnmoved(n uint64) (bool, error) {
+	fg, ok := g.gens[n]
+	if !ok || !fg.m.Complete || !fg.m.Pinned || fg.m.Purpose != gen.PurposeLegacyQuarantine {
+		return false, nil
+	}
+	for _, e := range fg.m.Entries {
+		if e.Kind != gen.EntryQuarantineDir {
+			return false, nil
+		}
+		if g.qdir != "" {
+			if _, err := os.Lstat(filepath.Join(g.qdir, e.Path)); err == nil {
+				return false, nil
+			}
+		}
+	}
+	delete(g.gens, n)
+	return true, nil
 }
 
 func (g *fakeGens) Prune(gen.PrunePolicy) error { g.prunes++; return nil }
@@ -425,6 +458,21 @@ func (s fakeScanner) Scan(context.Context) ([]profile.Folder, error) {
 	return out, nil
 }
 
+func (s fakeScanner) ScanLenient(ctx context.Context) ([]profile.Folder, error) { return s.Scan(ctx) }
+
+func (s fakeScanner) Identify(ctx context.Context, name string) (profile.Folder, error) {
+	all, err := s.Scan(ctx)
+	if err != nil {
+		return profile.Folder{}, err
+	}
+	for _, f := range all {
+		if f.Name == name {
+			return f, nil
+		}
+	}
+	return profile.Folder{}, fs.ErrNotExist
+}
+
 func readMarker(fs fsx.Ops, folder string) (*model.Marker, error) {
 	b, found, err := fs.GetXattr(folder, fsx.MarkerXattr)
 	if err != nil || !found {
@@ -531,6 +579,9 @@ type fakeApp struct {
 	locateErr    error
 	// inUse marks folders a process holds open (a write holder).
 	inUse map[string]bool
+	// bundleScoped: a quiescence check without a bundle path ignores the
+	// running app (it holds only Claude/, not parked folders).
+	bundleScoped bool
 	// scan is what HolderScan reports; nil means defaultHolderScan.
 	scan *app.HolderScanInfo
 }
@@ -551,7 +602,10 @@ func (a *fakeApp) Running(_ context.Context, path string) ([]app.Process, error)
 }
 
 func (a *fakeApp) CheckQuiescence(_ context.Context, in app.QuiescenceInput) (app.QuiescenceReport, error) {
-	rep := app.QuiescenceReport{Quiet: !a.running && !a.notQuiet}
+	// Without a bundle path, app processes count only through the folders
+	// they hold (inUse), as app.Platform does.
+	running := a.running && (in.BundlePath != "" || !a.bundleScoped)
+	rep := app.QuiescenceReport{Quiet: !running && !a.notQuiet}
 	for _, f := range in.Folders {
 		if a.inUse[f] {
 			rep.Quiet = false

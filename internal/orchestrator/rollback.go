@@ -8,6 +8,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/app"
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/gen"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -60,9 +61,15 @@ func (o *Orchestrator) Rollback(ctx context.Context, n uint64, propagate bool) (
 	if err != nil {
 		return nil, err
 	}
+	quarantine := isQuarantine(man)
 	c := Confirmation{Kind: ConfirmRollback, Lines: []string{
 		fmt.Sprintf("Restore generation %d of %s (%d item(s)); items changed since are left as they are.", n, target, len(man.Entries)),
 		fmt.Sprintf("Propagate the restored values to other profiles: %v.", propagate)}}
+	if quarantine {
+		// A quarantine restore touches no row: propagate means nothing.
+		propagate = false
+		c.Lines = []string{i18n.T(i18n.RollbackQuarantineLine, len(man.Entries), parkedOrActive(o.d, root, target))}
+	}
 	if err := o.ask(ctx, o.interactive(false), c); err != nil {
 		return nil, err
 	}
@@ -76,10 +83,15 @@ func (o *Orchestrator) Rollback(ctx context.Context, n uint64, propagate bool) (
 		return nil, err
 	}
 	root.Run = &state.Run{ID: runID, Kind: state.RunRollback, From: target, To: target, Generation: n, Started: o.now()}
-	if err := o.stopForRollback(ctx, root, b); err != nil {
+	bundlePath := b.Path
+	if quarantine && target != root.Active {
+		// Moving directories back into a parked folder: Claude keeps
+		// running; only processes using that folder count.
+		bundlePath = ""
+	} else if err := o.stopForRollback(ctx, root, b); err != nil {
 		return nil, err
 	}
-	if err := o.quietForRollback(ctx, root, b, o.rollbackFolder(root, target)); err != nil {
+	if err := o.quietForRollback(ctx, root, bundlePath, o.rollbackFolder(root, target)); err != nil {
 		return nil, err
 	}
 	cctx, cancel := uncancel(ctx)
@@ -188,9 +200,9 @@ func (o *Orchestrator) rollbackFolder(root *state.Root, a ids.Alias) string {
 // covers a copy started with --user-data-dir on the folder). When it
 // stays busy, the run is closed, Claude is relaunched if paritydesk quit
 // it, and nothing is restored.
-func (o *Orchestrator) quietForRollback(ctx context.Context, root *state.Root, b app.BundleIdentity, folder string) error {
+func (o *Orchestrator) quietForRollback(ctx context.Context, root *state.Root, bundlePath, folder string) error {
 	d := o.d
-	in := o.quiescenceInput(b.Path, folder)
+	in := o.quiescenceInput(bundlePath, folder)
 	deadline := o.now().Add(quiesceTimeout)
 	for {
 		rep, err := d.App.CheckQuiescence(ctx, in)
@@ -238,6 +250,11 @@ func (o *Orchestrator) finishRollback(ctx context.Context, root *state.Root, m *
 	rep, err := d.Gens.Restore(ctx, in)
 	if err != nil {
 		return rep, pderr.Wrap(pderr.Internal, "rollback", err)
+	}
+	if isQuarantine(man) {
+		// Leftovers moved back: no row changed, so no epoch event, no
+		// live epoch and no base change.
+		return rep, nil
 	}
 	if markEpochRecorded(root.Run) {
 		root.Epoch++
@@ -345,6 +362,9 @@ func (o *Orchestrator) Rebase(ctx context.Context) error {
 	}
 	root.Bases = map[string]state.Ref{}
 	root.Contested = nil
+	for _, ps := range root.Profiles {
+		ps.SeededFrom = ""
+	}
 	if err := o.commit(root); err != nil {
 		return err
 	}
@@ -352,4 +372,26 @@ func (o *Orchestrator) Rebase(ctx context.Context) error {
 		o.progress(P10Commit, "warn", "unreferenced state objects could not be removed")
 	}
 	return nil
+}
+
+// isQuarantine reports whether a generation holds only directories that
+// profile adopt --from-legacy moved aside.
+func isQuarantine(m *gen.Manifest) bool {
+	if m == nil || m.Purpose != gen.PurposeLegacyQuarantine || len(m.Entries) == 0 {
+		return false
+	}
+	for _, e := range m.Entries {
+		if e.Kind != gen.EntryQuarantineDir {
+			return false
+		}
+	}
+	return true
+}
+
+// parkedOrActive is the folder name that holds profile a now.
+func parkedOrActive(d Deps, root *state.Root, a ids.Alias) string {
+	if a == root.Active {
+		return ids.DefaultFolder
+	}
+	return parkedName(d, a)
 }

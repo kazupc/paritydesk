@@ -25,6 +25,9 @@ type PlanView struct {
 	// WithScratch).
 	Scratch      *ScratchSummary
 	ScratchNotes []string
+	// Seeded: the first switch after profile adopt --from-legacy seeded
+	// the bases (plan.Plan.Seeded); its first-sync line says so.
+	Seeded bool
 }
 
 // PlanLines returns the human summary of a plan: a header, one line per
@@ -38,7 +41,11 @@ func PlanLines(v PlanView) []string {
 	}
 	lines := []string{i18n.T(head, Sanitize(v.From, 32), Sanitize(v.To, 32))}
 	if v.FirstSync {
-		lines = append(lines, i18n.T(i18n.PlanFirstSync))
+		first := i18n.PlanFirstSync
+		if v.Seeded {
+			first = i18n.PlanFirstSyncSeeded
+		}
+		lines = append(lines, i18n.T(first))
 	}
 	n := len(lines)
 	for _, cat := range model.AllCategories {

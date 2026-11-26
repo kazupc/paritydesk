@@ -37,7 +37,10 @@ type system struct {
 	home       func() (string, error)
 	executable func() (string, error)
 	isTerminal func(f any) bool
-	now        func() time.Time
+	// isTTY reports a real terminal (the terminal driver answers), not
+	// just any character device such as /dev/null.
+	isTTY func(f any) bool
+	now   func() time.Time
 	// service builds the orchestrator for one command; ui is the
 	// render-backed front end.
 	service func(ctx context.Context, e *env, ui orchestrator.UI) (orchestrator.Service, error)
@@ -61,6 +64,7 @@ func realSystem() *system {
 		home:       os.UserHomeDir,
 		executable: resolvedExecutable,
 		isTerminal: isTerminal,
+		isTTY:      isTTY,
 		now:        time.Now,
 		service:    realService,
 		gens:       realGens,
@@ -101,6 +105,18 @@ func isTerminal(f any) bool {
 // are terminals.
 func (e *env) interactive() bool {
 	return e.sys.isTerminal(e.stdin) && e.sys.isTerminal(e.stderr)
+}
+
+// terminal is the stricter test of the commands that need a person at a
+// terminal (profile adopt --from-legacy --apply --quarantine): stdin and
+// stderr are real terminals, so /dev/null or another character device
+// does not pass. It is a safeguard against a tool or agent granting
+// itself the move, not a guarantee (a pseudo-terminal still passes).
+func (e *env) terminal() bool {
+	if e.sys.isTTY == nil {
+		return false
+	}
+	return e.interactive() && e.sys.isTTY(e.stdin) && e.sys.isTTY(e.stderr)
 }
 
 func realService(ctx context.Context, e *env, ui orchestrator.UI) (orchestrator.Service, error) {

@@ -143,6 +143,13 @@ every other entry the compatibility manifest marks as never touched.
 <!-- v0.2 anchor: artifacts -->
 
 <!-- v0.2 anchor: legacy-adopt -->
+- **Adopting folders of an earlier script** (`profile adopt
+  --from-legacy`): only the names of directories inside the data folders
+  are compared, and a small `scheduled-tasks.json` is read to tell an
+  empty one. The earlier script's state file is read only when you name
+  it, and its labels are never printed or stored. Moved directories stay
+  in a pinned backup generation (mode 0700) until you remove it.
+
 
 <!-- v0.2 anchor: i18n-ja -->
 

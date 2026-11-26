@@ -540,11 +540,16 @@ func expandedLSKeys(m *compat.Manifest, rows []model.RowID, rep model.Replica) [
 // otherwise empty allow list still refuses everything.
 const nothingAllowed = ".paritydesk-nothing-is-allowed"
 
-// latestGeneration returns the highest generation number in state.
+// latestGeneration returns the highest generation number of a switch or
+// sync in state. Generations kept for a purpose (leftovers moved aside by
+// profile adopt --from-legacy) are skipped, so a bare rollback never picks
+// one.
 func latestGeneration(r *state.Root) uint64 {
 	var n uint64
 	for _, g := range r.Generations {
-		n = max(n, g.N)
+		if g.Purpose == "" {
+			n = max(n, g.N)
+		}
 	}
 	return n
 }

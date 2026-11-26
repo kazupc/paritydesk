@@ -112,6 +112,21 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 <!-- v0.2 anchor: artifacts -->
 
 <!-- v0.2 anchor: legacy-adopt -->
+- Added: hidden `profile adopt --from-legacy` for people coming from an
+  earlier folder-swap script; see docs/migration-from-legacy.md. A dry run
+  by default; `--apply` registers every `Claude-<Name>` folder (names
+  kept), seeds sync bases from the values every folder agrees on, and with
+  `--quarantine` (Terminal only) moves other accounts' leftovers into a
+  pinned backup generation that pruning never removes. The Terminal rule
+  (stdin and stderr must be real terminals) is a safeguard against a tool
+  or agent granting itself the move, not a guarantee; every move is
+  restorable with `paritydesk rollback <n>`.
+- Changed: `backups purge` and `uninstall --keep-backups=false` warn
+  first when a pinned generation would be removed; a bare `rollback`
+  never picks a pinned generation.
+- Do not downgrade paritydesk while a `legacy-quarantine` run is open: an
+  older binary cannot recover it, and every command that takes the run
+  lock exits 41 until a newer binary runs `paritydesk recover`.
 
 <!-- v0.2 anchor: i18n-ja -->
 

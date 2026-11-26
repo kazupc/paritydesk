@@ -121,6 +121,8 @@ func (rc *recovery) dispatch(ctx context.Context) error {
 		return rc.recoverRollback(ctx)
 	case state.RunAdd:
 		return rc.recoverAdd(ctx)
+	case state.RunQuarantine:
+		return rc.quarantine(ctx)
 	}
 	return pderr.New(pderr.Internal, "recover", "unknown run kind")
 }
@@ -446,8 +448,10 @@ func (rc *recovery) finishP10(ctx context.Context) error {
 	if id, err := d.FS.ID(claude); err == nil {
 		ps.FolderID = id
 	}
+	ps.SeededFrom = ""
 	if run.Kind == state.RunSwitch {
 		if s := root.Profiles[run.From]; s != nil {
+			s.SeededFrom = ""
 			s.LiveEpoch = root.Epoch
 			if id, err := d.FS.ID(rc.o.folderPath(rc.parked(run.From))); err == nil {
 				s.FolderID = id
@@ -635,20 +639,37 @@ func (rc *recovery) bind(ctx context.Context, folder *profile.Folder, pa *state.
 	return nil
 }
 
-// newProfileState builds the state of a newly registered folder.
+// newProfileState builds the state of a newly registered folder: its
+// replica is the account's only session directory, else the account with
+// an unknown org.
 func newProfileState(a ids.Alias, f *profile.Folder) *state.ProfileState {
-	ps := &state.ProfileState{Alias: a, FolderID: f.ID}
+	var rep model.Replica
 	if f.Identity != nil {
-		ps.Replica.Account = f.Identity.Account
+		rep.Account = f.Identity.Account
+	}
+	var own []model.Replica
+	for _, r := range f.Replicas {
+		if r.Account == rep.Account {
+			own = appendReplica(own, r)
+		}
+	}
+	if len(own) == 1 {
+		rep = own[0]
+	}
+	return newProfileStateFor(a, f, rep)
+}
+
+// newProfileStateFor builds the state of a newly registered folder with a
+// given replica (profile adopt --from-legacy records the resolver's).
+func newProfileStateFor(a ids.Alias, f *profile.Folder, rep model.Replica) *state.ProfileState {
+	ps := &state.ProfileState{Alias: a, FolderID: f.ID, Replica: rep}
+	if f.Identity != nil {
 		ps.AccountHistory = []ids.AccountID{f.Identity.Account}
 	}
 	for _, r := range f.Replicas {
-		if r.Account == ps.Replica.Account {
+		if r.Account == rep.Account {
 			ps.Replicas = appendReplica(ps.Replicas, r)
 		}
-	}
-	if len(ps.Replicas) == 1 {
-		ps.Replica = ps.Replicas[0]
 	}
 	return ps
 }

@@ -53,7 +53,7 @@ func (r *run) harvest(ctx context.Context) error {
 		}
 	}
 	pl, err := r.o.buildPlan(ctx, planInput{S: r.sideS(), T: r.sideT(), Manifest: r.manifest, Root: r.root,
-		Rows: r.rows, Skipped: r.skipped, RunID: r.res.RunID, Preview: r.p2.Plan})
+		Rows: r.rows, Skipped: r.skipped, RunID: r.res.RunID, Preview: r.p2.Plan, Seeded: r.seeded()})
 	if err != nil {
 		return r.abort(ctx, err)
 	}
@@ -274,7 +274,10 @@ func (r *run) putRef(set func(state.Ref), clear func(), snap *model.RowSnapshot)
 
 // nextGeneration returns an unused generation number.
 func (o *Orchestrator) nextGeneration(root *state.Root) uint64 {
-	n := latestGeneration(root)
+	var n uint64
+	for _, g := range root.Generations {
+		n = max(n, g.N)
+	}
 	if list, err := o.d.Gens.List(); err == nil {
 		for _, g := range list {
 			n = max(n, g.N)

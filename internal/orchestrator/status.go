@@ -292,24 +292,13 @@ func (dr *doctor) version(ctx context.Context, root *state.Root, b app.BundleIde
 	in := compat.DecideInput{Manifest: m, Version: b.Version, Tested: tested, RequireTested: d.Config.App.RequireTested,
 		CompressionOK: true, Downgraded: downgraded(root.LastAppVersion, b.Version)}
 	for _, f := range folders {
+		fi := dr.o.decideInput(ctx, root, m, tested, b, f)
 		if f.Name == ids.DefaultFolder {
-			in.IdentityOK = f.Identity != nil
+			in.IdentityOK = fi.IdentityOK
 		}
-		if sqliteLS(f.Path) {
-			in.SQLiteLS = true
-		}
-		if f.Identity != nil {
-			if a := aliasOf(root, f.Identity.Account); a != "" && profile.NativeMultiAccount(root.Profiles[a], f.Identity.Account) {
-				in.NativeMultiAccount = true
-			}
-		}
-		if dir := sources.LevelDBPath(f.Path); d.KV != nil {
-			if _, err := os.Stat(dir); err == nil {
-				if err := d.KV.CheckFormat(ctx, dir); errors.Is(err, kv.ErrUnknownCompression) {
-					in.CompressionOK = false
-				}
-			}
-		}
+		in.SQLiteLS = in.SQLiteLS || fi.SQLiteLS
+		in.NativeMultiAccount = in.NativeMultiAccount || fi.NativeMultiAccount
+		in.CompressionOK = in.CompressionOK && fi.CompressionOK
 		if m == nil {
 			continue
 		}
@@ -347,6 +336,31 @@ func (dr *doctor) version(ctx context.Context, root *state.Root, b app.BundleIde
 		dr.add("skipped-rows", "warn", "a run would skip: "+strings.Join(names, ", "))
 	}
 	return m
+}
+
+// decideInput builds compat.Decide's inputs that come from one folder and
+// the installation: manifest, version, tested and require-tested, a
+// downgrade, the folder's identity, a SQLite Local Storage backend, the
+// app's own multi-account mode for a registered account, and the Local
+// Storage compression. Probes and OrgUnknown are the caller's.
+func (o *Orchestrator) decideInput(ctx context.Context, root *state.Root, m *compat.Manifest, tested bool, b app.BundleIdentity, f profile.Folder) compat.DecideInput {
+	d := o.d
+	in := compat.DecideInput{Manifest: m, Version: b.Version, Tested: tested, RequireTested: d.Config.App.RequireTested,
+		CompressionOK: true, Downgraded: downgraded(root.LastAppVersion, b.Version), IdentityOK: f.Identity != nil,
+		SQLiteLS: sqliteLS(f.Path)}
+	if f.Identity != nil {
+		if a := aliasOf(root, f.Identity.Account); a != "" && profile.NativeMultiAccount(root.Profiles[a], f.Identity.Account) {
+			in.NativeMultiAccount = true
+		}
+	}
+	if dir := sources.LevelDBPath(f.Path); d.KV != nil {
+		if _, err := os.Stat(dir); err == nil {
+			if err := d.KV.CheckFormat(ctx, dir); errors.Is(err, kv.ErrUnknownCompression) {
+				in.CompressionOK = false
+			}
+		}
+	}
+	return in
 }
 
 // org reports the active folder's organization (masked) and whether it

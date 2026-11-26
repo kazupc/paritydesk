@@ -218,9 +218,13 @@ func TestEmbeddedManifestsLoadWithV02Anchors(t *testing.T) {
 			}
 		}
 		// Until their units land, the v0.2 tables are absent: online and
-		// artifact sync are off, and no legacy layout is declared.
-		if m.Online.Enabled || m.Artifacts.Enabled || len(m.Legacy.ScopedDirs) != 0 {
+		// artifact sync are off. The legacy layouts are declared
+		// (legacy-adopt).
+		if m.Online.Enabled || m.Artifacts.Enabled {
 			t.Errorf("%s: v0.2 tables present before their units", m.Name)
+		}
+		if len(m.Legacy.ScopedDirs) != 4 || len(m.Legacy.Stubs) != 1 {
+			t.Errorf("%s: [legacy] layouts missing: %+v", m.Name, m.Legacy)
 		}
 		for _, r := range []model.RowID{model.RowScratch, model.RowSidebarCollapse, model.RowSidebarSeed, model.RowPins} {
 			if pendingV02[r] {
@@ -234,7 +238,7 @@ func TestEmbeddedManifestsLoadWithV02Anchors(t *testing.T) {
 
 func TestOverrideWithV02TablesDecodes(t *testing.T) {
 	dir := t.TempDir()
-	writeOverride(t, dir, "override.toml", embeddedText(t)+v02Tables)
+	writeOverride(t, dir, "override.toml", withoutLegacy(t, embeddedText(t))+v02Tables)
 	ms, err := compat.Load(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -290,7 +294,7 @@ func TestOverrideWithV02TablesDecodes(t *testing.T) {
 }
 
 func TestV02TablesRejectUnknownKeys(t *testing.T) {
-	base := embeddedText(t)
+	base := withoutLegacy(t, embeddedText(t))
 	for name, extra := range map[string]string{
 		"online":           "\n[online]\nsurprise = 1\n",
 		"online.pins":      "\n[online.pins]\nsurprise = 1\n",
@@ -326,4 +330,16 @@ func testReplica() model.Replica {
 func hasKey(m map[string][]string, k string) bool {
 	_, ok := m[k]
 	return ok
+}
+
+// withoutLegacy cuts the embedded [legacy] section (the last block of the
+// manifest, below its anchor), so a test can append its own.
+func withoutLegacy(t *testing.T, text string) string {
+	t.Helper()
+	const head = "\n# ---------------------------------------------------------------- legacy migration"
+	i := strings.Index(text, head)
+	if i < 0 {
+		t.Fatal("the manifest has no legacy migration section")
+	}
+	return text[:i] + "\n"
 }

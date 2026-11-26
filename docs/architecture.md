@@ -202,5 +202,24 @@ only when empty. Row scratch's post-hashes are a state object
 <!-- v0.2 anchor: artifacts -->
 
 <!-- v0.2 anchor: legacy-adopt -->
+### Adopting folders of an earlier folder-swap script (v0.2)
+
+`profile adopt --from-legacy` (hidden) is planned by the pure
+`internal/legacy` package: folder statuses and aliases (`legacy.Build`),
+leftovers of other accounts found through the manifest's `[legacy]`
+layouts (`FindLeftovers`, names only, never following a symlink), the
+agreement of every folder's row values (`Agree`) and a two-part plan hash
+(folders on disk, inputs from the flags). The orchestrator
+(`orchestrator/legacy.go`) resolves the provisional config and root with
+`profile.Resolve`, so the recorded replica is the resolver's; apply
+registers in one commit, writes markers with a seed hash, and records
+`ProfileState.SeededFrom`. A key outside a seeded base merges as a union
+key (`rows.Side.Seeded`, `merger.unionKey`): no tombstone deletes it and no
+epoch decides it, exactly as in a first-sync union. Leftovers move only in
+a `legacy-quarantine` run into a pinned generation (`EntryQuarantineDir`,
+`gen.TreeFingerprint`, restored by fingerprint; `DeleteUnmoved` removes
+an empty one; recover never moves anything). See
+[migration-from-legacy.md](migration-from-legacy.md).
+
 
 <!-- v0.2 anchor: i18n-ja -->

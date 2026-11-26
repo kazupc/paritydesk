@@ -1,0 +1,12 @@
+Folders next to Claude (dry run; nothing is changed):
+  Claude is already profile work
+  Claude-Home is already profile home
+No sync bases are seeded (a profile already has sync bases). The first switch merges everything and deletes nothing.
+No folder next to Claude needs adopting.
+Next steps:
+  1. Stop using the earlier switch script: remove its alias, launcher, menu item or scheduled job, so only paritydesk moves these folders. Keep its file until your first paritydesk switch works.
+  2. Remove any Claude Code skill, command or hook that called the earlier script.
+  3. If the earlier script kept copies of your folders, they hold your data unencrypted: restrict them with chmod 700, or delete them once paritydesk works for you.
+  4. Install the Claude Code plugin: /plugin marketplace add kazupc/paritydesk, then /plugin install paritydesk@paritydesk.
+  5. Preview the first switch with paritydesk plan.
+Data folders: 0 directories would be moved into a backup generation; nothing is deleted.

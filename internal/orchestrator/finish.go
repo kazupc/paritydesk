@@ -158,11 +158,15 @@ func (r *run) recordProfiles() {
 	if id, err := r.d().FS.ID(r.tPath); err == nil {
 		t.FolderID = id
 	}
+	// T's bases are full from now on (the seeded ones of profile adopt
+	// --from-legacy are replaced), and so are S's for a switch.
+	t.SeededFrom = ""
 	if r.kind == state.RunSync {
 		t.LiveEpoch = root.Epoch
 		return
 	}
 	s := r.profileState(r.S.Profile.Alias)
+	s.SeededFrom = ""
 	// The leaving replica's org was known for this run (from the log while
 	// it was active); a parked folder of an account in several orgs
 	// cannot tell it, so it is kept here.

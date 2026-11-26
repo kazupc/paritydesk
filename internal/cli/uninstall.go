@@ -21,6 +21,8 @@ type uninstallView struct {
 	Kept     []string `json:"kept"`
 	Move     string   `json:"move,omitempty"`
 	Warnings []string `json:"warnings,omitempty"`
+	// Pinned counts the pinned generations removed with the backups.
+	Pinned int `json:"pinned,omitempty"`
 }
 
 // runUninstall removes paritydesk's own files. Data folders are never
@@ -44,10 +46,17 @@ func runUninstall(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) err
 		return err
 	}
 	defer release()
+	pinned := 0
+	if !getBool(fs, "keep-backups") {
+		if gs, err := e.sys.gens(ctx, e); err == nil {
+			pinned = pinnedGenerations(gs)
+		}
+	}
+	e.warnPinned(pinned)
 	if err := e.confirmLocal(ctx, getBool(fs, "yes"), i18n.AskUninstall); err != nil {
 		return err
 	}
-	v := uninstallView{Removed: []string{}, Kept: []string{}}
+	v := uninstallView{Removed: []string{}, Kept: []string{}, Pinned: pinned}
 	// Which profile is active decides the mv hint; status is read before
 	// the state is removed.
 	if svc, err := e.service(ctx, e.newUI(false, false)); err == nil {

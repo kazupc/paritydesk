@@ -86,13 +86,17 @@ func (u *termUI) Confirm(ctx context.Context, c orchestrator.Confirmation) (bool
 		v := render.PlanView{Summary: *c.Summary}
 		if c.Plan != nil {
 			v.From, v.To = string(c.Plan.From), string(c.Plan.Target.Alias)
-			v.Approximate, v.FirstSync = c.Plan.Approximate, c.Plan.NeedsConfirmation
+			v.Approximate, v.FirstSync, v.Seeded = c.Plan.Approximate, c.Plan.NeedsConfirmation, c.Plan.Seeded
 			v = render.WithScratch(v, c.Plan)
 		}
 		u.p.Lines(render.PlanLines(v))
 	}
 	u.p.Lines(c.Lines)
-	ok, err := u.ask(ctx, questionFor(c.Kind))
+	q := questionFor(c.Kind)
+	if c.Kind == orchestrator.ConfirmBaseInvalid && c.Plan != nil && c.Plan.Seeded {
+		q = i18n.T(i18n.AskFirstSyncSeeded)
+	}
+	ok, err := u.ask(ctx, q)
 	if err != nil {
 		return false, err
 	}

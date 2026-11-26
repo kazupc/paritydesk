@@ -141,7 +141,8 @@ func (o *Orchestrator) legacyFolders(root *state.Root, folders []profile.Folder)
 			continue
 		}
 		o.progress(P0Preflight, "warn", fmt.Sprintf("%s holds a signed-in account that no profile registers; "+
-			"register it with paritydesk profile adopt <alias> %s instead of profile add", f.Name, f.Name))
+			"register it with paritydesk profile adopt <alias> %s instead of profile add, "+
+			"or adopt every such folder at once as described in docs/migration-from-legacy.md", f.Name, f.Name))
 	}
 }
 

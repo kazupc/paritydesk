@@ -119,7 +119,7 @@ func visibleFlags(register func(*flag.FlagSet)) []compFlag {
 	register(fs)
 	var out []compFlag
 	fs.VisitAll(func(f *flag.Flag) {
-		if hiddenFlags[f.Name] {
+		if isHidden(f) {
 			return
 		}
 		kind := valuePlain

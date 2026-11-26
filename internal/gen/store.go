@@ -134,7 +134,8 @@ func (s *Store) List() ([]Info, error) {
 		info := Info{N: n}
 		if m, err := s.readManifest(n); err == nil {
 			info = Info{N: n, RunID: m.RunID, Alias: m.Alias, Created: m.Created,
-				Entries: len(m.Entries), LevelDB: m.LevelDB != "", Complete: m.Complete}
+				Entries: len(m.Entries), LevelDB: m.LevelDB != "", Complete: m.Complete,
+				Pinned: m.Pinned, Purpose: m.Purpose}
 			info.ScratchBytes = s.scratchBytes(m)
 		}
 		if info.Bytes, err = dirSize(s.genDir(n)); err != nil {
@@ -272,6 +273,8 @@ type PrunePolicy struct {
 // Prune applies the policy to complete generations: drop LevelDB clones
 // beyond LevelDBClones, then whole generations beyond Keep or MaxBytes
 // (oldest first). Incomplete generations are left to DeleteIncomplete.
+// Pinned generations are never pruned and count toward neither Keep nor
+// MaxBytes.
 func (s *Store) Prune(p PrunePolicy) error {
 	complete, err := s.completeInfos()
 	if err != nil {
@@ -315,6 +318,8 @@ func (s *Store) Prune(p PrunePolicy) error {
 	return nil
 }
 
+// completeInfos lists the complete generations Prune may touch (never a
+// pinned one).
 func (s *Store) completeInfos() ([]Info, error) {
 	infos, err := s.List()
 	if err != nil {
@@ -322,7 +327,7 @@ func (s *Store) completeInfos() ([]Info, error) {
 	}
 	out := infos[:0]
 	for _, in := range infos {
-		if in.Complete {
+		if in.Complete && !in.Pinned {
 			out = append(out, in)
 		}
 	}

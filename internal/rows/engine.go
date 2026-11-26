@@ -128,10 +128,12 @@ type sideView struct {
 	tombs     map[string]model.Tombstone
 	contested map[string]model.Contested
 	epoch     uint64 // the side's live epoch (merge.Version.Epoch)
+	// seeded: the base was seeded by profile adopt --from-legacy (Side.Seeded).
+	seeded bool
 }
 
 func newSideView(s Side) sideView {
-	v := sideView{alias: s.Alias, valid: s.BaseValid, contested: s.Contested, epoch: s.LiveEpoch}
+	v := sideView{alias: s.Alias, valid: s.BaseValid, contested: s.Contested, epoch: s.LiveEpoch, seeded: s.Seeded}
 	if s.Snapshot == nil {
 		return v
 	}
@@ -207,6 +209,12 @@ func (v sideView) hideContested(k string, own, other merge.Version) merge.Versio
 	return merge.Version{Epoch: own.Epoch}
 }
 
+// inBase reports whether the side's base holds key k.
+func (v sideView) inBase(k string) bool {
+	_, ok := v.base[k]
+	return ok
+}
+
 func (v sideView) current(k string) *model.Item {
 	if it, ok := v.items[k]; ok {
 		return &it
@@ -231,9 +239,11 @@ type merger struct {
 	canonKnown bool
 	loIn, eoIn *model.RowSnapshot // never nil
 	union      bool
-	canon      *model.RowSnapshot
-	lo, eo     *model.RowSnapshot
-	hints      map[string]model.ChangeKind
+	// anyUnionKey is set when some key merged as a union key (unionKey).
+	anyUnionKey bool
+	canon       *model.RowSnapshot
+	lo, eo      *model.RowSnapshot
+	hints       map[string]model.ChangeKind
 	// notes override the note of a hinted change.
 	notes     map[string]string
 	conflicts []model.Conflict
@@ -312,7 +322,7 @@ func runKeyed(in Input, spec keyedSpec) (Output, error) {
 		EnteringOverlay:   m.eo,
 		Desired:           desired,
 		Conflicts:         m.conflicts,
-		NeedsConfirmation: m.union,
+		NeedsConfirmation: m.union || m.anyUnionKey,
 	}
 	out.Changes = append(m.changes(desired), extra...)
 	return out, nil
@@ -359,10 +369,26 @@ func (m *merger) isExcluded(k string, v merge.Version) bool {
 	return m.spec.excluded(k, it)
 }
 
+// unionKey reports whether key k merges as under an invalid base although
+// the row is not in union mode: a side whose valid base was seeded by
+// profile adopt --from-legacy lacks k in that base, so the folders never
+// agreed on k. Such a key never deletes and ignores epochs (first-sync
+// union rules), on both sides.
+func (m *merger) unionKey(k string) bool {
+	return !m.union && ((m.l.seeded && m.l.valid && !m.l.inBase(k)) || (m.e.seeded && m.e.valid && !m.e.inBase(k)))
+}
+
 func (m *merger) mergeKey(k string) error {
-	lv0 := m.l.version(k, m.spec.strictTombstones)
-	ev0 := m.e.version(k, m.spec.strictTombstones)
-	lv, ev := m.l.hideContested(k, lv0, ev0), m.e.hideContested(k, ev0, lv0)
+	ku := m.unionKey(k)
+	// l and e are value copies; their maps are shared and never written.
+	l, e := m.l, m.e
+	if ku {
+		l.valid, e.valid = false, false
+		m.anyUnionKey = true
+	}
+	lv0 := l.version(k, m.spec.strictTombstones)
+	ev0 := e.version(k, m.spec.strictTombstones)
+	lv, ev := l.hideContested(k, lv0, ev0), e.hideContested(k, ev0, lv0)
 	lc, ec := lv.Changed(), ev.Changed()
 	lExcl, eExcl := m.isExcluded(k, lv), m.isExcluded(k, ev)
 	lx := lc && m.pol.LeavingExports && !lExcl
@@ -381,7 +407,7 @@ func (m *merger) mergeKey(k string) error {
 	tomb := m.setCanon(k, res, lv, ev)
 	updateOverlay(m.lo, k, lv, lc, lx, lExcl, tomb)
 	updateOverlay(m.eo, k, ev, ec, ex, eExcl, tomb)
-	m.unionGuard(k, m.pol.EnteringExports && !eExcl)
+	m.unionGuard(k, ku, m.pol.EnteringExports && !eExcl)
 	return nil
 }
 
@@ -595,10 +621,11 @@ func (m *merger) visible(ov *model.RowSnapshot, k string) *model.Item {
 	return nil
 }
 
-// unionGuard keeps the entering copy of k while a base is invalid: the row
-// merges as a union and never deletes (C1).
-func (m *merger) unionGuard(k string, enteringExports bool) {
-	if !m.union || !m.pol.EnteringImports {
+// unionGuard keeps the entering copy of k while a base is invalid (the
+// row merges as a union) or k is a union key of a seeded base: such a key
+// never deletes (C1).
+func (m *merger) unionGuard(k string, unionKey, enteringExports bool) {
+	if (!m.union && !unionKey) || !m.pol.EnteringImports {
 		return
 	}
 	cur := m.e.current(k)

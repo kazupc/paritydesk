@@ -121,7 +121,12 @@ func runGenerationsList(ctx context.Context, e *env, _ *flag.FlagSet, _ []string
 		}
 		rows := make([][]string, len(list))
 		for i, g := range list {
-			rows[i] = []string{strconv.FormatUint(g.N, 10), g.RunID, string(g.Alias), g.Created.UTC().Format(time.RFC3339),
+			n := strconv.FormatUint(g.N, 10)
+			if g.Pinned {
+				// A pinned generation (leftovers moved aside) is never pruned.
+				n += " (" + g.Purpose + ")"
+			}
+			rows[i] = []string{n, g.RunID, string(g.Alias), g.Created.UTC().Format(time.RFC3339),
 				strconv.Itoa(g.Entries), yesNo(g.LevelDB), yesNo(g.Complete), humanBytes(g.Bytes)}
 		}
 		p.Table([]string{i18n.T(i18n.ColN), i18n.T(i18n.ColRun), i18n.T(i18n.ColAlias), i18n.T(i18n.ColCreated),
@@ -153,6 +158,9 @@ func runGenerationsShow(ctx context.Context, e *env, _ *flag.FlagSet, args []str
 	return e.emit(generationView{Generation: m}, func(p *render.Printer) {
 		p.Line(i18n.T(i18n.GenerationShow, m.N, "%s", "%s", "%s", yesNo(m.Complete)),
 			m.RunID, string(m.Alias), m.Created.UTC().Format(time.RFC3339))
+		if m.Pinned {
+			p.Line("%s", m.Purpose)
+		}
 		rows := make([][]string, len(m.Entries))
 		for i, en := range m.Entries {
 			item := en.Path
@@ -194,6 +202,33 @@ type backupsView struct {
 	Keep   int   `json:"keep,omitempty"`
 	Purged bool  `json:"purged,omitempty"`
 	Max    int64 `json:"max_bytes,omitempty"`
+	// Pinned counts the generations holding directories profile adopt
+	// --from-legacy moved aside (removed by a purge).
+	Pinned int `json:"pinned,omitempty"`
+}
+
+// pinnedGenerations counts pinned generations (0 when they cannot be
+// listed).
+func pinnedGenerations(gs generationStore) int {
+	list, err := gs.List()
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, g := range list {
+		if g.Pinned {
+			n++
+		}
+	}
+	return n
+}
+
+// warnPinned prints backups.pinned_warn before a question that removes
+// generations (text mode; JSON reports the count as "pinned").
+func (e *env) warnPinned(n int) {
+	if n > 0 && !e.g.JSON {
+		e.printer().Warn(i18n.T(i18n.BackupsPinnedWarn, n))
+	}
 }
 
 // Flags of backups prune.
@@ -258,17 +293,19 @@ func runBackupsPurge(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) 
 		return err
 	}
 	defer release()
-	if err := e.confirmLocal(ctx, getBool(fs, "yes"), i18n.AskPurge); err != nil {
-		return err
-	}
 	gs, err := e.sys.gens(ctx, e)
 	if err != nil {
+		return err
+	}
+	pinned := pinnedGenerations(gs)
+	e.warnPinned(pinned)
+	if err := e.confirmLocal(ctx, getBool(fs, "yes"), i18n.AskPurge); err != nil {
 		return err
 	}
 	if err := gs.Purge(); err != nil {
 		return err
 	}
-	return e.emit(backupsView{OK: true, Purged: true}, func(p *render.Printer) {
+	return e.emit(backupsView{OK: true, Purged: true, Pinned: pinned}, func(p *render.Printer) {
 		p.Line("%s", i18n.T(i18n.BackupsPurged))
 	}, nil)
 }

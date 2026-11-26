@@ -307,6 +307,7 @@ func (o *Orchestrator) side(r *state.Root, s sideRef, k state.BaseKey, snap *mod
 	sd := rows.Side{Alias: s.Alias, Replica: s.Replica, Snapshot: snap, Contested: contestedFor(r, k), ToolStamps: r.ToolStamps[k.String()]}
 	if ps := r.Profiles[s.Alias]; ps != nil {
 		sd.LiveEpoch = ps.LiveEpoch
+		sd.Seeded = ps.SeededFrom != ""
 	}
 	if ref, ok := r.Bases[k.String()]; ok && s.BaseValid {
 		base, err := o.d.State.GetSnapshot(ref)
@@ -417,6 +418,11 @@ func (o *Orchestrator) composePlan(ctx context.Context, in planInput, pl *planne
 		p.Changes = append(p.Changes, res.Skipped...)
 		p.Conflicts = append(p.Conflicts, w.Out.Conflicts...)
 		p.NeedsConfirmation = p.NeedsConfirmation || w.Out.NeedsConfirmation
+	}
+	// The first switch after profile adopt --from-legacy seeded the bases
+	// is confirmed once, like a first-sync union.
+	if in.Seeded {
+		p.NeedsConfirmation, p.Seeded = true, true
 	}
 	for _, r := range dropped {
 		pl.Rows = slices.DeleteFunc(pl.Rows, func(x model.RowID) bool { return x == r })
