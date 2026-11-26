@@ -239,10 +239,11 @@ func TestFixturesUseFakeIDs(t *testing.T) {
 }
 
 // japaneseAllowed reports the files that may hold Japanese letters: the
-// Japanese catalog, README.ja.md and the Japanese goldens. Tests write
-// Japanese as \u escapes; docs/dev/i18n.md is English only.
+// Japanese catalog, README.ja.md, README.md (its language-switch line)
+// and the Japanese goldens. Tests write Japanese as \u escapes;
+// docs/dev/i18n.md is English only.
 func japaneseAllowed(rel string) bool {
-	return rel == "internal/i18n/catalog_ja.go" || rel == "README.ja.md" ||
+	return rel == "internal/i18n/catalog_ja.go" || rel == "README.ja.md" || rel == "README.md" ||
 		underAny(rel, "internal/cli/testdata/ja/", "internal/render/testdata/ja/")
 }
 

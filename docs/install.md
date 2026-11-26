@@ -6,9 +6,17 @@ run end to end on a clean Mac yet. [Release checklist](release-checklist.md)
 steps 31 to 35 do that before the first release, and this page changes
 if they find a problem.
 
+**Available today:** `go install` (section 2) and a clone of the
+repository. No version has been tagged yet, so there is no release
+tarball, and the Homebrew tap is set up with the first release (release
+checklist step 32). Sections 1 and 3 describe how those paths work from
+then on.
+
 paritydesk is unofficial and not affiliated with Anthropic; see
 [DISCLAIMER.md](../DISCLAIMER.md). After installing, run `paritydesk init`
-once.
+once. It asks macOS to let your terminal control Claude (Automation), so
+that paritydesk can quit Claude; allow it. `paritydesk doctor
+--grant-automation` asks again later.
 
 ## Why paritydesk is not notarized
 
@@ -33,7 +41,10 @@ Gatekeeper:
 **Never disable Gatekeeper globally** (for example with `spctl` or by
 allowing apps from anywhere) to run paritydesk. No install path needs it.
 
-## 1. Homebrew tap, built from source (recommended)
+## 1. Homebrew tap, built from source (from the first release)
+
+Not available yet: the tap is created with the first tagged release.
+Once it exists, this is the recommended path.
 
 ```
 brew install kazupc/tap/paritydesk
@@ -62,7 +73,8 @@ release.
 
 ## 2. go install
 
-With Go 1.26 or newer:
+With Go 1.26.1 or newer (1.26.0 builds it, but has standard library
+vulnerabilities that `govulncheck` reports):
 
 ```
 go install github.com/kazupc/paritydesk/cmd/paritydesk@latest
@@ -70,14 +82,15 @@ go install github.com/kazupc/paritydesk/cmd/paritydesk@latest
 
 This puts `paritydesk` in `$(go env GOPATH)/bin` (usually `~/go/bin`).
 Make sure that directory is on your `PATH`. `paritydesk version` then
-prints the module version. Use a Go 1.26 patch release newer than
-1.26.0, which has standard library vulnerabilities that `govulncheck`
-reports.
+prints the module version. Until a version is tagged, `@latest` builds
+the newest commit on `main`.
 
 From a clone of the repository, `go install ./cmd/paritydesk` does the
 same.
 
 ## 3. Release tarball
+
+Not available yet: no version has been tagged.
 
 Each release on GitHub has these files:
 
@@ -122,6 +135,49 @@ Then move it to a directory on your `PATH`, for example
 Homebrew there). The plugin's hook and the shell integrations look for
 the binary at the path `paritydesk init` records, so run `paritydesk
 init` (or `paritydesk doctor`) once after moving it.
+
+## Claude Code plugin
+
+The plugin adds three commands, `/paritydesk:switch`,
+`/paritydesk:reconcile` and `/paritydesk:artifacts`, and three hooks. In
+Claude Code (the Code tab of the desktop app or the `claude` command
+line):
+
+```
+/plugin marketplace add kazupc/paritydesk
+/plugin install paritydesk@paritydesk
+```
+
+Where `/plugin` is not available, the same works from a terminal:
+
+```
+claude plugin marketplace add kazupc/paritydesk
+claude plugin install paritydesk@paritydesk
+```
+
+To try a change to the plugin from a clone, add the clone's path instead
+of `kazupc/paritydesk`.
+
+Run `paritydesk init` once before using it.
+
+- The hooks find the binary through the path that `paritydesk init`
+  records (or the Homebrew locations), never through `PATH`. If the
+  binary cannot be found while changes are being applied, the PreToolUse
+  hook blocks those tool calls.
+- The commands run `paritydesk` from the `PATH` of Claude Code's shell,
+  so the binary must be on that `PATH` too, and it should be the same
+  binary. With `go install`, that means `~/go/bin` (or
+  `$(go env GOPATH)/bin`) must be on the `PATH` Claude Code sees.
+- A SessionStart hook prints one line when something is waiting (a
+  recover, a sign-in, changes to apply). PreToolUse and PostToolUse hooks
+  run on Claude's sidebar, session, settings, directory and artifact
+  tools. They act only while `/paritydesk:switch` captures, or while
+  `/paritydesk:reconcile` or `/paritydesk:artifacts` runs. With
+  `online.guard = "always"`, the PreToolUse hook also blocks its fixed
+  list of tools in every session. While queued changes are being
+  applied, it lets only the listed calls (and a short read list) run, and
+  it never approves anything for you. [PRIVACY.md](../PRIVACY.md) lists what the
+  hooks read and record.
 
 ## Shell completion
 

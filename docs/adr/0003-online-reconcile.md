@@ -92,6 +92,12 @@ The app updated from 6.28899.6 to 7.37095.0 during the release checklist. Read-o
 
 The manifest `7.x.toml` records this; `6.x.toml` is unchanged.
 
+Observed during the release checklist on 7.37095.0 (2026-11-26):
+
+- A Code session carried to the other account and continued there shows "Claude can't use thinking from another organization". The message says the earlier thinking was written while signed in to another organization, is not deleted, and becomes usable again when the session is resumed on that organization; until then Claude rereads the session and generates new thinking, which can be slower and use more tokens. The conversation itself is carried. paritydesk cannot move the thinking: it is bound to the organization that wrote it. `docs/if-something-goes-wrong.md` and the README explain it.
+- `Claude in Chrome` logs `Paired with Chrome extension` when the app opens the bridge connection on first use, and `Chrome extension connected to bridge` when the extension joins an open one; it does not connect at launch. The 7.x `bridge_connected` pattern matches both.
+- A switch started from a Code session completed in about 22 s from the job's start to Claude running on the other account, about 11 s of which was Claude's own quit.
+
 ## Not yet run
 
 None of the planned spikes. A runtime check of the S1 second round, with the server holding a third value, remains for the release checklist (step 11).

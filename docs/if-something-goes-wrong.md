@@ -323,6 +323,16 @@ directory.
 and every redaction rule. Open it (`tar -xzf <file>`) and read it before
 you attach it to an issue.
 
+<a id="thinking-other-organization"></a>
+## A carried session says "Claude can't use thinking from another organization"
+
+This is harmless; nothing needs fixing. When you continue a session on
+the other account, Claude shows this message because the thinking in the
+session's earlier turns is bound to the organization that produced it,
+and it cannot be moved to another organization. paritydesk carries the
+session, not that thinking. Claude reads the session again for its next
+reply, so that reply may be slower and use more tokens.
+
 ## A carried scratch session says "folder not found" or shows no previews
 
 A session started without a folder lives in a scratch workspace.
