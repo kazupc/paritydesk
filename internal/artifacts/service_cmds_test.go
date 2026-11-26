@@ -40,8 +40,8 @@ func TestStatusAndPlan(t *testing.T) {
 	if st, _ := h.svc.Status(StatusInput{Titles: true}); st.Pairs[0].Title != "Notes" {
 		t.Fatal("--titles")
 	}
-	if !strings.HasPrefix(st.Lines[len(st.Lines)-1], "1 artifact(s): 1 in step") {
-		t.Fatalf("summary %q", st.Lines)
+	if !strings.HasPrefix(st.Lines[len(i18n.Strings(i18n.English, st.Lines))-1].English(), "1 artifact(s): 1 in step") {
+		t.Fatalf("summary %q", i18n.Strings(i18n.English, st.Lines))
 	}
 	p, err := h.svc.Plan("home")
 	if err != nil || len(p.Publish)+len(p.Create)+len(p.Read) != 0 {
@@ -52,7 +52,7 @@ func TestStatusAndPlan(t *testing.T) {
 	srv.edit(srv.sorted()[0], page(5))
 	h.sync("apply")
 	p, _ = h.svc.Plan("home")
-	if len(p.Publish) != 1 || p.Lines[0] != strings.TrimSpace(i18n.T(i18n.PlanArtifactsDue, 1, "home")) {
+	if len(p.Publish) != 1 || p.Lines[0].English() != i18n.En(i18n.ArtifactsPlanDue, 1, "home") {
 		t.Fatalf("%+v", p)
 	}
 	if n, _ := h.svc.Due("home", repHome); n != 1 {
@@ -61,7 +61,7 @@ func TestStatusAndPlan(t *testing.T) {
 	if e, ok, _ := h.svc.LastSyncEpoch("work"); !ok || e != 2 {
 		t.Fatalf("last sync epoch %d %v", e, ok)
 	}
-	if n, word, err := h.svc.Doctor(); err != nil || n != 1 || !strings.HasPrefix(word, "available") {
+	if n, word, err := h.svc.Doctor(); err != nil || n != 1 || !strings.HasPrefix(word.English(), "available") {
 		t.Fatalf("doctor %d %q %v", n, word, err)
 	}
 }
@@ -146,7 +146,7 @@ func TestForgetDuringChain(t *testing.T) {
 		t.Fatal("no round with the pair")
 	}
 	out, err := h.svc.Forget(ctx, string(id), yes)
-	if err != nil || out.State != StateBlocked || out.Lines[0] != i18n.T(i18n.ArtifactsForgetChainActive) {
+	if err != nil || out.State != StateBlocked || out.Lines[0].English() != i18n.T(i18n.ArtifactsForgetChainActive) {
 		t.Fatalf("%+v %v", out, err)
 	}
 }
@@ -280,8 +280,8 @@ func TestDueWithPublishOff(t *testing.T) {
 	if n, err := h.svc.Due("home", repHome); err != nil || n != 0 {
 		t.Fatalf("due with publish_via off %d %v", n, err)
 	}
-	if p, _ := h.svc.Plan("home"); len(p.Lines) != 0 {
-		t.Fatalf("plan lines with publish_via off %q", p.Lines)
+	if p, _ := h.svc.Plan("home"); len(i18n.Strings(i18n.English, p.Lines)) != 0 {
+		t.Fatalf("plan lines with publish_via off %q", i18n.Strings(i18n.English, p.Lines))
 	}
 	if st, _ := h.svc.Status(StatusInput{}); st.Counts.Due != 0 {
 		t.Fatalf("status due with publish_via off %d", st.Counts.Due)

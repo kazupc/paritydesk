@@ -26,6 +26,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/fsx"
 	"github.com/kazupc/paritydesk/internal/fsx/fsxtest"
 	"github.com/kazupc/paritydesk/internal/gen"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -1148,7 +1149,7 @@ func (u *fakeUI) Progress(ev Event) {
 
 func (u *fakeUI) Confirm(_ context.Context, c Confirmation) (bool, error) {
 	u.asked = append(u.asked, c.Kind)
-	u.lines = append(u.lines, c.Lines)
+	u.lines = append(u.lines, i18n.Strings(i18n.English, c.Lines))
 	if u.onConfirm != nil {
 		u.onConfirm(c)
 	}

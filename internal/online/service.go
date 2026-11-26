@@ -112,13 +112,13 @@ func (s *Service) resultMax(q *Queue) func(StepID) int64 {
 func (s *Service) loadQueue(p Phase) (*Queue, error) {
 	q, err := s.Store.ReadQueue(p)
 	if err != nil {
-		return nil, pderr.Wrap(pderr.Internal, "online", fmt.Errorf("%s: %w", i18n.T(i18n.OnlineErrQueueInvalid), err))
+		return nil, pderr.WrapT(pderr.Internal, "online", i18n.OnlineErrQueueInvalid, err)
 	}
 	if q == nil {
 		return nil, nil
 	}
 	if err := q.Validate(Policies(s.Providers), q.Guard.AlwaysDeny); err != nil {
-		return nil, pderr.New(pderr.Internal, "online", i18n.T(i18n.OnlineErrQueueInvalid))
+		return nil, pderr.NewT(pderr.Internal, "online", i18n.OnlineErrQueueInvalid)
 	}
 	return q, nil
 }
@@ -404,7 +404,7 @@ type StatusView struct {
 	Steps             []StepView   `json:"steps"`
 	Denials           *DenialsView `json:"denials,omitempty"`
 	Confirmed         *ConfirmView `json:"confirmed,omitempty"`
-	Lines             []string     `json:"lines"`
+	Lines             []i18n.Text  `json:"lines"`
 }
 
 // stateRank orders queue states so the newer of the root record and the
@@ -423,12 +423,12 @@ func stateRank(s string) int {
 
 // Status is `online status` (no lock, reads only).
 func (s *Service) Status(root RootInfo) StatusView {
-	v := StatusView{State: StateNone, Steps: []StepView{}, Lines: []string{}}
+	v := StatusView{State: StateNone, Steps: []StepView{}, Lines: []i18n.Text{}}
 	q, qerr := s.Store.ReadQueue(PhaseReconcile)
 	rec := root.Record
 	switch {
 	case rec == nil && q == nil:
-		v.Lines = append(v.Lines, i18n.T(i18n.OnlineStatusNone))
+		v.Lines = append(v.Lines, i18n.Tx(i18n.OnlineStatusNone))
 	case rec == nil || q == nil || qerr != nil || (rec.Kind == "" && Valid(q, rec, root.Epoch, root.Active, s.now()) != ""):
 		v.State = StateStale
 		if rec != nil {
@@ -438,7 +438,7 @@ func (s *Service) Status(root RootInfo) StatusView {
 			v.State = rec.State
 			v.Lines = append(v.Lines, statusLine(v))
 		} else {
-			v.Lines = append(v.Lines, i18n.T(i18n.OnlineStatusStale))
+			v.Lines = append(v.Lines, i18n.Tx(i18n.OnlineStatusStale))
 		}
 	default:
 		v.State, v.Queue, v.Profile, v.From = rec.State, q.ID, q.Profile, q.From
@@ -460,11 +460,11 @@ func (s *Service) Status(root RootInfo) StatusView {
 		}
 		v.WaitingForSession = v.State == string(QueuePending) && !offered
 		if rec.Kind != "" {
-			v.Lines = append(v.Lines, i18n.T(i18n.OnlineArtifactsQueue))
+			v.Lines = append(v.Lines, i18n.Tx(i18n.OnlineArtifactsQueue))
 		}
 		v.Lines = append(v.Lines, statusLine(v))
 		if v.Counts.Other > 0 && (v.State == string(QueuePending) || v.State == string(QueueActive)) {
-			v.Lines = append(v.Lines, i18n.T(i18n.OnlineStatusOther, v.Counts.Other))
+			v.Lines = append(v.Lines, i18n.Tx(i18n.OnlineStatusOther, v.Counts.Other))
 		}
 	}
 	if ds := s.Store.Denials(); len(ds) > 0 {
@@ -473,25 +473,25 @@ func (s *Service) Status(root RootInfo) StatusView {
 			recent = recent[len(recent)-5:]
 		}
 		v.Denials = &DenialsView{Count: len(ds), Recent: recent}
-		v.Lines = append(v.Lines, i18n.T(i18n.OnlineStatusDenials, len(ds)))
+		v.Lines = append(v.Lines, i18n.Tx(i18n.OnlineStatusDenials, len(ds)))
 	}
 	return v
 }
 
 // statusLine is the fixed summary line of a queue state.
-func statusLine(v StatusView) string {
+func statusLine(v StatusView) i18n.Text {
 	switch v.State {
 	case string(QueuePending), string(QueueActive):
-		return i18n.T(i18n.OnlineStatusPending, v.Counts.PinsAdd, v.Counts.PinsRemove, v.Counts.Sidebar, string(v.Profile))
+		return i18n.Tx(i18n.OnlineStatusPending, v.Counts.PinsAdd, v.Counts.PinsRemove, v.Counts.Sidebar, string(v.Profile))
 	}
-	return i18n.T(i18n.OnlineStatusState, string(v.Profile), v.State, v.Counts.Done, v.Counts.Skipped, v.Counts.Failed)
+	return i18n.Tx(i18n.OnlineStatusState, string(v.Profile), v.State, v.Counts.Done, v.Counts.Skipped, v.Counts.Failed)
 }
 
 // Cancel is `online cancel`: the stop marker and armed go first without
 // any lock (every lease is stale for hooks at once); then, under the
 // online lock, the lease goes and the queue is marked cancelled.
 func (s *Service) Cancel(ctx context.Context) (StatusView, error) {
-	v := StatusView{State: string(QueueCancelled), Steps: []StepView{}, Lines: []string{i18n.T(i18n.OnlineCancelled)}}
+	v := StatusView{State: string(QueueCancelled), Steps: []StepView{}, Lines: []i18n.Text{i18n.Tx(i18n.OnlineCancelled)}}
 	if err := s.Store.CreateStop(); err != nil {
 		return v, pderr.Wrap(pderr.Internal, "online cancel", err)
 	}
@@ -671,10 +671,10 @@ func (s *Service) apply(q *Queue, out NextOutput) error {
 
 // DecideView is the document of `online decide` and `online retry`.
 type DecideView struct {
-	Queue string   `json:"queue,omitempty"`
-	State string   `json:"state"`
-	Count int      `json:"count,omitempty"`
-	Lines []string `json:"lines"`
+	Queue string      `json:"queue,omitempty"`
+	State string      `json:"state"`
+	Count int         `json:"count,omitempty"`
+	Lines []i18n.Text `json:"lines"`
 }
 
 // State of a recorded decision or retry.
@@ -683,9 +683,9 @@ const StateRecorded = "recorded"
 // withQueue runs f on the valid queue for a caller under the online lock
 // and writes it back; it answers none, stale and busy_elsewhere itself.
 func (s *Service) withQueue(ctx context.Context, c Caller, root RootInfo, op string, f func(q *Queue) (DecideView, error)) (DecideView, error) {
-	v := DecideView{State: StateNone, Lines: []string{}}
+	v := DecideView{State: StateNone, Lines: []i18n.Text{}}
 	if root.RunOpen {
-		return v, pderr.New(pderr.NeedsRecover, op, "a run was interrupted; run paritydesk recover")
+		return v, pderr.NewT(pderr.NeedsRecover, op, i18n.ErrInterrupted)
 	}
 	err := s.Store.Locked(ctx, func() error {
 		q, err := s.loadQueue(PhaseReconcile)
@@ -694,20 +694,20 @@ func (s *Service) withQueue(ctx context.Context, c Caller, root RootInfo, op str
 		}
 		switch {
 		case q == nil:
-			v.Lines = []string{i18n.T(i18n.OnlineStatusNone)}
+			v.Lines = []i18n.Text{i18n.Tx(i18n.OnlineStatusNone)}
 			return nil
 		case root.Record != nil && root.Record.Kind != "" && root.Record.Queue == q.ID:
-			v.Queue, v.Lines = q.ID, []string{i18n.T(i18n.OnlineArtifactsQueue)}
+			v.Queue, v.Lines = q.ID, []i18n.Text{i18n.Tx(i18n.OnlineArtifactsQueue)}
 			return nil
 		case Valid(q, root.Record, root.Epoch, root.Active, s.now()) != "":
-			v.State, v.Queue, v.Lines = StateStale, q.ID, []string{i18n.T(i18n.OnlineStatusStale)}
+			v.State, v.Queue, v.Lines = StateStale, q.ID, []i18n.Text{i18n.Tx(i18n.OnlineStatusStale)}
 			if err := s.Store.RemoveLease(); err != nil {
 				return err
 			}
 			return s.Store.RemoveQueue(PhaseReconcile)
 		}
 		if err := s.authorize(q, c); err != nil {
-			v.State, v.Queue, v.Lines = StateBusyElsewhere, q.ID, []string{i18n.T(i18n.OnlineBusyElsewhere)}
+			v.State, v.Queue, v.Lines = StateBusyElsewhere, q.ID, []i18n.Text{i18n.Tx(i18n.OnlineBusyElsewhere)}
 			return nil
 		}
 		nv, err := f(q)
@@ -727,7 +727,7 @@ func (s *Service) Decide(ctx context.Context, c Caller, root RootInfo, question,
 		if err := ApplyDecision(q, s.Providers, question, option); err != nil {
 			return DecideView{}, err
 		}
-		return DecideView{State: StateRecorded, Lines: []string{}}, nil
+		return DecideView{State: StateRecorded, Lines: []i18n.Text{}}, nil
 	})
 }
 
@@ -749,9 +749,9 @@ func (s *Service) Retry(ctx context.Context, c Caller, root RootInfo) (DecideVie
 				}
 			}
 		}
-		v := DecideView{State: StateRecorded, Count: n, Lines: []string{i18n.T(i18n.OnlineRetried, n)}}
+		v := DecideView{State: StateRecorded, Count: n, Lines: []i18n.Text{i18n.Tx(i18n.OnlineRetried, n)}}
 		for _, m := range refused {
-			v.Lines = append(v.Lines, i18n.T(m))
+			v.Lines = append(v.Lines, i18n.Tx(m))
 		}
 		return v, nil
 	})

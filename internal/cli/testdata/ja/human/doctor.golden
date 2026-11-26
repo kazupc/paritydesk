@@ -1,0 +1,5 @@
+確認項目    状態  詳細
+app         ok    Claude 6.28899.2 (tested)
+automation  warn  not granted yet
+プラグインのフックが使うバイナリとして記録しました: ~/e84b3073
+--- stderr

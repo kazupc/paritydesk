@@ -1,0 +1,23 @@
+使い方: paritydesk artifacts <status|plan|ingest|allow|skip|forget|import-legacy>
+
+claude.ai のアーティファクトをすべてのプロファイルで揃えます（ベータ）
+
+コマンド:
+  allow        1 つのアーティファクトについて判断します（ターミナルのみ）
+  forget       アーティファクトの追跡をやめます（ターミナルのみ）
+  import-legacy 以前のフォルダ入れ替えスクリプトのアーティファクトのアーカイブを取り込みます
+  ingest       終わった同期の回を今すぐ記録します
+  plan         プロファイルでの同期が行う内容を事前に確認します（概算）
+  skip         アーティファクトの同期をやめます（アーカイブには残ります）
+  status       アーティファクトのアーカイブを表示します
+
+共通フラグ:
+  --app-support-dir string     paritydesk のサポートディレクトリ
+  --ascii                      ASCII 文字だけを使います（メッセージは英語になります）
+  --config string              設定ファイル（PARITYDESK_CONFIG でも指定できます）
+  --json                       JSON ドキュメントを 1 つ出力します
+  --lang string                メッセージの言語: auto、en、ja のいずれか（PARITYDESK_LANG でも指定できます）
+  --no-color                   色を付けません（NO_COLOR、TERM=dumb でも同じです）
+  --plain                      表やスピナーを使わず、行単位で出力します
+  --read-only                  計画だけを行い、書き込みません（PARITYDESK_READONLY=1 でも同じです）
+  --state-dir string           状態ディレクトリ（PARITYDESK_STATE_DIR でも指定できます）

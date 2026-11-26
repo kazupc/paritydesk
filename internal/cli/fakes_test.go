@@ -14,6 +14,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/gen"
 	"github.com/kazupc/paritydesk/internal/hook"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/online"
@@ -187,7 +188,7 @@ func (f *fakeService) Recover(_ context.Context, o orchestrator.RecoverOptions) 
 	if err := f.record("recover"); err != nil {
 		return nil, err
 	}
-	return &orchestrator.RecoverResult{Actions: []string{"closed the interrupted run"}, Active: "work"}, nil
+	return &orchestrator.RecoverResult{Actions: i18n.Texts([]string{"closed the interrupted run"}), Active: "work"}, nil
 }
 
 func (f *fakeService) Rollback(_ context.Context, n uint64, propagate bool) (*orchestrator.RollbackResult, error) {
@@ -223,8 +224,8 @@ func (f *fakeService) Doctor(_ context.Context, o orchestrator.DoctorOptions) ([
 		return f.doctorChecks, nil
 	}
 	return []orchestrator.Check{
-		{ID: "app", Status: "ok", Detail: "Claude 6.28899.2 (tested)"},
-		{ID: "automation", Status: "warn", Detail: "not granted yet\x1b[2J"},
+		{ID: "app", Status: "ok", Detail: i18n.Raw("Claude 6.28899.2 (tested)")},
+		{ID: "automation", Status: "warn", Detail: i18n.Raw("not granted yet\x1b[2J")},
 	}, nil
 }
 

@@ -135,7 +135,7 @@ func (r *run) onlinePreview() {
 // dropPreviewWarns removes the warnings P2's approximate draft added.
 func (r *run) dropPreviewWarns() {
 	for _, t := range r.previewWarns {
-		if i := slices.Index(r.res.Warnings, t); i >= 0 {
+		if i := slices.IndexFunc(r.res.Warnings, func(w i18n.Text) bool { return w.English() == t.English() }); i >= 0 {
 			r.res.Warnings = slices.Delete(r.res.Warnings, i, i+1)
 		}
 	}
@@ -199,7 +199,7 @@ func publishOnline(ctx context.Context, o *Orchestrator, root *state.Root, m *co
 	sha, err := o.d.Online.Publish(ctx, d, h)
 	if err != nil {
 		root.Online = nil
-		o.progress(P10Commit, "warn", "the changes for inside Claude could not be queued; the next switch plans them again")
+		o.progress(P10Commit, "warn", i18n.Tx(i18n.ProgressP10OnlineNotQueued))
 		return false
 	}
 	root.Online = &state.OnlineRecord{Queue: runID, Profile: to, From: from, Replica: rep, Epoch: root.Epoch,
@@ -234,7 +234,7 @@ func (r *run) onlineP0(ctx context.Context) error {
 		}
 	}
 	if err := d.Online.BreakLease(ctx); err != nil {
-		r.warn(P0Preflight, "the lease of the changes waiting for inside Claude could not be removed")
+		r.warn(P0Preflight, i18n.Tx(i18n.WarnOnlineLeaseNotRemoved))
 	}
 	return nil
 }
@@ -291,7 +291,7 @@ type OnlineConfirmResult struct {
 func (o *Orchestrator) OnlineConfirm(ctx context.Context, in OnlineConfirmInput) (*OnlineConfirmResult, error) {
 	d := o.d
 	if d.ReadOnly {
-		return nil, pderr.New(pderr.Usage, "online done", "online done writes; it cannot run in read-only mode")
+		return nil, pderr.NewT(pderr.Usage, "online done", i18n.ErrOnlineDoneReadOnly)
 	}
 	if d.Online == nil {
 		return &OnlineConfirmResult{State: online.StateNone}, nil
@@ -310,7 +310,7 @@ func (o *Orchestrator) OnlineConfirm(ctx context.Context, in OnlineConfirmInput)
 		return nil, err
 	}
 	if root.Run != nil {
-		return nil, pderr.New(pderr.NeedsRecover, "online done", "a run was interrupted; run paritydesk recover")
+		return nil, pderr.NewT(pderr.NeedsRecover, "online done", i18n.ErrInterrupted)
 	}
 	rec := root.Online
 	if rec == nil || rec.Queue != in.Queue || rec.Epoch != root.Epoch || rec.Profile != root.Active {
@@ -595,7 +595,7 @@ func (o *Orchestrator) OnlineCancel(ctx context.Context, queue string) (bool, er
 // this run published a queue (P12: the notification mentions it).
 func (r *run) onlineNotice(text string) string {
 	if r.root != nil && r.root.Online != nil && r.root.Online.Queue == r.res.RunID {
-		return text + " " + i18n.T(i18n.SwitchOnlineNext)
+		return text + " " + i18n.En(i18n.SwitchOnlineNext)
 	}
 	return text
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/config"
 	"github.com/kazupc/paritydesk/internal/fsx"
 	"github.com/kazupc/paritydesk/internal/fsx/fsxtest"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -366,7 +367,7 @@ func TestResolve(t *testing.T) {
 	}
 }
 
-func wantWhy(alias ids.Alias, why string) func(t *testing.T, r *Resolution) {
+func wantWhy(alias ids.Alias, why i18n.Msg) func(t *testing.T, r *Resolution) {
 	return func(t *testing.T, r *Resolution) {
 		t.Helper()
 		b := r.Bindings[alias]

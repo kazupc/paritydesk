@@ -47,7 +47,7 @@ func (e *env) recordHookBinary() (string, error) {
 		return "", err
 	}
 	if !filepath.IsAbs(exe) || filepath.Clean(exe) != exe {
-		return "", pderr.New(pderr.Internal, "hook-binary", "executable path is not absolute")
+		return "", pderr.Bug("hook-binary", "executable path is not absolute")
 	}
 	if err := checkTestPaths(paths.SupportDir); err != nil {
 		return "", err
@@ -93,7 +93,7 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 // refuseReadOnly refuses a command that writes in read-only mode.
 func (e *env) refuseReadOnly(op string) error {
 	if e.readOnly() {
-		return pderr.New(pderr.Usage, op, i18n.T(i18n.ReadOnlyRefused))
+		return pderr.NewT(pderr.Usage, op, i18n.ReadOnlyRefused)
 	}
 	return nil
 }
@@ -117,7 +117,7 @@ func runGenerationsList(ctx context.Context, e *env, _ *flag.FlagSet, _ []string
 	}
 	return e.emit(generationsView{Generations: list}, func(p *render.Printer) {
 		if len(list) == 0 {
-			p.Line("%s", i18n.T(i18n.GenerationsNone))
+			p.Msg(i18n.GenerationsNone)
 			return
 		}
 		rows := make([][]string, len(list))
@@ -154,11 +154,10 @@ func runGenerationsShow(ctx context.Context, e *env, _ *flag.FlagSet, args []str
 		return err
 	}
 	if m == nil {
-		return pderr.New(pderr.Internal, "generations show", "no manifest")
+		return pderr.Bug("generations show", "no manifest")
 	}
 	return e.emit(generationView{Generation: m}, func(p *render.Printer) {
-		p.Line(i18n.T(i18n.GenerationShow, m.N, "%s", "%s", "%s", yesNo(m.Complete)),
-			m.RunID, string(m.Alias), m.Created.UTC().Format(time.RFC3339))
+		p.Msg(i18n.GenerationShow, m.N, m.RunID, string(m.Alias), m.Created.UTC().Format(time.RFC3339), yesNo(m.Complete))
 		if m.Pinned {
 			p.Line("%s", m.Purpose)
 		}
@@ -228,7 +227,7 @@ func pinnedGenerations(gs generationStore) int {
 // generations (text mode; JSON reports the count as "pinned").
 func (e *env) warnPinned(n int) {
 	if n > 0 && !e.g.JSON {
-		e.printer().Warn(i18n.T(i18n.BackupsPinnedWarn, n))
+		e.printer().WarnText(i18n.Tx(i18n.BackupsPinnedWarn, n))
 	}
 }
 
@@ -239,8 +238,8 @@ const (
 )
 
 func backupsPruneFlags(fs *flag.FlagSet) {
-	fs.Bool(flagScratch, false, "remove the kept sets of scratch files removed by earlier switches (asks first)")
-	fs.Int(flagOlderThan, 0, "with --scratch: only sets older than this many days")
+	fs.Bool(flagScratch, false, usage(i18n.FlagScratch))
+	fs.Int(flagOlderThan, 0, usage(i18n.FlagOlderThan))
 	yesFlag(fs)
 }
 
@@ -250,7 +249,7 @@ func runBackupsPrune(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) 
 	}
 	scratchOnly, days := getBool(fs, flagScratch), getInt(fs, flagOlderThan)
 	if days < 0 || (days > 0 && !scratchOnly) {
-		return usageErrorf("--%s takes a number of days and needs --%s", flagOlderThan, flagScratch)
+		return usageError(i18n.UsageOlderThan, flagOlderThan, flagScratch)
 	}
 	release, err := e.sys.quiet(ctx, e)
 	if err != nil {
@@ -281,7 +280,7 @@ func runBackupsPrune(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) 
 		return err
 	}
 	return e.emit(backupsView{OK: true, Keep: pol.Keep, Max: maxBytes}, func(p *render.Printer) {
-		p.Line(i18n.T(i18n.BackupsPruned, pol.Keep))
+		p.Msg(i18n.BackupsPruned, pol.Keep)
 	}, nil)
 }
 
@@ -307,7 +306,7 @@ func runBackupsPurge(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) 
 		return err
 	}
 	return e.emit(backupsView{OK: true, Purged: true, Pinned: pinned}, func(p *render.Printer) {
-		p.Line("%s", i18n.T(i18n.BackupsPurged))
+		p.Msg(i18n.BackupsPurged)
 	}, nil)
 }
 
@@ -326,7 +325,7 @@ func runConfigPath(_ context.Context, e *env, _ *flag.FlagSet, _ []string) error
 	}
 	_, statErr := os.Stat(paths.ConfigFile)
 	return e.emit(configView{Path: paths.ConfigFile, Exists: statErr == nil}, func(p *render.Printer) {
-		p.Line(i18n.T(i18n.ConfigPath, "%s"), paths.ConfigFile)
+		p.Msg(i18n.ConfigPath, paths.ConfigFile)
 	}, nil)
 }
 
@@ -341,7 +340,7 @@ func runConfigShow(_ context.Context, e *env, _ *flag.FlagSet, _ []string) error
 	}
 	return e.emit(configView{Path: paths.ConfigFile, Exists: exists, Config: cfg}, func(p *render.Printer) {
 		if !exists {
-			p.Warn(i18n.T(i18n.ConfigNone))
+			p.WarnText(i18n.Tx(i18n.ConfigNone))
 		}
 		var buf bytes.Buffer
 		enc := toml.NewEncoder(&buf)
@@ -375,7 +374,7 @@ func runConfigValidate(_ context.Context, e *env, _ *flag.FlagSet, _ []string) e
 	}
 	valid := true
 	return e.emit(configView{Path: paths.ConfigFile, Exists: true, Valid: &valid}, func(p *render.Printer) {
-		p.Line(i18n.T(i18n.ConfigValid, "%s"), paths.ConfigFile)
+		p.Msg(i18n.ConfigValid, paths.ConfigFile)
 	}, nil)
 }
 
@@ -484,7 +483,7 @@ func pruneScratchKept(ctx context.Context, e *env, fs *flag.FlagSet, days int) e
 	}
 	ks, ok := gs.(scratchKeptStore)
 	if !ok {
-		return pderr.New(pderr.Internal, "backups prune", "the generation store keeps no scratch files")
+		return pderr.Bug("backups prune", "the generation store keeps no scratch files")
 	}
 	var cutoff time.Time
 	if days > 0 {
@@ -511,7 +510,7 @@ func pruneScratchKept(ctx context.Context, e *env, fs *flag.FlagSet, days int) e
 		return err
 	}
 	return e.emit(scratchPruneView{Removed: removed, Bytes: bytes}, func(p *render.Printer) {
-		p.Line("%s", i18n.T(i18n.BackupsScratchRemoved, removed, render.Bytes(bytes)))
+		p.Msg(i18n.BackupsScratchRemoved, removed, render.Bytes(bytes))
 	}, nil)
 }
 
@@ -530,7 +529,7 @@ func (e *env) confirmText(ctx context.Context, yes bool, question string) error 
 		return err
 	}
 	if !ok {
-		return pderr.New(pderr.Declined, "confirm", i18n.T(i18n.Declined))
+		return pderr.NewT(pderr.Declined, "confirm", i18n.Declined)
 	}
 	return nil
 }

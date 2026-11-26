@@ -121,7 +121,6 @@ the folder swap (P8), parking the leaving folder (P9), one state commit
 | S17 | Does the app keep an extended attribute on its data folder? | Run: yes. |
 | S18 | Does Claude in Chrome work on every account with one Chrome profile per account? | Run: yes. |
 
-<!-- v0.2 anchor: busy -->
 **Log signals (v0.2, ADR 0007).** `internal/app` reads `main.log` and the
 rotated `main1.log` … `main4.log` through one set of open descriptors
 (inode checked against the listing, opened again on a race), with
@@ -137,7 +136,6 @@ sign-in to another profile's account exits 20 before any write, and a
 chain of changes since the last committed run (`last_commit_at`) gives
 swap-only. `LastReplica` serves the online and artifact layers.
 
-<!-- v0.2 anchor: fdscan -->
 **Open-file scan (v0.2, `internal/fdscan`).** The quiescence check (D15)
 finds holders of the data folders with a cgo-free reader of libproc
 (`proc_listallpids`, `proc_pidinfo`, `proc_pidfdinfo`,
@@ -161,7 +159,6 @@ records carry the holder's start time, so a reused pid is reported in
 | `native` | native only | exit 70 before writing |
 | `lsof` | the v0.1 `lsof` check, no native code | — |
 
-<!-- v0.2 anchor: sidebar-offline -->
 ### Collapsed groups and seed keys (v0.2)
 
 | Row | Carries | Path |
@@ -173,7 +170,6 @@ Local Storage-only rows are verified from a snapshot copy after launch
 (`sources.LSVerifier`); a copy that cannot be read lists the row as
 unverified (exit 0). Facts and decisions: [ADR 0009](adr/0009-sidebar-collapse-and-seed.md).
 
-<!-- v0.2 anchor: scratch -->
 ### Scratch workspaces (row 18b, v0.2)
 
 Row `scratch` (category `scratch`, implied by `sessions`) carries the
@@ -194,8 +190,6 @@ directories and links (`dir`, `link` entries) so a rollback removes them
 only when empty. Row scratch's post-hashes are a state object
 (`Run.PostHashesRef`); post-hash keys are `path:`, `dir:`, `link:`.
 
-
-<!-- v0.2 anchor: online -->
 ### Online layer (v0.2)
 
 | Piece | Where | What |
@@ -210,7 +204,6 @@ Locks: run lock, then the online lock (`<SupportDir>/locks/online.lock`);
 `online cancel` takes none for its stop marker. Facts and decisions:
 [ADR 0005](adr/0005-online-layer.md).
 
-<!-- v0.2 anchor: pins -->
 ### Pins (v0.2)
 
 | Piece | Where | What |
@@ -227,7 +220,6 @@ that run without further asking; unpins never run offline, each is asked
 inside Claude and is counted in the plan's `online` line. Facts and
 decisions: [ADR 0005](adr/0005-online-layer.md), section "Pins".
 
-<!-- v0.2 anchor: artifacts -->
 ### Artifact sync (v0.2, beta)
 
 `internal/artifacts` keeps claude.ai artifacts the same on every profile.
@@ -244,7 +236,6 @@ plan lines at P2, `due.json` after the P10 commit, profile rename and
 remove, and the doctor check. Facts and decisions:
 [ADR 0006](adr/0006-artifact-sync.md).
 
-<!-- v0.2 anchor: legacy-adopt -->
 ### Adopting folders of an earlier folder-swap script (v0.2)
 
 `profile adopt --from-legacy` (hidden) is planned by the pure
@@ -264,5 +255,17 @@ a `legacy-quarantine` run into a pinned generation (`EntryQuarantineDir`,
 an empty one; recover never moves anything). See
 [migration-from-legacy.md](migration-from-legacy.md).
 
+### Messages and languages (v0.2)
 
-<!-- v0.2 anchor: i18n-ja -->
+Every text a person reads is a catalog message (`internal/i18n`): English
+in `catalog.go`, Japanese in `catalog_ja.go`. Messages are late-bound
+values (`i18n.Text`): structs keep the id and the arguments, JSON encodes
+the English text, and human output renders the process language at print
+time. The language comes from `--lang`, `PARITYDESK_LANG`, `[ui] lang`,
+the locale, then `[ui] fallback_lang`; the process language is English
+under `--json`, in ASCII mode, and for the hook, completion and the
+detached job. JSON never changes language: documents that carry `lines`
+add `lang` and `display_lines` when the display language is not English.
+Model-facing hook text and the job's notifications stay English. Rules and
+tests: [dev/i18n.md](dev/i18n.md).
+

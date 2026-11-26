@@ -3,7 +3,6 @@ package orchestrator
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"strconv"
@@ -12,6 +11,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/app"
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/config"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -28,8 +28,8 @@ type RecoverOptions struct {
 
 // RecoverResult reports what recover did.
 type RecoverResult struct {
-	Actions []string  `json:"actions"`
-	Active  ids.Alias `json:"active"`
+	Actions []i18n.Text `json:"actions"`
+	Active  ids.Alias   `json:"active"`
 }
 
 // recovery is one recover run.
@@ -64,7 +64,7 @@ func (f facts) find(name string) *profile.Folder {
 // creates, merges or deletes data folders automatically.
 func (o *Orchestrator) Recover(ctx context.Context, opts RecoverOptions) (*RecoverResult, error) {
 	if o.d.ReadOnly {
-		return nil, pderr.New(pderr.Usage, "recover", "recover writes; it cannot run in read-only mode")
+		return nil, pderr.NewT(pderr.Usage, "recover", i18n.ErrRecoverReadOnly)
 	}
 	l, err := o.d.State.Lock(ctx, 0)
 	if err != nil {
@@ -91,7 +91,7 @@ func (o *Orchestrator) Recover(ctx context.Context, opts RecoverOptions) (*Recov
 	return rc.res, err
 }
 
-func (rc *recovery) note(s string) { rc.res.Actions = append(rc.res.Actions, s) }
+func (rc *recovery) note(t i18n.Text) { rc.res.Actions = append(rc.res.Actions, t) }
 
 func (rc *recovery) locate(ctx context.Context) {
 	d := rc.o.d
@@ -111,7 +111,7 @@ func (rc *recovery) dispatch(ctx context.Context) error {
 		if rc.root.PendingAdd != nil {
 			return rc.pendingAdd(ctx)
 		}
-		rc.note("nothing to recover")
+		rc.note(i18n.Tx(i18n.RecoverNothing))
 		return nil
 	}
 	switch run.Kind {
@@ -126,7 +126,7 @@ func (rc *recovery) dispatch(ctx context.Context) error {
 	case state.RunQuarantine:
 		return rc.quarantine(ctx)
 	}
-	return pderr.New(pderr.Internal, "recover", "unknown run kind")
+	return pderr.Bug("recover", "unknown run kind")
 }
 
 // lastIntent returns the last intent's name and done flag.
@@ -182,14 +182,14 @@ func (rc *recovery) parked(a ids.Alias) string {
 // or updater process, no held LevelDB LOCK, no write holder.
 func (rc *recovery) requireStopped(ctx context.Context) error {
 	if !rc.located {
-		return pderr.New(pderr.NeedsRecover, "recover", "Claude could not be found, so recover cannot tell whether it is running; quit Claude, make sure it is in Applications, then run paritydesk recover again")
+		return pderr.NewT(pderr.NeedsRecover, "recover", i18n.ErrRecoverAppNotFound)
 	}
 	procs, err := rc.o.d.App.Running(ctx, rc.bundle.Path)
 	if err != nil {
 		return pderr.Wrap(pderr.Internal, "recover", err)
 	}
 	if len(procs) > 0 {
-		return pderr.New(pderr.NeedsRecover, "recover", "quit Claude, then run paritydesk recover again")
+		return pderr.NewT(pderr.NeedsRecover, "recover", i18n.ErrRecoverQuitFirst)
 	}
 	in := rc.o.quiescenceInput(rc.bundle.Path, rc.touchedFolders()...)
 	rep, err := rc.o.d.App.CheckQuiescence(ctx, in)
@@ -197,7 +197,7 @@ func (rc *recovery) requireStopped(ctx context.Context) error {
 		return pderr.Wrap(pderr.Internal, "recover", err)
 	}
 	if !rep.Quiet {
-		return pderr.New(pderr.NeedsRecover, "recover", "a process still uses the data folders; quit Claude (and any copy started with --user-data-dir), then run paritydesk recover again")
+		return pderr.NewT(pderr.NeedsRecover, "recover", i18n.ErrRecoverInUse)
 	}
 	return nil
 }
@@ -224,7 +224,7 @@ func (rc *recovery) touchedFolders() []string {
 }
 
 // closeRun closes the run and relaunches when paritydesk quit the app.
-func (rc *recovery) closeRun(ctx context.Context, note string) error {
+func (rc *recovery) closeRun(ctx context.Context, note i18n.Text) error {
 	quit := rc.root.Run != nil && rc.root.Run.QuitByUs
 	rc.root.Run = nil
 	if err := rc.o.commit(rc.root); err != nil {
@@ -232,8 +232,8 @@ func (rc *recovery) closeRun(ctx context.Context, note string) error {
 	}
 	rc.note(note)
 	if quit && rc.located {
-		if rc.o.relaunch(ctx, rc.root, "relaunched Claude") {
-			rc.note("relaunched Claude")
+		if rc.o.relaunch(ctx, rc.root, i18n.Tx(i18n.ProgressP11RelaunchedClaude)) {
+			rc.note(i18n.Tx(i18n.RecoverRelaunched))
 		}
 	}
 	return nil
@@ -245,7 +245,7 @@ func (rc *recovery) recoverSwitch(ctx context.Context) error {
 	name, done := lastIntent(run)
 	switch {
 	case name == "" || name == state.IntentQuit || name == state.IntentPlanned:
-		return rc.closeRun(ctx, "closed the interrupted switch; nothing was changed in the folders")
+		return rc.closeRun(ctx, i18n.Tx(i18n.RecoverClosedSwitch))
 	case name == state.IntentBackedUp && !done:
 		return rc.dropIncomplete(ctx)
 	}
@@ -260,7 +260,7 @@ func (rc *recovery) recoverSwitch(ctx context.Context) error {
 	sParked, tParked := rc.parked(s), rc.parked(t)
 	switch {
 	case f.claudeAlias == s && name != state.IntentParked && rc.holds(f, tParked, t):
-		return rc.rollbackTarget(ctx, t, rc.o.folderPath(tParked), false, "rolled back "+string(t)+" from the generation")
+		return rc.rollbackTarget(ctx, t, rc.o.folderPath(tParked), false, i18n.Tx(i18n.RecoverRolledBack, t))
 	case f.claudeAlias == t && (name == state.IntentSwapping || name == state.IntentSwapped || name == state.IntentSwapBack):
 		return rc.parkAndFinish(ctx, f, tParked, sParked)
 	case f.claudeAlias == t && (name == state.IntentFallbackTPlaced || name == state.IntentParked):
@@ -285,9 +285,7 @@ func (rc *recovery) parkAndFinish(ctx context.Context, f facts, tParked, sParked
 		if rc.opts.Rollback && rc.holds(f, tParked, run.From) {
 			return rc.undoSwap(ctx, tParked)
 		}
-		return pderr.New(pderr.NeedsRecover, "recover", fmt.Sprintf(
-			"%s already exists, so the leaving profile cannot be parked; run paritydesk recover --rollback to undo the switch; folders: %s",
-			sParked, describe(rc.root, f)))
+		return pderr.NewT(pderr.NeedsRecover, "recover", i18n.ErrRecoverParkTaken, sParked, describe(rc.root, f))
 	}
 	if err := rc.parkS(f, tParked, sParked); err != nil {
 		return err
@@ -318,8 +316,8 @@ func (rc *recovery) undoSwap(ctx context.Context, tParked string) error {
 		return pderr.Wrap(pderr.NeedsRecover, "recover", err)
 	}
 	_ = rc.o.d.FS.FullSync(rc.o.d.DataRoot)
-	rc.note("put the leaving profile back into Claude")
-	return rc.rollbackTarget(ctx, t, tPath, false, "rolled back "+string(t)+" from the generation")
+	rc.note(i18n.Tx(i18n.RecoverPutBack))
+	return rc.rollbackTarget(ctx, t, tPath, false, i18n.Tx(i18n.RecoverRolledBack, t))
 }
 
 // dropIncomplete handles an interrupted P6.
@@ -329,9 +327,9 @@ func (rc *recovery) dropIncomplete(ctx context.Context) error {
 		return pderr.Wrap(pderr.Internal, "recover", err)
 	}
 	if gone {
-		rc.note("removed the incomplete backup generation")
+		rc.note(i18n.Tx(i18n.RecoverRemovedGeneration))
 	}
-	return rc.closeRun(ctx, "closed the interrupted run; the folders were not changed")
+	return rc.closeRun(ctx, i18n.Tx(i18n.RecoverClosedRunUnchanged))
 }
 
 // parkS is P9 during recover.
@@ -339,11 +337,11 @@ func (rc *recovery) parkS(f facts, from, to string) error {
 	d := rc.o.d
 	if err := d.FS.RenameExcl(rc.o.folderPath(from), rc.o.folderPath(to)); err != nil {
 		if errors.Is(err, fs.ErrExist) {
-			return pderr.New(pderr.NeedsRecover, "recover", fmt.Sprintf("%s already exists; folders: %s", to, describe(rc.root, f)))
+			return pderr.NewT(pderr.NeedsRecover, "recover", i18n.ErrRecoverNameTaken, to, describe(rc.root, f))
 		}
 		return pderr.Wrap(pderr.NeedsRecover, "recover", err)
 	}
-	rc.note("moved the leaving profile's folder to " + to)
+	rc.note(i18n.Tx(i18n.RecoverMovedLeaving, to))
 	return nil
 }
 
@@ -356,14 +354,14 @@ func (rc *recovery) completeFallback(ctx context.Context, sParked, tParked strin
 		if err := d.FS.RenameExcl(rc.o.folderPath(sParked), claude); err != nil {
 			return pderr.Wrap(pderr.NeedsRecover, "recover", err)
 		}
-		rc.note("put the leaving profile back into Claude")
+		rc.note(i18n.Tx(i18n.RecoverPutBack))
 		t := rc.root.Run.To
-		return rc.rollbackTarget(ctx, t, rc.o.folderPath(tParked), false, "rolled back "+string(t)+" from the generation")
+		return rc.rollbackTarget(ctx, t, rc.o.folderPath(tParked), false, i18n.Tx(i18n.RecoverRolledBack, t))
 	}
 	if err := d.FS.RenameExcl(rc.o.folderPath(tParked), claude); err != nil {
 		return pderr.Wrap(pderr.NeedsRecover, "recover", err)
 	}
-	rc.note("moved the entering profile into Claude")
+	rc.note(i18n.Tx(i18n.RecoverMovedEntering))
 	return rc.finishP10(ctx)
 }
 
@@ -373,7 +371,7 @@ func (rc *recovery) completeFallback(ctx context.Context, sParked, tParked strin
 // never the LevelDB clone, because the app may have written any Local
 // Storage key there since the crash. A parked folder gets the clone back
 // first when apply may have opened its Local Storage.
-func (rc *recovery) rollbackTarget(ctx context.Context, a ids.Alias, folder string, live bool, note string) error {
+func (rc *recovery) rollbackTarget(ctx context.Context, a ids.Alias, folder string, live bool, note i18n.Text) error {
 	run := rc.root.Run
 	_, applied := intentData(run, state.IntentApplied)
 	withLS := false
@@ -391,7 +389,7 @@ func (rc *recovery) rollbackTarget(ctx context.Context, a ids.Alias, folder stri
 	}
 	rc.o.restoreMarker(rc.root, a, folder)
 	if len(rep.Conflicts) > 0 {
-		rc.note(fmt.Sprintf("%d item(s) changed since the run were left as they are", len(rep.Conflicts)))
+		rc.note(i18n.Tx(i18n.RecoverConflictsLeft, len(rep.Conflicts)))
 	}
 	return rc.closeRun(ctx, note)
 }
@@ -440,7 +438,7 @@ func (rc *recovery) finishP10(ctx context.Context) error {
 		root.Bases[k] = ref
 	}
 	if !ok {
-		rc.note("the entering profile's bases are invalid; the next run is a first sync for it")
+		rc.note(i18n.Tx(i18n.RecoverEnteringBasesInvalid))
 	}
 	if _, backed := intentData(run, state.IntentBackedUp); backed && run.Generation != 0 {
 		root.Generations = append(root.Generations, state.GenerationRef{N: run.Generation, RunID: run.ID, Target: t, At: rc.o.now()})
@@ -465,9 +463,9 @@ func (rc *recovery) finishP10(ctx context.Context) error {
 		root.Active, root.Previous = t, run.From
 	}
 	if rc.republishOnline(ctx) {
-		rc.note("the changes for inside Claude are queued again")
+		rc.note(i18n.Tx(i18n.RecoverOnlineRequeued))
 	}
-	return rc.closeRun(ctx, "completed the interrupted run; "+string(t)+" is active")
+	return rc.closeRun(ctx, i18n.Tx(i18n.RecoverCompleted, t))
 }
 
 // recoverSync implements the RunSync table.
@@ -476,7 +474,7 @@ func (rc *recovery) recoverSync(ctx context.Context) error {
 	name, done := lastIntent(run)
 	switch {
 	case name == "" || name == state.IntentQuit || name == state.IntentPlanned:
-		return rc.closeRun(ctx, "closed the interrupted sync; nothing was changed")
+		return rc.closeRun(ctx, i18n.Tx(i18n.RecoverClosedSync))
 	case name == state.IntentBackedUp && !done:
 		return rc.dropIncomplete(ctx)
 	}
@@ -499,7 +497,7 @@ func (rc *recovery) recoverSync(ctx context.Context) error {
 	if ok, _ := rc.recheckScratch(ctx, plan.Target{Alias: run.To, Replica: rep, Folder: claude}, claude); ok {
 		return rc.finishP10(ctx)
 	}
-	return rc.rollbackTarget(ctx, run.To, claude, true, "restored the active profile from the generation")
+	return rc.rollbackTarget(ctx, run.To, claude, true, i18n.Tx(i18n.RecoverRestoredActive))
 }
 
 // recoverRollback implements the RunRollback table.
@@ -507,7 +505,7 @@ func (rc *recovery) recoverRollback(ctx context.Context) error {
 	run := rc.root.Run
 	name, _ := lastIntent(run)
 	if name != state.IntentRestoring {
-		return rc.closeRun(ctx, "closed the interrupted rollback; nothing was restored")
+		return rc.closeRun(ctx, i18n.Tx(i18n.RecoverClosedRollbackUnrestored))
 	}
 	if err := rc.requireStopped(ctx); err != nil {
 		return err
@@ -522,8 +520,8 @@ func (rc *recovery) recoverRollback(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	rc.note(fmt.Sprintf("finished restoring generation %d (%d restored, %d left as they are)", n, len(rep.Restored), len(rep.Conflicts)))
-	return rc.closeRun(ctx, "closed the rollback")
+	rc.note(i18n.Tx(i18n.RecoverRollbackFinished, n, len(rep.Restored), len(rep.Conflicts)))
+	return rc.closeRun(ctx, i18n.Tx(i18n.RecoverClosedRollback))
 }
 
 // recoverAdd implements the RunAdd table.
@@ -532,7 +530,7 @@ func (rc *recovery) recoverAdd(ctx context.Context) error {
 	run := rc.root.Run
 	name, done := lastIntent(run)
 	if name != state.IntentAddParked {
-		return rc.closeRun(ctx, "closed the interrupted profile add; nothing was moved")
+		return rc.closeRun(ctx, i18n.Tx(i18n.RecoverClosedAddUnmoved))
 	}
 	if err := rc.requireStopped(ctx); err != nil {
 		return err
@@ -545,14 +543,14 @@ func (rc *recovery) recoverAdd(ctx context.Context) error {
 	sParked := rc.parked(s)
 	switch {
 	case f.claudeAlias == s:
-		return rc.closeRun(ctx, "closed the interrupted profile add; nothing was moved")
+		return rc.closeRun(ctx, i18n.Tx(i18n.RecoverClosedAddUnmoved))
 	case f.claude == nil && rc.holds(f, sParked, s):
 		if err := d.FS.RenameExcl(rc.o.folderPath(sParked), rc.o.claudePath()); err != nil {
 			return pderr.Wrap(pderr.NeedsRecover, "recover", err)
 		}
-		rc.note("put " + string(s) + " back into Claude; run paritydesk profile add again")
+		rc.note(i18n.Tx(i18n.RecoverPutBackAdd, s))
 		rc.root.PendingAdd = nil
-		return rc.closeRun(ctx, "closed the interrupted profile add")
+		return rc.closeRun(ctx, i18n.Tx(i18n.RecoverClosedAdd))
 	case f.claude != nil && f.claude.Identity != nil && f.claudeAlias == "":
 		rc.setPendingAdd(run)
 		return rc.pendingAdd(ctx)
@@ -562,9 +560,9 @@ func (rc *recovery) recoverAdd(ctx context.Context) error {
 		if err := rc.o.commit(rc.root); err != nil {
 			return err
 		}
-		rc.note("the profile add waits for the sign-in of " + string(rc.root.PendingAdd.Alias))
+		rc.note(i18n.Tx(i18n.RecoverAddWaits, rc.root.PendingAdd.Alias))
 		if rc.located && rc.o.d.App.Launch(ctx, d.Config.App.BundleID) == nil {
-			rc.note("launched Claude for the sign-in")
+			rc.note(i18n.Tx(i18n.RecoverLaunchedForSignIn))
 		}
 		return nil
 	}
@@ -588,18 +586,18 @@ func (rc *recovery) pendingAdd(ctx context.Context) error {
 		return err
 	}
 	if f.claude == nil || f.claude.Identity == nil {
-		rc.note("the profile add waits for the sign-in of " + string(pa.Alias))
+		rc.note(i18n.Tx(i18n.RecoverAddWaits, pa.Alias))
 		return nil
 	}
 	if f.claudeAlias != "" {
 		return rc.dropPendingAdd(f.claudeAlias)
 	}
-	c := Confirmation{Kind: ConfirmAddBind, Lines: []string{
-		fmt.Sprintf("Claude now holds account %s; register it as %s?", ids.Mask(string(f.claude.Identity.Account)), pa.Alias)}}
+	c := Confirmation{Kind: ConfirmAddBind, Lines: []i18n.Text{
+		i18n.Tx(i18n.ConfirmAddBindLine, ids.Mask(string(f.claude.Identity.Account)), pa.Alias)}}
 	if !rc.opts.Yes {
 		if err := rc.o.ask(ctx, rc.o.interactive(false), c); err != nil {
 			if pderr.CodeOf(err) == pderr.Declined {
-				rc.note("left the pending profile add as it is")
+				rc.note(i18n.Tx(i18n.RecoverLeftPendingAdd))
 				return nil
 			}
 			return err
@@ -620,7 +618,7 @@ func (rc *recovery) dropPendingAdd(holder ids.Alias) error {
 	if err := rc.o.commit(rc.root); err != nil {
 		return err
 	}
-	rc.note(fmt.Sprintf("Claude already holds profile %s; the pending profile add of %s was dropped", holder, pa.Alias))
+	rc.note(i18n.Tx(i18n.RecoverAddDropped, holder, pa.Alias))
 	return nil
 }
 
@@ -641,7 +639,7 @@ func (rc *recovery) bind(ctx context.Context, folder *profile.Folder, pa *state.
 	if err := rc.o.commit(rc.root); err != nil {
 		return err
 	}
-	rc.note("registered the new account as " + string(pa.Alias))
+	rc.note(i18n.Tx(i18n.RecoverRegistered, pa.Alias))
 	return nil
 }
 
@@ -684,9 +682,9 @@ func newProfileStateFor(a ids.Alias, f *profile.Folder, rep model.Replica) *stat
 // Claude/ is missing it proposes moving a profile's folder into place,
 // which needs ConfirmRecover.
 func (rc *recovery) contradiction(ctx context.Context, f facts, prefer ...ids.Alias) error {
-	lines := []string{"The folders do not match the interrupted run: " + describe(rc.root, f)}
+	lines := []i18n.Text{i18n.Tx(i18n.ConfirmFoldersMismatch, describe(rc.root, f))}
 	if f.claude != nil {
-		return pderr.New(pderr.NeedsRecover, "recover", strings.Join(lines, "; ")+"; nothing was moved; see paritydesk doctor")
+		return pderr.NewT(pderr.NeedsRecover, "recover", i18n.ErrRecoverMismatchClaude, describe(rc.root, f))
 	}
 	for _, a := range prefer {
 		name := rc.parked(a)
@@ -694,7 +692,7 @@ func (rc *recovery) contradiction(ctx context.Context, f facts, prefer ...ids.Al
 			continue
 		}
 		c := Confirmation{Kind: ConfirmRecover,
-			Lines: append(lines, fmt.Sprintf("Move %s (profile %s) into Claude?", name, a))}
+			Lines: append(lines, i18n.Tx(i18n.ConfirmMoveFolder, name, a))}
 		if !rc.opts.Yes {
 			if err := rc.o.ask(ctx, rc.o.interactive(false), c); err != nil {
 				return err
@@ -703,35 +701,33 @@ func (rc *recovery) contradiction(ctx context.Context, f facts, prefer ...ids.Al
 		if err := rc.o.d.FS.RenameExcl(rc.o.folderPath(name), rc.o.claudePath()); err != nil {
 			return pderr.Wrap(pderr.NeedsRecover, "recover", err)
 		}
-		rc.note("moved " + name + " into Claude")
+		rc.note(i18n.Tx(i18n.RecoverMoved, name))
 		if run := rc.root.Run; run != nil && run.To != a {
 			dropAliasKeys(rc.root, run.To)
 		}
 		rc.root.Active = a
-		return rc.closeRun(ctx, "closed the interrupted run")
+		return rc.closeRun(ctx, i18n.Tx(i18n.RecoverClosedRun))
 	}
-	return pderr.New(pderr.NeedsRecover, "recover", strings.Join(lines, "; ")+"; no folder can be moved safely")
+	return pderr.NewT(pderr.NeedsRecover, "recover", i18n.ErrRecoverMismatchNoMove, describe(rc.root, f))
 }
 
 // describe lists folders with masked identities and owners.
-func describe(root *state.Root, f facts) string {
-	var parts []string
+func describe(root *state.Root, f facts) i18n.Text {
+	var parts i18n.CommaList
 	for _, x := range f.folders {
-		who := "unidentified"
-		if x.Identity != nil {
-			who = "account " + ids.Mask(string(x.Identity.Account))
-			if a := aliasOf(root, x.Identity.Account); a != "" {
-				who += " (" + string(a) + ")"
-			} else {
-				who += " (unregistered)"
-			}
+		switch {
+		case x.Identity == nil:
+			parts = append(parts, i18n.Tx(i18n.RecoverFolderUnidentified, x.Name))
+		case aliasOf(root, x.Identity.Account) != "":
+			parts = append(parts, i18n.Tx(i18n.RecoverFolderAccount, x.Name, ids.Mask(string(x.Identity.Account)), aliasOf(root, x.Identity.Account)))
+		default:
+			parts = append(parts, i18n.Tx(i18n.RecoverFolderUnregistered, x.Name, ids.Mask(string(x.Identity.Account))))
 		}
-		parts = append(parts, x.Name+": "+who)
 	}
 	if len(parts) == 0 {
-		return "no data folders"
+		return i18n.Tx(i18n.RecoverNoFolders)
 	}
-	return strings.Join(parts, ", ")
+	return i18n.Tx(i18n.WordList, parts)
 }
 
 // withoutJournal handles a missing or unreadable state: identities only.
@@ -744,7 +740,7 @@ func (rc *recovery) withoutJournal(ctx context.Context) error {
 	}
 	f := facts{folders: folders, claude: facts{folders: folders}.find(ids.DefaultFolder)}
 	if f.claude != nil {
-		rc.note("no journal; Claude is in place, nothing to move")
+		rc.note(i18n.Tx(i18n.RecoverNoJournal))
 		return nil
 	}
 	if err := rc.requireStopped(ctx); err != nil {
@@ -763,10 +759,10 @@ func (rc *recovery) withoutJournal(ctx context.Context) error {
 		}
 	}
 	if best == "" {
-		return pderr.New(pderr.NeedsRecover, "recover", "no journal and no profile folder to move into place")
+		return pderr.NewT(pderr.NeedsRecover, "recover", i18n.ErrRecoverNoJournal)
 	}
-	c := Confirmation{Kind: ConfirmRecover, Lines: []string{
-		"No journal was found and Claude is missing.", fmt.Sprintf("Move %s (the most recently used profile folder) into Claude?", best)}}
+	c := Confirmation{Kind: ConfirmRecover, Lines: []i18n.Text{
+		i18n.Tx(i18n.ConfirmNoJournal), i18n.Tx(i18n.ConfirmMoveRecent, best)}}
 	if !rc.opts.Yes {
 		if err := rc.o.ask(ctx, rc.o.interactive(false), c); err != nil {
 			return err
@@ -775,7 +771,7 @@ func (rc *recovery) withoutJournal(ctx context.Context) error {
 	if err := rc.o.d.FS.RenameExcl(rc.o.folderPath(best), rc.o.claudePath()); err != nil {
 		return pderr.Wrap(pderr.NeedsRecover, "recover", err)
 	}
-	rc.note("moved " + best + " into Claude")
+	rc.note(i18n.Tx(i18n.RecoverMoved, best))
 	return nil
 }
 

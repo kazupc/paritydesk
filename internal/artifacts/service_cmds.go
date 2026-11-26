@@ -29,7 +29,7 @@ type StatusOut struct {
 	Pairs      []PairView    `json:"pairs"`
 	Ignored    []IgnoredView `json:"ignored"`
 	Forgotten  []PairView    `json:"forgotten,omitempty"`
-	Lines      []string      `json:"lines"`
+	Lines      []i18n.Text   `json:"lines"`
 	// titles are the sanitized titles of the text output only.
 	Titles map[PairID]string `json:"-"`
 }
@@ -205,7 +205,7 @@ func copyStatus(v Verdict) (string, string) {
 // Status is `artifacts status` (no lock).
 func (s *Service) Status(in StatusInput) (StatusOut, error) {
 	out := StatusOut{V: 1, Enabled: s.enabled(), Profiles: []ProfileView{}, Pairs: []PairView{}, Ignored: []IgnoredView{},
-		Lines: []string{}, Titles: map[PairID]string{}}
+		Lines: []i18n.Text{}, Titles: map[PairID]string{}}
 	m, err := s.manifest()
 	if err != nil {
 		return out, err
@@ -344,23 +344,23 @@ func (s *Service) Status(in StatusInput) (StatusOut, error) {
 		}
 	}
 	if !out.Enabled {
-		out.Lines = append(out.Lines, i18n.T(s.offLine()))
+		out.Lines = append(out.Lines, i18n.Tx(s.offLine()))
 	}
 	if len(m.Pairs) == 0 {
-		out.Lines = append(out.Lines, i18n.T(i18n.ArtifactsStatusNone))
+		out.Lines = append(out.Lines, i18n.Tx(i18n.ArtifactsStatusNone))
 	}
 	switch out.Publishing {
 	case "gate_closed":
-		out.Lines = append(out.Lines, i18n.T(i18n.ArtifactsGateClosed))
+		out.Lines = append(out.Lines, i18n.Tx(i18n.ArtifactsGateClosed))
 	case "client_refused":
-		out.Lines = append(out.Lines, i18n.T(i18n.ArtifactsPublishUnavailable))
+		out.Lines = append(out.Lines, i18n.Tx(i18n.ArtifactsPublishUnavailable))
 	case "grant_declined":
-		out.Lines = append(out.Lines, i18n.T(i18n.ArtifactsGrantDeclined))
+		out.Lines = append(out.Lines, i18n.Tx(i18n.ArtifactsGrantDeclined))
 	}
 	if otherOrg {
-		out.Lines = append(out.Lines, i18n.T(i18n.ArtifactsOtherOrgHint))
+		out.Lines = append(out.Lines, i18n.Tx(i18n.ArtifactsOtherOrgHint))
 	}
-	out.Lines = append(out.Lines, i18n.T(i18n.ArtifactsStatusSummary, out.Counts.Pairs, out.Counts.InStep, out.Counts.Due,
+	out.Lines = append(out.Lines, i18n.Tx(i18n.ArtifactsStatusSummary, out.Counts.Pairs, out.Counts.InStep, out.Counts.Due,
 		out.Counts.Deleted, out.Counts.Skipped, out.Counts.Ignored))
 	return out, nil
 }
@@ -399,14 +399,14 @@ type PlanOut struct {
 	Deleted     []PairResult `json:"deleted"`
 	Skipped     []PairResult `json:"skipped"`
 	NewHere     int          `json:"new_here"`
-	Lines       []string     `json:"lines"`
+	Lines       []i18n.Text  `json:"lines"`
 }
 
 // Plan is `artifacts plan`: what a sync on alias would do, from its last
 // inventory (it never contacts the app).
 func (s *Service) Plan(alias ids.Alias) (PlanOut, error) {
 	out := PlanOut{V: 1, Profile: alias, Approximate: true, Read: []PairResult{}, Publish: []PairResult{}, Create: []PairResult{},
-		Deleted: []PairResult{}, Skipped: []PairResult{}, Lines: []string{}}
+		Deleted: []PairResult{}, Skipped: []PairResult{}, Lines: []i18n.Text{}}
 	m, err := s.manifest()
 	if err != nil {
 		return out, err
@@ -452,10 +452,10 @@ func (s *Service) Plan(alias ids.Alias) (PlanOut, error) {
 	}
 	if gateState(m, s.AppVersion) == GateMismatch && s.AppVersion != "" {
 		n = 0
-		out.Lines = append(out.Lines, i18n.T(i18n.ArtifactsGateClosed))
+		out.Lines = append(out.Lines, i18n.Tx(i18n.ArtifactsGateClosed))
 	}
 	if n > 0 {
-		out.Lines = append(out.Lines, strings.TrimSpace(i18n.T(i18n.PlanArtifactsDue, n, string(alias))))
+		out.Lines = append(out.Lines, i18n.Tx(i18n.ArtifactsPlanDue, n, string(alias)))
 	}
 	return out, nil
 }
@@ -476,22 +476,22 @@ type AllowInput struct {
 
 // DecisionOut is the answer of allow, skip and forget.
 type DecisionOut struct {
-	V     int      `json:"-"`
-	State string   `json:"state"`
-	Pair  PairID   `json:"pair,omitempty"`
-	Slug  string   `json:"slug,omitempty"`
-	Lines []string `json:"lines"`
+	V     int         `json:"-"`
+	State string      `json:"state"`
+	Pair  PairID      `json:"pair,omitempty"`
+	Slug  string      `json:"slug,omitempty"`
+	Lines []i18n.Text `json:"lines"`
 }
 
 // errUnknownPair is the usage error of an unknown <pair>.
 func errUnknownPair() error {
-	return pderr.New(pderr.Usage, "artifacts", i18n.T(i18n.ArtifactsErrUnknownPair))
+	return pderr.NewT(pderr.Usage, "artifacts", i18n.ArtifactsErrUnknownPair)
 }
 
 // mutate runs f on the manifest under the artifacts lock and commits it.
 func (s *Service) mutate(ctx context.Context, f func(m *Manifest) error) error {
 	if s.ReadOnly {
-		return pderr.New(pderr.Usage, "artifacts", i18n.T(i18n.ArtifactsErrReadOnly))
+		return pderr.NewT(pderr.Usage, "artifacts", i18n.ArtifactsErrReadOnly)
 	}
 	return s.withArchive(ctx, LockWait, func() error {
 		m, err := s.manifest()
@@ -519,7 +519,7 @@ func (s *Service) activeAlias(a ids.Alias) ids.Alias {
 // Allow is `artifacts allow` (9.2). The CLI refuses it inside Claude
 // before it gets here (9.3).
 func (s *Service) Allow(ctx context.Context, in AllowInput, confirm Confirm) (DecisionOut, error) {
-	out := DecisionOut{V: 1, State: "allowed", Lines: []string{i18n.T(i18n.ArtifactsAllowed)}}
+	out := DecisionOut{V: 1, State: "allowed", Lines: []i18n.Text{i18n.Tx(i18n.ArtifactsAllowed)}}
 	if in.What == "roundtrip" {
 		if err := confirm(i18n.T(i18n.ArtifactsAskRoundtrip)); err != nil {
 			return out, err
@@ -564,16 +564,16 @@ func (s *Service) Allow(ctx context.Context, in AllowInput, confirm Confirm) (De
 	case "rehome":
 		question = i18n.T(i18n.ArtifactsAskRehome, string(alias))
 	default:
-		return out, pderr.New(pderr.Usage, "artifacts allow", "unknown decision")
+		return out, pderr.NewT(pderr.Usage, "artifacts allow", i18n.ErrArtifactsUnknownDecision)
 	}
 	if (in.What == "restore" || in.What == "create" || in.What == "rehome") && !validAlias(alias) {
-		return out, pderr.New(pderr.Usage, "artifacts allow", "--profile names the profile")
+		return out, pderr.NewT(pderr.Usage, "artifacts allow", i18n.ErrArtifactsProfileNamesProfile)
 	}
 	if in.What == "rehome" {
 		c := p.Copies[alias]
 		cur, known := s.currentReplicas()[alias]
 		if c == nil || !known || c.Replica == cur {
-			return out, pderr.New(pderr.Usage, "artifacts allow", "the copy on that profile is not in another organization")
+			return out, pderr.NewT(pderr.Usage, "artifacts allow", i18n.ErrArtifactsCopyNotOtherOrg)
 		}
 		out.Slug = ids.Mask(string(c.Slug))
 	}
@@ -616,7 +616,7 @@ func (s *Service) Allow(ctx context.Context, in AllowInput, confirm Confirm) (De
 
 // Skip is `artifacts skip`: the pair is kept but not synced.
 func (s *Service) Skip(ctx context.Context, ref string) (DecisionOut, error) {
-	out := DecisionOut{V: 1, State: "skipped", Lines: []string{i18n.T(i18n.ArtifactsSkippedPair)}}
+	out := DecisionOut{V: 1, State: "skipped", Lines: []i18n.Text{i18n.Tx(i18n.ArtifactsSkippedPair)}}
 	m, err := s.manifest()
 	if err != nil {
 		return out, err
@@ -637,7 +637,7 @@ func (s *Service) Skip(ctx context.Context, ref string) (DecisionOut, error) {
 // Forget is `artifacts forget`: the pair moves to forgotten (content and
 // history kept; the artifacts in the accounts are untouched).
 func (s *Service) Forget(ctx context.Context, ref string, confirm Confirm) (DecisionOut, error) {
-	out := DecisionOut{V: 1, State: "forgotten", Lines: []string{i18n.T(i18n.ArtifactsForgotten)}}
+	out := DecisionOut{V: 1, State: "forgotten", Lines: []i18n.Text{i18n.Tx(i18n.ArtifactsForgotten)}}
 	m, err := s.manifest()
 	if err != nil {
 		return out, err
@@ -648,7 +648,7 @@ func (s *Service) Forget(ctx context.Context, ref string, confirm Confirm) (Deci
 	}
 	out.Pair = id
 	if s.chainHasPair(id) {
-		out.State, out.Lines = StateBlocked, []string{i18n.T(i18n.ArtifactsForgetChainActive)}
+		out.State, out.Lines = StateBlocked, []i18n.Text{i18n.Tx(i18n.ArtifactsForgetChainActive)}
 		return out, nil
 	}
 	if err := confirm(i18n.T(i18n.ArtifactsAskForget)); err != nil {
@@ -674,18 +674,18 @@ func (s *Service) Forget(ctx context.Context, ref string, confirm Confirm) (Deci
 // called by `profile adopt --from-legacy`; the Terminal-only rule
 // applies to the CLI leaf, not here.
 func (s *Service) ImportLegacy(ctx context.Context, in ImportInput, confirm Confirm) (ImportReport, error) {
-	rep := ImportReport{V: 1, Unmapped: []string{}, Lines: []string{}}
+	rep := ImportReport{V: 1, Unmapped: []string{}, Lines: []i18n.Text{}}
 	dir, err := openLegacyDir(in.From, s.SupportDir, s.DataRoot)
 	if err != nil {
-		return rep, pderr.New(pderr.Usage, "artifacts import-legacy", i18n.T(i18n.ArtifactsErrLegacyPath))
+		return rep, pderr.NewT(pderr.Usage, "artifacts import-legacy", i18n.ArtifactsErrLegacyPath)
 	}
 	b, err := dir.Read("manifest.json", MaxLegacyManifest)
 	if errors.Is(err, ErrTooLarge) || err != nil || b == nil {
-		return rep, pderr.New(pderr.Usage, "artifacts import-legacy", i18n.T(i18n.ArtifactsErrLegacyFormat))
+		return rep, pderr.NewT(pderr.Usage, "artifacts import-legacy", i18n.ArtifactsErrLegacyFormat)
 	}
 	lm, err := DecodeLegacy(b)
 	if err != nil {
-		return rep, pderr.New(pderr.Usage, "artifacts import-legacy", i18n.T(i18n.ArtifactsErrLegacyFormat))
+		return rep, pderr.NewT(pderr.Usage, "artifacts import-legacy", i18n.ArtifactsErrLegacyFormat)
 	}
 	m, err := s.manifest()
 	if err != nil {
@@ -694,15 +694,15 @@ func (s *Service) ImportLegacy(ctx context.Context, in ImportInput, confirm Conf
 	pl := planImport(lm, dir, m, s.currentReplicas(), in.Map, s.cfgArtifacts().HistoryKeep, s.Spec, s.now())
 	rep = pl.report
 	rep.LegacySHA256 = shaHex(b)
-	rep.Lines = append(rep.Lines, i18n.T(i18n.ArtifactsImportSummary, rep.Pairs.Found, rep.Pairs.Importable, rep.Pairs.WithoutContent))
+	rep.Lines = append(rep.Lines, i18n.Tx(i18n.ArtifactsImportSummary, rep.Pairs.Found, rep.Pairs.Importable, rep.Pairs.WithoutContent))
 	if n := len(rep.Unmapped); n > 0 {
-		rep.Lines = append(rep.Lines, i18n.T(i18n.ArtifactsImportMapHint, n))
+		rep.Lines = append(rep.Lines, i18n.Tx(i18n.ArtifactsImportMapHint, n))
 	}
 	if !in.Apply {
 		return rep, nil
 	}
 	if s.chainOpen() {
-		rep.State, rep.Lines = StateBlocked, []string{i18n.T(i18n.ArtifactsImportChainActive)}
+		rep.State, rep.Lines = StateBlocked, []i18n.Text{i18n.Tx(i18n.ArtifactsImportChainActive)}
 		return rep, nil
 	}
 	if confirm != nil {
@@ -711,7 +711,7 @@ func (s *Service) ImportLegacy(ctx context.Context, in ImportInput, confirm Conf
 		}
 	}
 	if s.ReadOnly {
-		return rep, pderr.New(pderr.Usage, "artifacts import-legacy", i18n.T(i18n.ArtifactsErrReadOnly))
+		return rep, pderr.NewT(pderr.Usage, "artifacts import-legacy", i18n.ArtifactsErrReadOnly)
 	}
 	err = s.withArchive(ctx, LockWait, func() error {
 		m, err := s.manifest()
@@ -761,7 +761,7 @@ func (s *Service) ImportLegacy(ctx context.Context, in ImportInput, confirm Conf
 		if err := s.Archive.CommitManifest(m, s.now()); err != nil {
 			return err
 		}
-		rep.Lines = append(rep.Lines, i18n.T(i18n.ArtifactsImportApplied, n))
+		rep.Lines = append(rep.Lines, i18n.Tx(i18n.ArtifactsImportApplied, n))
 		return nil
 	})
 	if err != nil {

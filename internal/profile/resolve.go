@@ -2,27 +2,27 @@ package profile
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/kazupc/paritydesk/internal/config"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/state"
 )
 
-// Constant BaseInvalidWhy texts.
+// Constant BaseInvalidWhy texts (catalog ids profile.why.*).
 const (
-	WhyNoState         = "no recorded state for this profile"
-	WhyFolderMissing   = "the profile's folder is missing"
-	WhyIdentityUnknown = "the folder's account could not be read"
-	WhyNoMarker        = "the folder has no marker"
-	WhyMarkerAlias     = "the folder's marker names another profile"
-	WhyMarkerReplica   = "the folder's marker names another account or org"
-	WhyMarkerBase      = "the folder's marker does not match the recorded bases"
-	WhyFolderID        = "the folder is not the recorded folder (device, inode or birth time differ)"
-	WhyReplicaChanged  = "the profile's account or org changed since the bases were recorded"
+	WhyNoState         = i18n.ProfileWhyNoState
+	WhyFolderMissing   = i18n.ProfileWhyFolderMissing
+	WhyIdentityUnknown = i18n.ProfileWhyIdentityUnknown
+	WhyNoMarker        = i18n.ProfileWhyNoMarker
+	WhyMarkerAlias     = i18n.ProfileWhyMarkerAlias
+	WhyMarkerReplica   = i18n.ProfileWhyMarkerReplica
+	WhyMarkerBase      = i18n.ProfileWhyMarkerBase
+	WhyFolderID        = i18n.ProfileWhyFolderID
+	WhyReplicaChanged  = i18n.ProfileWhyReplicaChanged
 )
 
 // resolver carries one Resolve call.
@@ -184,8 +184,7 @@ func (r *resolver) unrecordedWithoutFolder() ids.Alias {
 }
 
 func mismatch(folder string, alias ids.Alias) error {
-	return pderr.New(pderr.IdentityMismatch, "profile/resolve",
-		fmt.Sprintf("folder %s holds a different account than profile %s expects", folder, alias))
+	return pderr.NewT(pderr.IdentityMismatch, "profile/resolve", i18n.ErrResolveMismatch, folder, alias)
 }
 
 // bind resolves one profile.
@@ -302,7 +301,7 @@ func containsOrg(orgs []ids.OrgID, o ids.OrgID) bool {
 
 // baseValid checks the folder against the recorded state: marker alias,
 // replica and base hash, folder id, and the replica itself.
-func (r *resolver) baseValid(alias ids.Alias, b *Binding) (bool, string) {
+func (r *resolver) baseValid(alias ids.Alias, b *Binding) (bool, i18n.Msg) {
 	ps := r.state(alias)
 	f := b.Folder
 	switch {

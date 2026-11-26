@@ -35,17 +35,18 @@ opens a network connection.
 
 | Item | Status |
 |---|---|
-| Artifact sync (beta), `/paritydesk:artifacts` | Planned for v0.2: unit U7 (`spec-artifacts`) |
-| Pins through the app's tools (capture, `set_pinned`) | Planned for v0.2: units U5 and U6 (`spec-online`, `spec-pins`) |
-| ON write path for sections and group-by, online reconcile (P13), P1 capture, PreToolUse guard, PostToolUse hook | Planned for v0.2: unit U5 (`spec-online`) |
-| Collapsed groups | Planned for v0.2: unit U3 (`spec-sidebar-offline`) |
-| Seed-only legacy sidebar keys | Planned for v0.2: unit U3 (`spec-sidebar-offline`) |
-| Native libproc fd scan | Planned for v0.2: unit U2 (`spec-fdscan`) |
-| `profile adopt --from-legacy`, legacy archive import | Planned for v0.2: unit U8 (`spec-legacy-adopt`); legacy archive import: unit U7 (`spec-artifacts`) |
-| Scratch-workspaces handling for worktrees | Planned for v0.2: unit U4 (`spec-scratch`) |
-| Buttons for the switch confirmation | Planned for v0.2: unit U5 (`spec-online`) |
-| Native multi-account signal from main.log | Planned for v0.2: unit U1 (`spec-busy`) |
-| Pinned pairing org shown in `doctor` | Planned for v0.2: unit U1 (`spec-busy`) |
+| Artifact sync (beta), `/paritydesk:artifacts` | Done in v0.2: unit U7 (`spec-artifacts`) |
+| Pins through the app's tools (capture, `set_pinned`) | Done in v0.2: units U5 and U6 (`spec-online`, `spec-pins`) |
+| ON write path for sections and group-by, online reconcile (P13), P1 capture, PreToolUse guard, PostToolUse hook | Done in v0.2: unit U5 (`spec-online`) |
+| Collapsed groups | Done in v0.2: unit U3 (`spec-sidebar-offline`) |
+| Seed-only legacy sidebar keys | Done in v0.2: unit U3 (`spec-sidebar-offline`) |
+| Native libproc fd scan | Done in v0.2: unit U2 (`spec-fdscan`) |
+| `profile adopt --from-legacy`, legacy archive import | Done in v0.2: unit U8 (`spec-legacy-adopt`); legacy archive import: unit U7 (`spec-artifacts`) |
+| Scratch-workspaces handling for worktrees | Done in v0.2: unit U4 (`spec-scratch`) |
+| Buttons for the switch confirmation | Done in v0.2: unit U5 (`spec-online`) |
+| Native multi-account signal from main.log | Done in v0.2: unit U1 (`spec-busy`) |
+| Pinned pairing org shown in `doctor` | Done in v0.2: unit U1 (`spec-busy`) |
+| Japanese messages (`--lang`, `[ui]`, `display_lines`) | Done in v0.2: unit U9 (`spec-i18n-ja`); `README.ja.md` follows with the README rewrite |
 
 Dropped rather than deferred: any SIGTERM path (`--force-quit`); ADR 0003
 showed SIGTERM is an unclean exit.

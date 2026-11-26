@@ -115,7 +115,7 @@ func (s *Service) withArchive(ctx context.Context, wait time.Duration, f func() 
 	if err != nil && pderr.CodeOf(err) == pderr.RunLockBusy {
 		var pe *pderr.Error
 		if !errors.As(err, &pe) || pe.Op != "artifacts" {
-			return pderr.New(pderr.RunLockBusy, "artifacts", i18n.T(i18n.ArtifactsErrBusy))
+			return pderr.NewT(pderr.RunLockBusy, "artifacts", i18n.ArtifactsErrBusy)
 		}
 	}
 	return err
@@ -176,14 +176,14 @@ func (s *Service) due(m *Manifest, alias ids.Alias, rep model.Replica, inv *Inve
 func (s *Service) manifest() (*Manifest, error) {
 	m, err := s.Archive.LoadManifest()
 	if err != nil {
-		return nil, pderr.Wrap(pderr.Internal, "artifacts", fmt.Errorf("%s: %w", i18n.T(i18n.ArtifactsErrManifestInvalid), err))
+		return nil, pderr.WrapT(pderr.Internal, "artifacts", i18n.ArtifactsErrManifestInvalid, err)
 	}
 	if m == nil {
 		return NewManifest(), nil
 	}
 	TrimHistory(m, s.cfgArtifacts().HistoryKeep)
 	if err := Validate(m, s.Spec, s.cfgArtifacts().HistoryKeep); err != nil {
-		return nil, pderr.New(pderr.Internal, "artifacts", i18n.T(i18n.ArtifactsErrManifestInvalid))
+		return nil, pderr.NewT(pderr.Internal, "artifacts", i18n.ArtifactsErrManifestInvalid)
 	}
 	return m, nil
 }
@@ -191,20 +191,20 @@ func (s *Service) manifest() (*Manifest, error) {
 // blobErr maps a blob failure to its exit.
 func blobErr(err error) error {
 	if errors.Is(err, ErrBlobCorrupt) {
-		return pderr.New(pderr.Internal, "artifacts", i18n.T(i18n.ArtifactsErrBlobCorrupt))
+		return pderr.NewT(pderr.Internal, "artifacts", i18n.ArtifactsErrBlobCorrupt)
 	}
 	return pderr.Wrap(pderr.Internal, "artifacts", err)
 }
 
 // newOut returns an empty answer.
 func newOut(state string) NextOut {
-	return NextOut{V: 1, State: state, Calls: []online.Call{}, Tools: []string{}, Lines: []string{}}
+	return NextOut{V: 1, State: state, Calls: []online.Call{}, Tools: []string{}, Lines: []i18n.Text{}}
 }
 
 func lineOut(state string, m i18n.Msg) NextOut {
 	o := newOut(state)
 	if m != "" {
-		o.Lines = []string{i18n.T(m)}
+		o.Lines = []i18n.Text{i18n.Tx(m)}
 	}
 	return o
 }
@@ -231,7 +231,7 @@ func (s *Service) Next(ctx context.Context, a NextArgs) (NextOut, error) {
 		return newOut(online.StateNone), nil
 	}
 	if root.Run != nil {
-		return NextOut{}, pderr.New(pderr.NeedsRecover, "artifacts next", "a run was interrupted; run paritydesk recover")
+		return NextOut{}, pderr.NewT(pderr.NeedsRecover, "artifacts next", i18n.ErrInterrupted)
 	}
 	if switchQueueOpen(root, s.Online) {
 		return lineOut(StateBlocked, i18n.ArtifactsReconcileFirst), nil
@@ -328,7 +328,7 @@ func (s *Service) Next(ctx context.Context, a NextArgs) (NextOut, error) {
 			return lineOut(online.StateStale, i18n.OnlineStatusStale), nil
 		}
 	}
-	return NextOut{}, pderr.New(pderr.RunLockBusy, "artifacts next", i18n.T(i18n.OnlineErrBusy))
+	return NextOut{}, pderr.NewT(pderr.RunLockBusy, "artifacts next", i18n.OnlineErrBusy)
 }
 
 // loadRoot loads root.json.
@@ -571,9 +571,9 @@ func (s *Service) finalOut(c *Chain) NextOut {
 	if c.State == ChainStale {
 		o.State = online.StateStale
 		if c.StaleWhy == "inventory_foreign" {
-			o.Lines = []string{i18n.T(i18n.ArtifactsInventoryForeign)}
+			o.Lines = []i18n.Text{i18n.Tx(i18n.ArtifactsInventoryForeign)}
 		} else {
-			o.Lines = []string{i18n.T(i18n.OnlineStatusStale)}
+			o.Lines = []i18n.Text{i18n.Tx(i18n.OnlineStatusStale)}
 		}
 	}
 	o.Chain, o.Round, o.Phase, o.Queue = c.ID, c.Round, c.Phase, c.Queue
@@ -813,7 +813,7 @@ func (s *Service) planLocked(c *Chain, root *state.Root, rep model.Replica) (*on
 		From: c.Profile, To: c.Profile, Replica: rep, Extensions: map[string]json.RawMessage{ExtName: planJSON}},
 		[]online.Provider{online.ProbeProvider(), Provider{Spec: s.Spec}})
 	if !draftOK(draft) {
-		return nil, nil, pderr.New(pderr.Internal, "artifacts", i18n.T(i18n.ArtifactsErrRoundInvalid))
+		return nil, nil, pderr.NewT(pderr.Internal, "artifacts", i18n.ArtifactsErrRoundInvalid)
 	}
 	c.Round++
 	c.Phase = phase
@@ -843,23 +843,23 @@ func draftOK(d online.Draft) bool {
 
 // DecideOut is the answer of `artifacts decide`.
 type DecideOut struct {
-	V     int      `json:"-"`
-	State string   `json:"state"`
-	Lines []string `json:"lines"`
+	V     int         `json:"-"`
+	State string      `json:"state"`
+	Lines []i18n.Text `json:"lines"`
 }
 
 // Decide is `artifacts decide` (6.4).
 func (s *Service) Decide(ctx context.Context, caller online.Caller, question, option string) (DecideOut, error) {
-	out := DecideOut{V: 1, State: online.StateNone, Lines: []string{}}
+	out := DecideOut{V: 1, State: online.StateNone, Lines: []i18n.Text{}}
 	if question != QuestionID || (option != "apply" && option != "skip") {
-		return out, pderr.New(pderr.Usage, "artifacts decide", "unknown question or answer")
+		return out, pderr.NewT(pderr.Usage, "artifacts decide", i18n.ErrArtifactsUnknownQuestion)
 	}
 	if !InClaude(s.Getenv) {
-		out.Lines = []string{i18n.T(i18n.ArtifactsErrOutsideApp)}
+		out.Lines = []i18n.Text{i18n.Tx(i18n.ArtifactsErrOutsideApp)}
 		return out, nil
 	}
 	if s.ReadOnly {
-		out.Lines = []string{i18n.T(i18n.ArtifactsErrReadOnly)}
+		out.Lines = []i18n.Text{i18n.Tx(i18n.ArtifactsErrReadOnly)}
 		return out, nil
 	}
 	root, err := s.loadRoot()
@@ -887,22 +887,22 @@ func (s *Service) Decide(ctx context.Context, caller online.Caller, question, op
 // PauseOut is the answer of `artifacts pause` and of `done` on an open
 // chain.
 type PauseOut struct {
-	V     int      `json:"-"`
-	State string   `json:"state"`
-	Lines []string `json:"lines"`
+	V     int         `json:"-"`
+	State string      `json:"state"`
+	Lines []i18n.Text `json:"lines"`
 }
 
 // Pause is `artifacts pause` (6.4, M14): the lease and armed go, the
 // chain and its queue stay. A fresh lease of another caller is left
 // alone (busy_elsewhere).
 func (s *Service) Pause(ctx context.Context, caller online.Caller) (PauseOut, error) {
-	out := PauseOut{V: 1, State: StatePaused, Lines: []string{i18n.T(i18n.ArtifactsPaused)}}
+	out := PauseOut{V: 1, State: StatePaused, Lines: []i18n.Text{i18n.Tx(i18n.ArtifactsPaused)}}
 	chain, err := s.Archive.LoadChain()
 	if err != nil {
 		return out, pderr.Wrap(pderr.Internal, "artifacts", err)
 	}
 	if chain != nil && s.otherCaller(chain.Queue, caller) {
-		out.State, out.Lines = online.StateBusyElsewhere, []string{i18n.T(i18n.OnlineBusyElsewhere)}
+		out.State, out.Lines = online.StateBusyElsewhere, []i18n.Text{i18n.Tx(i18n.OnlineBusyElsewhere)}
 		return out, nil
 	}
 	if chain != nil && chain.Queue != "" {
@@ -926,7 +926,7 @@ type DoneOut struct {
 	State  string       `json:"state"`
 	Counts DoneCounts   `json:"counts"`
 	Pairs  []PairResult `json:"pairs"`
-	Lines  []string     `json:"lines"`
+	Lines  []i18n.Text  `json:"lines"`
 }
 
 // DoneCounts are the counts of `artifacts done`.
@@ -954,7 +954,7 @@ func (s *Service) otherCaller(queue string, c online.Caller) bool {
 
 // Done is `artifacts done` (6.4).
 func (s *Service) Done(ctx context.Context, caller online.Caller) (DoneOut, error) {
-	out := DoneOut{V: 1, State: online.StateNone, Pairs: []PairResult{}, Lines: []string{}}
+	out := DoneOut{V: 1, State: online.StateNone, Pairs: []PairResult{}, Lines: []i18n.Text{}}
 	chain, err := s.Archive.LoadChain()
 	if err != nil {
 		return out, pderr.Wrap(pderr.Internal, "artifacts", err)
@@ -964,7 +964,7 @@ func (s *Service) Done(ctx context.Context, caller online.Caller) (DoneOut, erro
 	}
 	out.Chain = chain.ID
 	if s.otherCaller(chain.Queue, caller) {
-		out.State, out.Lines = online.StateBusyElsewhere, []string{i18n.T(i18n.OnlineBusyElsewhere)}
+		out.State, out.Lines = online.StateBusyElsewhere, []i18n.Text{i18n.Tx(i18n.OnlineBusyElsewhere)}
 		return out, nil
 	}
 	if chain.State != ChainComplete {
@@ -1024,37 +1024,37 @@ func (s *Service) Done(ctx context.Context, caller online.Caller) (DoneOut, erro
 }
 
 // doneLines are the fixed lines of `artifacts done`.
-func doneLines(c *Chain, m *Manifest, closed bool) []string {
+func doneLines(c *Chain, m *Manifest, closed bool) []i18n.Text {
 	r := c.Report
-	lines := []string{i18n.T(i18n.ArtifactsDoneSummary, string(c.Profile), r.Saved, r.Published, r.Created, r.Conflicts, r.Skipped)}
+	lines := []i18n.Text{i18n.Tx(i18n.ArtifactsDoneSummary, string(c.Profile), r.Saved, r.Published, r.Created, r.Conflicts, r.Skipped)}
 	if r.DeletedHere > 0 {
-		lines = append(lines, i18n.T(i18n.ArtifactsDoneDeleted, r.DeletedHere, string(c.Profile)))
+		lines = append(lines, i18n.Tx(i18n.ArtifactsDoneDeleted, r.DeletedHere, string(c.Profile)))
 	}
 	if r.Ignored > 0 {
-		lines = append(lines, i18n.T(i18n.ArtifactsDoneIgnored, r.Ignored))
+		lines = append(lines, i18n.Tx(i18n.ArtifactsDoneIgnored, r.Ignored))
 	}
 	switch c.NoPublish {
 	case "client_refused":
-		lines = append(lines, i18n.T(i18n.ArtifactsPublishUnavailable))
+		lines = append(lines, i18n.Tx(i18n.ArtifactsPublishUnavailable))
 	case "grant_declined":
-		lines = append(lines, i18n.T(i18n.ArtifactsGrantDeclined))
+		lines = append(lines, i18n.Tx(i18n.ArtifactsGrantDeclined))
 	case "gate_closed":
-		lines = append(lines, i18n.T(i18n.ArtifactsGateClosed))
+		lines = append(lines, i18n.Tx(i18n.ArtifactsGateClosed))
 	}
 	if c.Capped {
-		lines = append(lines, i18n.T(i18n.ArtifactsRoundsCapped))
+		lines = append(lines, i18n.Tx(i18n.ArtifactsRoundsCapped))
 	}
 	for _, p := range r.Pairs {
 		if p.Reason == WhyOtherOrg {
-			lines = append(lines, i18n.T(i18n.ArtifactsOtherOrgHint))
+			lines = append(lines, i18n.Tx(i18n.ArtifactsOtherOrgHint))
 			break
 		}
 	}
 	if !closed {
-		lines = append(lines, i18n.T(i18n.ArtifactsDoneRootBusy))
+		lines = append(lines, i18n.Tx(i18n.ArtifactsDoneRootBusy))
 	}
 	_ = m
-	return append(lines, i18n.T(i18n.ArtifactsDoneDetails))
+	return append(lines, i18n.Tx(i18n.ArtifactsDoneDetails))
 }
 
 // writeDueLocked writes due.json for a profile (the caller holds the
@@ -1069,17 +1069,17 @@ func (s *Service) writeDueLocked(m *Manifest, alias ids.Alias, rep model.Replica
 
 // IngestOut is the answer of `artifacts ingest`.
 type IngestOut struct {
-	V     int      `json:"-"`
-	State string   `json:"state"`
-	Lines []string `json:"lines"`
+	V     int         `json:"-"`
+	State string      `json:"state"`
+	Lines []i18n.Text `json:"lines"`
 }
 
 // IngestNow is `artifacts ingest`: it ingests the chain's completed round
 // now (normally `next` does it). Nothing is published.
 func (s *Service) IngestNow(ctx context.Context) (IngestOut, error) {
-	out := IngestOut{V: 1, State: online.StateNone, Lines: []string{i18n.T(i18n.ArtifactsNothingToIngest)}}
+	out := IngestOut{V: 1, State: online.StateNone, Lines: []i18n.Text{i18n.Tx(i18n.ArtifactsNothingToIngest)}}
 	if s.ReadOnly {
-		return out, pderr.New(pderr.Usage, "artifacts ingest", i18n.T(i18n.ArtifactsErrReadOnly))
+		return out, pderr.NewT(pderr.Usage, "artifacts ingest", i18n.ArtifactsErrReadOnly)
 	}
 	root, err := s.loadRoot()
 	if err != nil {
@@ -1094,7 +1094,7 @@ func (s *Service) IngestNow(ctx context.Context) (IngestOut, error) {
 	}
 	obs := s.Replica(ctx)
 	if !obs.Known || obs.Replica != chain.Replica {
-		out.State, out.Lines = StateBlocked, []string{i18n.T(i18n.ArtifactsReplicaUnknown)}
+		out.State, out.Lines = StateBlocked, []i18n.Text{i18n.Tx(i18n.ArtifactsReplicaUnknown)}
 		return out, nil
 	}
 	_, err = s.Rounds.ArtifactsRound(ctx, func(root *state.Root) (*online.Draft, *online.QueueHeader, error) {
@@ -1111,7 +1111,7 @@ func (s *Service) IngestNow(ctx context.Context) (IngestOut, error) {
 	if err != nil {
 		return out, err
 	}
-	out.State, out.Lines = "ingested", []string{i18n.T(i18n.ArtifactsIngested)}
+	out.State, out.Lines = "ingested", []i18n.Text{i18n.Tx(i18n.ArtifactsIngested)}
 	return out, nil
 }
 
@@ -1347,20 +1347,20 @@ func (s *Service) chainOpen() bool {
 
 // Doctor is the doctor view: the number of pairs and the publish state,
 // or a fixed description of the archive problem (no ids, no paths).
-func (s *Service) Doctor() (int, string, error) {
+func (s *Service) Doctor() (int, i18n.Text, error) {
 	if !s.Archive.Exists() {
 		return 0, s.publishingDetail(NewManifest()), nil
 	}
 	m, err := s.Archive.LoadManifest()
 	if err != nil {
-		return 0, "", errors.New(i18n.T(i18n.DoctorArtifactsUnreadable))
+		return 0, i18n.Text{}, i18n.NewErr(i18n.DoctorArtifactsUnreadable)
 	}
 	if m == nil {
 		m = NewManifest()
 	}
 	TrimHistory(m, s.cfgArtifacts().HistoryKeep)
 	if err := Validate(m, s.Spec, s.cfgArtifacts().HistoryKeep); err != nil {
-		return 0, "", errors.New(i18n.T(i18n.DoctorArtifactsInvalid))
+		return 0, i18n.Text{}, i18n.NewErr(i18n.DoctorArtifactsInvalid)
 	}
 	missing := 0
 	for _, sha := range sortedBlobs(m) {
@@ -1369,21 +1369,21 @@ func (s *Service) Doctor() (int, string, error) {
 		}
 	}
 	if missing > 0 {
-		return len(m.Pairs), "", errors.New(i18n.T(i18n.DoctorArtifactsBlobsMissing, missing))
+		return len(m.Pairs), i18n.Text{}, i18n.NewErr(i18n.DoctorArtifactsBlobsMissing, missing)
 	}
 	return len(m.Pairs), s.publishingDetail(m), nil
 }
 
 // publishingDetail is the publish state for doctor.
-func (s *Service) publishingDetail(m *Manifest) string {
+func (s *Service) publishingDetail(m *Manifest) i18n.Text {
 	w := s.publishingWord(m)
 	if w == "available" && s.Spec.PublishVia == compat.ArtifactsPublishFiles {
-		return i18n.T(i18n.DoctorArtifactsGrantEachSync)
+		return i18n.Tx(i18n.DoctorArtifactsGrantEachSync)
 	}
 	if w == "off" {
-		return i18n.T(i18n.DoctorArtifactsCaptureOnly)
+		return i18n.Tx(i18n.DoctorArtifactsCaptureOnly)
 	}
-	return w
+	return i18n.Raw(w)
 }
 
 // sortedBlobs are the blobs a manifest references, in order.

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/kazupc/paritydesk/internal/gen"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -422,7 +423,7 @@ func TestRecoverDropsPendingAddWhenClaudeIsRegistered(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := e.st.root(t)
-	if root.PendingAdd != nil || root.Active != "b" || root.Previous != "a" || len(res.Actions) == 0 {
+	if root.PendingAdd != nil || root.Active != "b" || root.Previous != "a" || len(i18n.Strings(i18n.English, res.Actions)) == 0 {
 		t.Errorf("pending %+v active %q previous %q", root.PendingAdd, root.Active, root.Previous)
 	}
 	if _, err := e.orch().Recover(ctx, RecoverOptions{Yes: true}); err != nil {

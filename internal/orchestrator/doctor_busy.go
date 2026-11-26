@@ -2,13 +2,13 @@ package orchestrator
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/kazupc/paritydesk/internal/app"
 	"github.com/kazupc/paritydesk/internal/compat"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/profile"
@@ -70,17 +70,17 @@ func (dr *doctor) accountChanges(ctx context.Context, root *state.Root, m *compa
 func (dr *doctor) busyDetection(m *compat.Manifest) {
 	spec, _ := m.Row(model.RowSessions)
 	if len(spec.Fields[sources.RoleBusy]) > 0 {
-		dr.add("busy-detection", "ok", txtDoctorBusyDetectionRecord)
+		dr.add("busy-detection", "ok", i18n.Tx(i18n.DoctorBusyDetectionRecord))
 		return
 	}
 	sup, err := app.CheckBusySignals(m.Signals)
 	switch {
 	case err != nil:
-		dr.add("busy-detection", "warn", txtDoctorBusyDetectionUnavailable)
+		dr.add("busy-detection", "warn", i18n.Tx(i18n.DoctorBusyDetectionUnavailable))
 	case sup.Clears > 0 && sup.Hold:
-		dr.add("busy-detection", "ok", txtDoctorBusyDetectionOK)
+		dr.add("busy-detection", "ok", i18n.Tx(i18n.DoctorBusyDetectionOK))
 	default:
-		dr.add("busy-detection", "warn", fmt.Sprintf(txtDoctorBusyDetectionPartial, humanAge(dr.staleAfter())))
+		dr.add("busy-detection", "warn", i18n.Tx(i18n.DoctorBusyDetectionPartial, humanAge(dr.staleAfter())))
 	}
 }
 
@@ -120,7 +120,7 @@ func activeFolder(folders []profile.Folder) *profile.Folder {
 func (dr *doctor) busyNow(ctx context.Context, root *state.Root, f *profile.Folder, m *compat.Manifest) {
 	since := dr.appSince(ctx)
 	if !dr.busy.running {
-		dr.add("busy-now", "ok", txtDoctorBusyNowAppStopped)
+		dr.add("busy-now", "ok", i18n.Tx(i18n.DoctorBusyNowAppStopped))
 		return
 	}
 	in := busyInput{sig: m.Signals, manifest: m, since: since}
@@ -137,7 +137,7 @@ func (dr *doctor) busyNow(ctx context.Context, root *state.Root, f *profile.Fold
 	}
 	rep, _, lg := dr.o.busyScan(ctx, in)
 	status := "ok"
-	var parts []string
+	var parts []i18n.Text
 	masked := func() string {
 		var out []string
 		for i, s := range rep.Working {
@@ -154,25 +154,25 @@ func (dr *doctor) busyNow(ctx context.Context, root *state.Root, f *profile.Fold
 	case lg == busyLogUnread:
 		// Never claim "none" for a log that was not read.
 		status = "warn"
-		parts = append(parts, txtDoctorBusyNowUnreadable)
+		parts = append(parts, i18n.Tx(i18n.DoctorBusyNowUnreadable))
 	case lg == busyLogNoSignals:
-		parts = append(parts, txtDoctorBusyNowNoSignals)
+		parts = append(parts, i18n.Tx(i18n.DoctorBusyNowNoSignals))
 	case n > 0:
-		parts = append(parts, fmt.Sprintf(txtDoctorBusyNowSome, n, masked()))
+		parts = append(parts, i18n.Tx(i18n.DoctorBusyNowSome, n, masked()))
 	default:
-		parts = append(parts, txtDoctorBusyNowNone)
+		parts = append(parts, i18n.Tx(i18n.DoctorBusyNowNone))
 	}
 	if lg != busyLogRead && n > 0 {
 		// Only the records' busy field can list sessions here.
-		parts = append(parts, fmt.Sprintf(txtDoctorBusyNowRecords, n, masked()))
+		parts = append(parts, i18n.Tx(i18n.DoctorBusyNowRecords, n, masked()))
 	}
 	if k := len(rep.Stale); k > 0 {
-		parts = append(parts, fmt.Sprintf(txtDoctorBusyNowStale, k))
+		parts = append(parts, i18n.Tx(i18n.DoctorBusyNowStale, k))
 	}
 	if rep.Truncated {
-		parts = append(parts, txtDoctorBusyNowTruncated)
+		parts = append(parts, i18n.Tx(i18n.DoctorBusyNowTruncated))
 	}
-	dr.add("busy-now", status, strings.Join(parts, "; "))
+	dr.add("busy-now", status, i18n.Join(parts...))
 }
 
 // accountChange reports account changes inside a data folder: fail for
@@ -183,7 +183,7 @@ func (dr *doctor) accountChange(ctx context.Context, root *state.Root, folders [
 	d := dr.o.d
 	changes := dr.accountChanges(ctx, root, m)
 	added := false
-	add := func(status, detail string) {
+	add := func(status string, detail i18n.Text) {
 		dr.add("account-change", status, detail)
 		added = true
 	}
@@ -192,14 +192,14 @@ func (dr *doctor) accountChange(ctx context.Context, root *state.Root, folders [
 		res, _ = d.Resolve(d.Config, root, folders, profile.Hints{})
 	}
 	if c, ok := profile.InFolderSignIn(d.Config, root, res, changes); ok {
-		add("fail", fmt.Sprintf(txtDoctorAccountChangeInFolder, c.Folder, c.Holder, c.Folder))
+		add("fail", i18n.Tx(i18n.DoctorAccountChangeInFolder, c.Folder, c.Holder, c.Folder))
 	}
 	var holder ids.Alias
 	if res != nil && res.Active != nil {
 		holder = res.Active.Profile.Alias
 	}
 	if name, n := nativeLogName(changes, holder); n >= 2 {
-		add("fail", fmt.Sprintf(txtDoctorAccountChangeNativeLog, name, n))
+		add("fail", i18n.Tx(i18n.DoctorAccountChangeNativeLog, name, n))
 	}
 	if res != nil {
 		aliases := make([]string, 0, len(res.Bindings))
@@ -213,7 +213,7 @@ func (dr *doctor) accountChange(ctx context.Context, root *state.Root, folders [
 				continue
 			}
 			if profile.NativeMultiAccount(root.Profiles[b.Profile.Alias], b.Folder.Identity.Account) {
-				add("fail", fmt.Sprintf(txtDoctorAccountChangeNativeHistory, b.Profile.Alias))
+				add("fail", i18n.Tx(i18n.DoctorAccountChangeNativeHistory, b.Profile.Alias))
 			}
 		}
 	}
@@ -221,24 +221,24 @@ func (dr *doctor) accountChange(ctx context.Context, root *state.Root, folders [
 		c := changes[i]
 		to := ids.Mask(string(c.To))
 		if c.ToAlias != "" {
-			to = fmt.Sprintf("%s (account %s)", c.ToAlias, to)
+			to = i18n.Tx(i18n.DoctorAccountChangeToProfile, c.ToAlias, to).English()
 		}
-		at := txtDoctorAccountChangeUnknownTime
+		at := i18n.Tx(i18n.DoctorAccountChangeUnknownTime)
 		if !c.At.IsZero() {
-			at = c.At.Local().Format("2006-01-02 15:04")
+			at = i18n.Raw(c.At.Local().Format("2006-01-02 15:04"))
 		}
 		if c.FromAlias != "" {
-			add("warn", fmt.Sprintf(txtDoctorAccountChangeOne, c.FromAlias, ids.Mask(string(c.From)), to, at))
+			add("warn", i18n.Tx(i18n.DoctorAccountChangeOne, c.FromAlias, ids.Mask(string(c.From)), to, at))
 		} else {
-			add("warn", fmt.Sprintf(txtDoctorAccountChangeUnknown, ids.Mask(string(c.From)), to, at))
+			add("warn", i18n.Tx(i18n.DoctorAccountChangeUnknown, ids.Mask(string(c.From)), to, at))
 		}
 	}
 	switch {
 	case added:
 	case m.Signals.AccountChanged == "":
-		dr.add("account-change", "ok", txtDoctorAccountChangeUnavailable)
+		dr.add("account-change", "ok", i18n.Tx(i18n.DoctorAccountChangeUnavailable))
 	default:
-		dr.add("account-change", "ok", txtDoctorAccountChangeNone)
+		dr.add("account-change", "ok", i18n.Tx(i18n.DoctorAccountChangeNone))
 	}
 }
 
@@ -247,10 +247,10 @@ func (dr *doctor) accountChange(ctx context.Context, root *state.Root, folders [
 // last local pairing state logged since the app started.
 func (dr *doctor) pairingOrg(ctx context.Context, f *profile.Folder, m *compat.Manifest) {
 	d := dr.o.d
-	detail := txtDoctorChromePairingOrgUnknown
+	detail := i18n.Tx(i18n.DoctorChromePairingOrgUnknown)
 	if f != nil && f.Identity != nil {
 		if org, found, err := d.App.ActiveOrg(ctx, m.Signals, f.Identity.Account, dr.appSince(ctx)); err == nil && found {
-			detail = fmt.Sprintf(txtDoctorChromePairingOrgKnown, ids.Mask(string(org)))
+			detail = i18n.Tx(i18n.DoctorChromePairingOrgKnown, ids.Mask(string(org)))
 		}
 	}
 	var from int64
@@ -260,9 +260,9 @@ func (dr *doctor) pairingOrg(ctx context.Context, f *profile.Folder, m *compat.M
 	if evs, _, err := d.App.LogEvents(ctx, from, m.Signals, ""); err == nil {
 		switch lastSinceStart(evs, app.EvPairingEstablished, app.EvPairingClosed) {
 		case app.EvPairingEstablished:
-			detail += "; " + fmt.Sprintf(txtDoctorChromePairingOrgState, "established")
+			detail = i18n.Join(detail, i18n.Tx(i18n.DoctorChromePairingOrgState, "established"))
 		case app.EvPairingClosed:
-			detail += "; " + fmt.Sprintf(txtDoctorChromePairingOrgState, "closed")
+			detail = i18n.Join(detail, i18n.Tx(i18n.DoctorChromePairingOrgState, "closed"))
 		}
 	}
 	dr.add("chrome-pairing-org", "ok", detail)
@@ -301,9 +301,9 @@ func (o *Orchestrator) statusAccounts(ctx context.Context, root *state.Root, sig
 	changes, _ := loadChanges(ctx, o.d.App, sig, root)
 	st.AccountChanges = accountChangeViews(changes)
 	if c, ok := profile.InFolderSignIn(o.d.Config, root, res, changes); ok {
-		st.Warnings = append(st.Warnings, fmt.Sprintf(txtWarnInFolderSignIn, c.Folder, c.Holder))
+		st.Warnings = append(st.Warnings, i18n.Tx(i18n.WarnInFolderSignIn, c.Folder, c.Holder))
 	} else if res.OutsideSwitch {
-		st.Warnings = append(st.Warnings, "the active account changed outside paritydesk; paritydesk sync re-applies the shared state")
+		st.Warnings = append(st.Warnings, i18n.Tx(i18n.WarnAccountChangedOutside))
 	}
 	st.Warnings = append(st.Warnings, accountChangeWarnings(changes)...)
 	var holder ids.Alias
@@ -323,6 +323,6 @@ func (o *Orchestrator) statusAccounts(ctx context.Context, root *state.Root, sig
 	}
 	st.NativeMultiAccount = &native
 	if native {
-		st.Warnings = append(st.Warnings, fmt.Sprintf(txtWarnNativeMulti, name))
+		st.Warnings = append(st.Warnings, i18n.Tx(i18n.WarnNativeMulti, name))
 	}
 }

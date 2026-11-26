@@ -24,7 +24,7 @@ type PlanView struct {
 	// Scratch and ScratchNotes describe row scratch (render/scratch.go,
 	// WithScratch).
 	Scratch      *ScratchSummary
-	ScratchNotes []string
+	ScratchNotes []i18n.Text
 	// Online is what the switch applies inside Claude afterwards.
 	Online *OnlinePlanView
 	// Artifacts are the artifact sync lines (render/artifacts.go).
@@ -34,53 +34,49 @@ type PlanView struct {
 	Seeded bool
 }
 
-// PlanLines returns the human summary of a plan: a header, one line per
+// PlanLines returns the human summary of a plan in the process language.
+func PlanLines(v PlanView) []string { return PlanLinesIn(i18n.Current(), v) }
+
+// PlanLinesIn returns the summary of a plan in l: a header, one line per
 // category with changes (in model.AllCategories order), and the
 // DESTRUCTIVE line, always last (H7). `plan --json` returns these lines
-// so the plugin's skill can show them verbatim.
-func PlanLines(v PlanView) []string {
+// in English (lines) and, for another display language, in that language
+// (display_lines), so the plugin's skill can show them verbatim.
+func PlanLinesIn(l i18n.Lang, v PlanView) []string {
 	head := i18n.PlanHeader
 	if v.Approximate {
 		head = i18n.PlanHeaderApprox
 	}
-	lines := []string{i18n.T(head, Sanitize(v.From, 32), Sanitize(v.To, 32))}
+	lines := []string{i18n.TIn(l, head, Sanitize(v.From, 32), Sanitize(v.To, 32))}
 	if v.FirstSync {
 		first := i18n.PlanFirstSync
 		if v.Seeded {
 			first = i18n.PlanFirstSyncSeeded
 		}
-		lines = append(lines, i18n.T(first))
+		lines = append(lines, i18n.TIn(l, first))
 	}
 	n := len(lines)
 	for _, cat := range model.AllCategories {
-		if parts := countParts(v.Summary.Categories[cat]); len(parts) > 0 {
-			lines = append(lines, i18n.T(i18n.PlanCategory, string(cat), strings.Join(parts, "  ")))
+		if parts := countParts(l, v.Summary.Categories[cat]); len(parts) > 0 {
+			lines = append(lines, i18n.TIn(l, i18n.PlanCategory, string(cat), strings.Join(parts, "  ")))
 		}
 	}
 	if len(lines) == n {
-		lines = append(lines, i18n.T(i18n.PlanNoChanges))
+		lines = append(lines, i18n.TIn(l, i18n.PlanNoChanges))
 	}
-	// v0.2 anchor: plan busy
-	lines = append(lines, busyLines(v)...)
-
-	// v0.2 anchor: plan scratch
-	lines = append(lines, scratchLines(v)...)
-
-	// v0.2 anchor: plan online
-	lines = append(lines, onlineLines(v)...)
-
-	// v0.2 anchor: plan artifacts
-	lines = append(lines, artifactsLines(v)...)
-
-	return append(lines, DestructiveLine(v.Summary))
+	lines = append(lines, busyLines(l, v)...)
+	lines = append(lines, scratchLines(l, v)...)
+	lines = append(lines, onlineLines(l, v)...)
+	lines = append(lines, artifactsLines(l, v)...)
+	return append(lines, DestructiveLineIn(l, v.Summary))
 }
 
 // countParts formats the non-zero counts of one category.
-func countParts(c plan.Counts) []string {
+func countParts(l i18n.Lang, c plan.Counts) []string {
 	var parts []string
 	add := func(n int, id i18n.Msg) {
 		if n > 0 {
-			parts = append(parts, i18n.T(id, n))
+			parts = append(parts, i18n.TIn(l, id, n))
 		}
 	}
 	add(c.Added, i18n.CountAdded)
@@ -92,18 +88,23 @@ func countParts(c plan.Counts) []string {
 	return parts
 }
 
-// DestructiveLine returns the fixed line with the destructive counts.
-func DestructiveLine(s plan.Summary) string {
+// DestructiveLine returns the fixed line with the destructive counts in
+// the process language.
+func DestructiveLine(s plan.Summary) string { return DestructiveLineIn(i18n.Current(), s) }
+
+// DestructiveLineIn returns the fixed line in l; DESTRUCTIVE: is its
+// first token in every language.
+func DestructiveLineIn(l i18n.Lang, s plan.Summary) string {
 	total := 0
 	var parts []string
 	for _, cat := range model.AllCategories {
 		if n := s.Destructive[cat]; n > 0 {
 			total += n
-			parts = append(parts, i18n.T(i18n.DestructivePart, string(cat), n))
+			parts = append(parts, i18n.TIn(l, i18n.DestructivePart, string(cat), n))
 		}
 	}
 	if total == 0 {
-		return i18n.T(i18n.DestructiveNone)
+		return i18n.TIn(l, i18n.DestructiveNone)
 	}
-	return i18n.T(i18n.DestructiveSome, total, strings.Join(parts, ", "))
+	return i18n.TIn(l, i18n.DestructiveSome, total, strings.Join(parts, ", "))
 }

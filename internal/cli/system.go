@@ -14,6 +14,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/fsx"
 	"github.com/kazupc/paritydesk/internal/gen"
 	"github.com/kazupc/paritydesk/internal/hook"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/online"
 	"github.com/kazupc/paritydesk/internal/orchestrator"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -216,9 +217,9 @@ func openRunError(root *state.Root) error {
 	case root == nil:
 		return nil
 	case root.Run != nil:
-		return pderr.New(pderr.NeedsRecover, "state", "a run was interrupted; run paritydesk recover first")
+		return pderr.NewT(pderr.NeedsRecover, "state", i18n.ErrInterruptedFirst)
 	case root.PendingAdd != nil:
-		return pderr.New(pderr.NeedsRecover, "state", "a profile add is waiting for its sign-in; run paritydesk recover first")
+		return pderr.NewT(pderr.NeedsRecover, "state", i18n.ErrPendingAddFirst)
 	}
 	return nil
 }

@@ -2,7 +2,6 @@ package config
 
 import (
 	"errors"
-	"fmt"
 	"path"
 	"regexp"
 	"slices"
@@ -12,6 +11,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -87,7 +87,7 @@ var bundleIDRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.-]{0,254}$`)
 func (c *Config) Validate(reservedFolders []string, prefTags map[string]string) error {
 	v := &validator{}
 	if c.Version != SchemaVersion {
-		v.addf("version: must be %d", SchemaVersion)
+		v.add(i18n.ConfigInvalidVersion, SchemaVersion)
 	}
 	v.app(c.App)
 	aliases := v.profiles(c.Profiles, reservedFolders)
@@ -97,47 +97,54 @@ func (c *Config) Validate(reservedFolders []string, prefTags map[string]string) 
 	v.online(c.Online)
 	v.artifacts(c.Artifacts)
 	v.scratch(c.Scratch)
+	v.ui(c.UI)
 	if len(v.errs) == 0 {
 		return nil
 	}
-	msgs := make([]string, len(v.errs))
-	for i, err := range v.errs {
-		msgs[i] = err.Error()
-	}
-	return &pderr.Error{Code: pderr.Usage, Op: "config", Msg: "invalid config: " + strings.Join(msgs, "; ")}
+	return pderr.NewT(pderr.Usage, "config", i18n.ConfigInvalid, i18n.List(v.errs))
 }
 
-type validator struct{ errs []error }
+type validator struct{ errs []i18n.Text }
 
-func (v *validator) addf(format string, args ...any) {
-	v.errs = append(v.errs, fmt.Errorf(format, args...))
+// ui checks the [ui] keys with the same case rule as --lang.
+func (v *validator) ui(u UI) {
+	if _, _, err := i18n.ParseSetting(u.Lang); err != nil {
+		v.add(i18n.ConfigInvalidUILang)
+	}
+	if _, _, err := i18n.ParseSetting(u.FallbackLang); err != nil {
+		v.add(i18n.ConfigInvalidUIFallbackLang)
+	}
+}
+
+func (v *validator) add(id i18n.Msg, args ...any) {
+	v.errs = append(v.errs, i18n.Tx(id, args...))
 }
 
 func (v *validator) app(a App) {
 	if !bundleIDRE.MatchString(a.BundleID) {
-		v.addf("app.bundle_id: not a bundle id")
+		v.add(i18n.ConfigInvalidAppBundleID)
 	}
 	if a.DataRoot != "~" && !strings.HasPrefix(a.DataRoot, "~/") && !path.IsAbs(a.DataRoot) {
-		v.addf("app.data_root: must be absolute or start with ~/")
+		v.add(i18n.ConfigInvalidAppDataRoot)
 	}
 	if d := a.QuitTimeout.Duration; d < MinQuitTimeout || d > MaxQuitTimeout {
-		v.addf("app.quit_timeout: must be between %s and %s", MinQuitTimeout, MaxQuitTimeout)
+		v.add(i18n.ConfigInvalidAppQuitTimeout, MinQuitTimeout, MaxQuitTimeout)
 	}
 	if d := a.LateQuitWatch.Duration; d < 0 || d > MaxLateQuitWatch {
-		v.addf("app.late_quit_watch: must be between 0s and %s", MaxLateQuitWatch)
+		v.add(i18n.ConfigInvalidAppLateQuitWatch, MaxLateQuitWatch)
 	}
 	v.durationRange("app.busy_stale_after", a.BusyStaleAfter, MinBusyStaleAfter, MaxBusyStaleAfter)
 	switch a.OpenFileScan {
 	case OpenFileScanAuto, OpenFileScanNative, OpenFileScanLsof:
 	default:
-		v.addf("app.open_file_scan: must be %s, %s or %s", OpenFileScanAuto, OpenFileScanNative, OpenFileScanLsof)
+		v.add(i18n.ConfigInvalidAppOpenFileScan, OpenFileScanAuto, OpenFileScanNative, OpenFileScanLsof)
 	}
 }
 
 // durationRange checks min <= d <= max.
 func (v *validator) durationRange(key string, d Duration, min, max time.Duration) {
 	if d.Duration < min || d.Duration > max {
-		v.addf("%s: must be between %s and %s", key, min, max)
+		v.add(i18n.ConfigInvalidDurationRange, key, min, max)
 	}
 }
 
@@ -145,22 +152,22 @@ func (v *validator) online(o Online) {
 	switch o.Reconcile {
 	case OnlineReconcilePrompt, OnlineReconcileAuto, OnlineReconcileOff:
 	default:
-		v.addf("online.reconcile: must be %s, %s or %s", OnlineReconcilePrompt, OnlineReconcileAuto, OnlineReconcileOff)
+		v.add(i18n.ConfigInvalidOnlineReconcile, OnlineReconcilePrompt, OnlineReconcileAuto, OnlineReconcileOff)
 	}
 	v.durationRange("online.capture_max_age", o.CaptureMaxAge, MinCaptureMaxAge, MaxCaptureMaxAge)
 	v.durationRange("online.queue_max_age", o.QueueMaxAge, MinQueueMaxAge, MaxQueueMaxAge)
 	v.durationRange("online.lease_ttl", o.LeaseTTL, MinLeaseTTL, MaxLeaseTTL)
 	if o.Guard != OnlineGuardArmed && o.Guard != OnlineGuardAlways {
-		v.addf("online.guard: must be %s or %s", OnlineGuardArmed, OnlineGuardAlways)
+		v.add(i18n.ConfigInvalidOnlineGuard, OnlineGuardArmed, OnlineGuardAlways)
 	}
 }
 
 func (v *validator) artifacts(a Artifacts) {
 	if a.Verify != ArtifactsVerifyFirst && a.Verify != ArtifactsVerifyAll {
-		v.addf("artifacts.verify: must be %s or %s", ArtifactsVerifyFirst, ArtifactsVerifyAll)
+		v.add(i18n.ConfigInvalidArtifactsVerify, ArtifactsVerifyFirst, ArtifactsVerifyAll)
 	}
 	if a.HistoryKeep < MinHistoryKeep || a.HistoryKeep > MaxHistoryKeep {
-		v.addf("artifacts.history_keep: must be between %d and %d", MinHistoryKeep, MaxHistoryKeep)
+		v.add(i18n.ConfigInvalidArtifactsHistoryKeep, MinHistoryKeep, MaxHistoryKeep)
 	}
 }
 
@@ -170,28 +177,28 @@ func (v *validator) scratch(s Scratch) {
 		n   int
 	}{{"scratch.max_files_per_workspace", s.MaxFilesPerWorkspace}, {"scratch.max_files_per_run", s.MaxFilesPerRun}} {
 		if f.n < MinScratchFiles || f.n > MaxScratchFiles {
-			v.addf("%s: must be between %d and %d", f.key, MinScratchFiles, MaxScratchFiles)
+			v.add(i18n.ConfigInvalidIntRange, f.key, MinScratchFiles, MaxScratchFiles)
 		}
 	}
 	ws, wsOK := v.scratchSize("scratch.max_workspace_bytes", s.MaxWorkspaceBytes)
 	run, runOK := v.scratchSize("scratch.max_run_bytes", s.MaxRunBytes)
 	if wsOK && runOK && ws > run {
-		v.addf("scratch.max_workspace_bytes: must not be larger than scratch.max_run_bytes")
+		v.add(i18n.ConfigInvalidScratchMaxWorkspaceBytes)
 	}
 	if !(s.MaxDeleteFraction > 0 && s.MaxDeleteFraction <= 1) {
-		v.addf("scratch.max_delete_fraction: must be greater than 0 and at most 1")
+		v.add(i18n.ConfigInvalidScratchMaxDeleteFraction)
 	}
 	if s.MaxDeleteMin < 0 {
-		v.addf("scratch.max_delete_min: must not be negative")
+		v.add(i18n.ConfigInvalidScratchMaxDeleteMin)
 	}
 	for i, g := range s.Exclude {
 		if !validExcludeGlob(g) {
-			v.addf("scratch.exclude[%d]: not a relative slash-separated pattern without ..", i)
+			v.add(i18n.ConfigInvalidScratchExclude, i)
 		}
 	}
 	for i, d := range s.CacheDirs {
 		if !singleSegment(d) {
-			v.addf("scratch.cache_dirs[%d]: must be one folder name", i)
+			v.add(i18n.ConfigInvalidScratchCacheDirs, i)
 		}
 	}
 }
@@ -200,11 +207,11 @@ func (v *validator) scratch(s Scratch) {
 func (v *validator) scratchSize(key, s string) (int64, bool) {
 	n, err := ParseSize(s)
 	if err != nil {
-		v.addf("%s: %v", key, err)
+		v.add(i18n.ConfigInvalidSize, key, err)
 		return 0, false
 	}
 	if n < MinScratchBytes || n > MaxScratchBytes {
-		v.addf("%s: must be between 1MiB and 1TiB", key)
+		v.add(i18n.ConfigInvalidSizeRange, key)
 		return 0, false
 	}
 	return n, true
@@ -236,15 +243,15 @@ func (v *validator) profiles(ps []Profile, reserved []string) map[ids.Alias]bool
 	folders := map[string]bool{}
 	for i, p := range ps {
 		if _, err := ids.ParseAlias(string(p.Alias)); err != nil {
-			v.addf("profile[%d].alias: must match ^[a-z0-9][a-z0-9-]{0,31}$", i)
+			v.add(i18n.ConfigInvalidProfileAlias, i)
 		} else if aliases[p.Alias] {
-			v.addf("profile[%d].alias: %s is used twice", i, p.Alias)
+			v.add(i18n.ConfigInvalidProfileAliasTwice, i, p.Alias)
 		} else {
 			aliases[p.Alias] = true
 		}
 		v.folder(i, p.ParkedFolder(), reserved, folders)
 		if !validLabel(p.Label) {
-			v.addf("profile[%d].label: at most %d printable characters", i, MaxLabelRunes)
+			v.add(i18n.ConfigInvalidProfileLabel, i, MaxLabelRunes)
 		}
 	}
 	return aliases
@@ -254,11 +261,11 @@ func (v *validator) folder(i int, name string, reserved []string, seen map[strin
 	folded := ids.FoldName(name)
 	switch {
 	case folded == ids.FoldName(ids.DefaultFolder):
-		v.addf("profile[%d].folder: must differ from %s", i, ids.DefaultFolder)
+		v.add(i18n.ConfigInvalidProfileFolderDefault, i, ids.DefaultFolder)
 	case ids.ValidateFolder(name, reserved...) != nil:
-		v.addf("profile[%d].folder: must match ^Claude-[A-Za-z0-9._-]{1,48}$ and not be a reserved name", i)
+		v.add(i18n.ConfigInvalidProfileFolderPattern, i)
 	case seen[folded]:
-		v.addf("profile[%d].folder: used by another profile (names compare without case)", i)
+		v.add(i18n.ConfigInvalidProfileFolderUsed, i)
 	default:
 		seen[folded] = true
 	}
@@ -273,25 +280,25 @@ func validLabel(s string) bool {
 
 func (v *validator) sync(s Sync, aliases map[ids.Alias]bool, prefTags map[string]string) {
 	if s.Tombstones != TombstonesNewerWins && s.Tombstones != TombstonesDeleteWins {
-		v.addf("sync.tombstones: must be %q or %q", TombstonesNewerWins, TombstonesDeleteWins)
+		v.add(i18n.ConfigInvalidSyncTombstones, TombstonesNewerWins, TombstonesDeleteWins)
 	}
 	if s.Secrets != SecretsSameBoundary && s.Secrets != SecretsNever {
-		v.addf("sync.secrets: must be %q or %q", SecretsSameBoundary, SecretsNever)
+		v.add(i18n.ConfigInvalidSyncSecrets, SecretsSameBoundary, SecretsNever)
 	}
 	for i, g := range s.Exclude {
 		if _, err := path.Match(g, ""); g == "" || err != nil {
-			v.addf("sync.exclude[%d]: not a valid pattern", i)
+			v.add(i18n.ConfigInvalidSyncExclude, i)
 		}
 	}
 	seen := map[string]bool{}
 	for i, k := range s.AppPrefs {
 		switch tag, ok := prefTags[k]; {
 		case !ok:
-			v.addf("sync.app_prefs[%d]: unknown preference", i)
+			v.add(i18n.ConfigInvalidSyncAppPrefsUnknown, i)
 		case tag != prefTagUIState && tag != prefTagOther:
-			v.addf("sync.app_prefs[%d]: preference tagged %q cannot be synced", i, tag)
+			v.add(i18n.ConfigInvalidSyncAppPrefsTagged, i, tag)
 		case seen[k]:
-			v.addf("sync.app_prefs[%d]: listed twice", i)
+			v.add(i18n.ConfigInvalidSyncAppPrefsTwice, i)
 		}
 		seen[k] = true
 	}
@@ -299,7 +306,7 @@ func (v *validator) sync(s Sync, aliases map[ids.Alias]bool, prefTags map[string
 	v.boundary("sync.import", s.Import, aliases)
 	for i, a := range s.SecretsAllow {
 		if a == "" || strings.ContainsFunc(a, unicode.IsControl) {
-			v.addf("sync.secrets_allow[%d]: empty or not printable", i)
+			v.add(i18n.ConfigInvalidSyncSecretsAllow, i)
 		}
 	}
 }
@@ -315,12 +322,12 @@ func (v *validator) boundary(name string, m map[string][]string, aliases map[ids
 	slices.Sort(keys)
 	for _, k := range keys {
 		if !aliases[ids.Alias(k)] {
-			v.addf("%s: %q is not a profile alias", name, sanitizeKey(k))
+			v.add(i18n.ConfigInvalidBoundaryAlias, name, sanitizeKey(k))
 			continue
 		}
 		for _, c := range m[k] {
 			if !slices.Contains(model.BoundaryCategories, model.Category(c)) {
-				v.addf("%s.%s: %q is not a category", name, k, sanitizeKey(c))
+				v.add(i18n.ConfigInvalidBoundaryCategory, name, k, sanitizeKey(c))
 			}
 		}
 	}
@@ -341,22 +348,22 @@ func sanitizeKey(s string) string {
 
 func (v *validator) limits(l Limits) {
 	if !(l.MaxDeleteFraction > 0 && l.MaxDeleteFraction <= 1) {
-		v.addf("limits.max_delete_fraction: must be greater than 0 and at most 1")
+		v.add(i18n.ConfigInvalidLimitsMaxDeleteFraction)
 	}
 	if l.MaxDeleteMin < 0 {
-		v.addf("limits.max_delete_min: must not be negative")
+		v.add(i18n.ConfigInvalidLimitsMaxDeleteMin)
 	}
 }
 
 func (v *validator) backups(b Backups) {
 	if b.Keep < 1 {
-		v.addf("backups.keep: must be at least 1")
+		v.add(i18n.ConfigInvalidBackupsKeep)
 	}
 	if b.LevelDBClonesKeep < 0 {
-		v.addf("backups.leveldb_clones_keep: must not be negative")
+		v.add(i18n.ConfigInvalidBackupsLeveldbClonesKeep)
 	}
 	if _, err := ParseSize(b.MaxSize); err != nil {
-		v.addf("backups.max_size: %v", err)
+		v.add(i18n.ConfigInvalidBackupsMaxSize, err)
 	}
 }
 

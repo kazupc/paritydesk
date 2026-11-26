@@ -3,6 +3,7 @@ package profile
 import (
 	"github.com/kazupc/paritydesk/internal/config"
 	"github.com/kazupc/paritydesk/internal/fsx"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/sources/configjson"
@@ -52,7 +53,7 @@ type Binding struct {
 	// BaseValid reports whether state's bases for this profile still match
 	// the folder (marker, file id, base hash).
 	BaseValid      bool
-	BaseInvalidWhy string
+	BaseInvalidWhy i18n.Msg
 }
 
 // Resolution is the full mapping for one run.

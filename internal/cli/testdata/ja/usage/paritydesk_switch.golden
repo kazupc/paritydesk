@@ -1,0 +1,28 @@
+使い方: paritydesk switch [<alias>|-] [flags]
+
+別のプロファイルに切り替えます
+
+フラグ:
+  --accept-worktree-risk       コミットされていない変更があるワークツリーの登録が失われても切り替えます
+  --allow-deletions int        上限を超えても、カテゴリごとに N 件まで削除を許可します
+  --confirm-first-sync         確認した計画が示した初回同期のまとめを承認します
+  --confirmed-plan string      確認した計画のハッシュ（paritydesk plan --json が出力します）
+  --detach                     launchd のジョブとしてバックグラウンドで実行します
+  --json-progress              進行状況を NDJSON で標準エラー出力に書きます
+  --no-launch                  Claude を再起動しません
+  --no-reopen                  切り替えを始めたセッションを開き直しません
+  --only string                引き継ぐカテゴリ（カンマ区切り）: sessions,environments,order,sidebar,pins,prefs,worktrees,scratch,window,mcp
+  --reopen-session string      切り替えを始めた Claude Code セッションの ID（プラグインが指定します。空なら開き直しません）
+  --skip string                触れないカテゴリ（カンマ区切り）
+  --yes                        確認しません（事前確認の後に増えた削除は確認します）
+
+共通フラグ:
+  --app-support-dir string     paritydesk のサポートディレクトリ
+  --ascii                      ASCII 文字だけを使います（メッセージは英語になります）
+  --config string              設定ファイル（PARITYDESK_CONFIG でも指定できます）
+  --json                       JSON ドキュメントを 1 つ出力します
+  --lang string                メッセージの言語: auto、en、ja のいずれか（PARITYDESK_LANG でも指定できます）
+  --no-color                   色を付けません（NO_COLOR、TERM=dumb でも同じです）
+  --plain                      表やスピナーを使わず、行単位で出力します
+  --read-only                  計画だけを行い、書き込みません（PARITYDESK_READONLY=1 でも同じです）
+  --state-dir string           状態ディレクトリ（PARITYDESK_STATE_DIR でも指定できます）

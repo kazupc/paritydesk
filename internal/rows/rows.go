@@ -159,13 +159,10 @@ func Registry() map[model.RowID]Module {
 		keyedModule{row: model.RowAppPrefs, noFieldMerge: true},
 		keyedModule{row: model.RowWindowState, noFieldMerge: true},
 		mcpModule{},
-		// v0.2 anchor: rows scratch
 		scratchModule{},
 
-		// v0.2 anchor: rows sidebar-offline
 		collapseModule{}, seedModule{},
 
-		// v0.2 anchor: rows pins
 		keyedModule{row: model.RowPins, noFieldMerge: true},
 	}
 	m := make(map[model.RowID]Module, len(mods))

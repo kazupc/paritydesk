@@ -240,7 +240,7 @@ func (g *ing) inventory() {
 func (g *ing) foreign() {
 	g.m = g.in.Manifest.Clone()
 	g.c.State, g.c.StaleWhy = ChainStale, "inventory_foreign"
-	g.out.Warnings = append(g.out.Warnings, i18n.T(i18n.ArtifactsInventoryForeign))
+	g.out.Warnings = append(g.out.Warnings, i18n.En(i18n.ArtifactsInventoryForeign))
 }
 
 // planWork judges every pair and unclaimed item on this inventory and
@@ -292,7 +292,7 @@ func (g *ing) planWork() {
 		}
 		limit := max(g.in.Limits.MaxDeleteMin, int(math.Ceil(g.in.Limits.MaxDeleteFraction*float64(live))))
 		if len(tomb) > limit {
-			g.out.Warnings = append(g.out.Warnings, i18n.T(i18n.ArtifactsWarnInventorySuspect, string(alias)))
+			g.out.Warnings = append(g.out.Warnings, i18n.En(i18n.ArtifactsWarnInventorySuspect, string(alias)))
 		} else {
 			for _, id := range tomb {
 				c := g.m.Pairs[id].Copies[alias]
@@ -770,7 +770,7 @@ func (g *ing) historyOf(p *Pair, cand *Candidate, a Assembled) {
 func (g *ing) newPair(s Slug, cand *Candidate, a Assembled, origin string) {
 	id := PairIDFor(s)
 	if _, exists := g.m.Pairs[id]; exists {
-		g.out.Warnings = append(g.out.Warnings, i18n.T(i18n.ArtifactsWarnPairCollision))
+		g.out.Warnings = append(g.out.Warnings, i18n.En(i18n.ArtifactsWarnPairCollision))
 		g.report(PairResult{Slug: s, Result: "skipped", Reason: "collision"})
 		return
 	}

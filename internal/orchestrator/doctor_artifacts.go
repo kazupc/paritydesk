@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"errors"
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/config"
 	"github.com/kazupc/paritydesk/internal/i18n"
@@ -10,7 +11,7 @@ import (
 type artifactsDoctor interface {
 	// Doctor returns the number of pairs and the publish state word, or
 	// the archive problem.
-	Doctor() (pairs int, publishing string, err error)
+	Doctor() (pairs int, publishing i18n.Text, err error)
 }
 
 // artifactsChecks adds the `artifacts` check (last of Doctor): off (config
@@ -24,13 +25,18 @@ func (dr *doctor) artifactsChecks(m *compat.Manifest) {
 	// manifest is known.
 	cfgOn := o.d.Config != nil && o.d.Config.Sync.Artifacts && o.d.Config.Online.Reconcile != config.OnlineReconcileOff
 	if o.d.Artifacts == nil || !ok || !cfgOn || (m != nil && !o.artifactsActive(m)) {
-		dr.add("artifacts", "ok", i18n.T(i18n.DoctorArtifactsOff))
+		dr.add("artifacts", "ok", i18n.Tx(i18n.DoctorArtifactsOff))
 		return
 	}
 	n, word, err := a.Doctor()
 	if err != nil {
-		dr.add("artifacts", "fail", i18n.T(i18n.DoctorArtifactsBad, err.Error()))
+		var tx i18n.Texter
+		if errors.As(err, &tx) {
+			dr.add("artifacts", "fail", i18n.Tx(i18n.DoctorArtifactsBad, tx.I18nText()))
+			return
+		}
+		dr.add("artifacts", "fail", i18n.Tx(i18n.DoctorArtifactsBad, err.Error()))
 		return
 	}
-	dr.add("artifacts", "ok", i18n.T(i18n.DoctorArtifactsOK, n, word))
+	dr.add("artifacts", "ok", i18n.Tx(i18n.DoctorArtifactsOK, n, word))
 }

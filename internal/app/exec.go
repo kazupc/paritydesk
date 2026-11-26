@@ -91,10 +91,10 @@ var (
 func Argv(t Template, args ...string) ([]string, error) {
 	spec, ok := templates[t]
 	if !ok {
-		return nil, pderr.New(pderr.Internal, "exec", "unknown command template")
+		return nil, pderr.Bug("exec", "unknown command template")
 	}
 	if len(args) != len(spec.check) {
-		return nil, pderr.New(pderr.Internal, "exec", "wrong argument count for command template")
+		return nil, pderr.Bug("exec", "wrong argument count for command template")
 	}
 	for i, check := range spec.check {
 		if err := check(args[i]); err != nil {

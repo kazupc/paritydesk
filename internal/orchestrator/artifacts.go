@@ -78,7 +78,7 @@ func (o *Orchestrator) artifactsRenamed(ctx context.Context, from, to ids.Alias)
 		return
 	}
 	if err := o.d.Artifacts.RenameProfile(ctx, from, to); err != nil {
-		o.progress(P10Commit, "warn", i18n.T(i18n.ArtifactsRenameFailed))
+		o.progress(P10Commit, "warn", i18n.Tx(i18n.ArtifactsRenameFailed))
 	}
 }
 
@@ -97,15 +97,15 @@ func (o *Orchestrator) artifactsRemoved(ctx context.Context, alias ids.Alias) {
 func (o *Orchestrator) ArtifactsRound(ctx context.Context, f func(root *state.Root) (*online.Draft, *online.QueueHeader, error)) (string, error) {
 	d := o.d
 	if d.ReadOnly {
-		return "", pderr.New(pderr.Usage, "artifacts", i18n.T(i18n.ArtifactsErrReadOnly))
+		return "", pderr.NewT(pderr.Usage, "artifacts", i18n.ArtifactsErrReadOnly)
 	}
 	if d.Online == nil {
-		return "", pderr.New(pderr.Usage, "artifacts", i18n.T(i18n.ArtifactsOff))
+		return "", pderr.NewT(pderr.Usage, "artifacts", i18n.ArtifactsOff)
 	}
 	l, err := d.State.Lock(ctx, artifactsRootWait)
 	if err != nil {
 		if pderr.CodeOf(err) == pderr.RunLockBusy {
-			return "", pderr.New(pderr.RunLockBusy, "artifacts", i18n.T(i18n.OnlineErrBusy))
+			return "", pderr.NewT(pderr.RunLockBusy, "artifacts", i18n.OnlineErrBusy)
 		}
 		return "", err
 	}
@@ -115,14 +115,14 @@ func (o *Orchestrator) ArtifactsRound(ctx context.Context, f func(root *state.Ro
 		return "", err
 	}
 	if root.Run != nil {
-		return "", pderr.New(pderr.NeedsRecover, "artifacts", "a run was interrupted; run paritydesk recover")
+		return "", pderr.NewT(pderr.NeedsRecover, "artifacts", i18n.ErrInterrupted)
 	}
 	draft, h, err := f(root)
 	if err != nil || draft == nil || h == nil {
 		return "", err
 	}
 	if h.Profile != root.Active || h.Epoch != root.Epoch {
-		return "", pderr.New(pderr.Internal, "artifacts", i18n.T(i18n.ArtifactsErrRoundInvalid))
+		return "", pderr.NewT(pderr.Internal, "artifacts", i18n.ArtifactsErrRoundInvalid)
 	}
 	h.Kind = artifacts.KindArtifacts
 	sha, err := d.Online.Publish(ctx, *draft, *h)

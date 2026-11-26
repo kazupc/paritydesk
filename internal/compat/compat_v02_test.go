@@ -211,13 +211,10 @@ func TestEmbeddedManifestsLoadWithV02Anchors(t *testing.T) {
 			t.Fatal(err)
 		}
 		text := string(b)
-		for _, a := range []string{"rows scratch", "rows sidebar-offline", "rows pins", "probes scratch", "probes sidebar-offline",
-			"tables online", "tables pins", "tables artifacts", "tables legacy"} {
-			// A unit inserts its lines directly below its anchor, so the
-			// anchor is followed by a blank line or by that unit's block.
-			if strings.Count(text, "\n# v0.2 anchor: "+a+"\n") != 1 {
-				t.Errorf("%s: anchor %q missing or repeated", m.Name, a)
-			}
+		// The per-unit anchors of the v0.2 work were removed after the
+		// last unit landed (spec-i18n-ja 7.4 item 8).
+		if strings.Contains(text, "v0.2 anchor") {
+			t.Errorf("%s: a v0.2 anchor is left", m.Name)
 		}
 		// The online layer is on for 7.x only (6.x has no confirmed tool
 		// texts). Artifact sync is off until its unit lands. The legacy

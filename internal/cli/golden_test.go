@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/orchestrator"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -114,12 +115,12 @@ var jsonCases = []struct {
 	{name: "status_account_change", args: []string{"status"}, setup: func(h *harness) {
 		h.svc.status.AccountChanges = []orchestrator.AccountChangeView{{Profile: "work", FromMasked: "0000\u2026", ToMasked: "0000\u2026",
 			ToProfile: "home", At: fixedTime, SinceSwitch: true}}
-		h.svc.status.Warnings = []string{"the folder of work was signed in to another account (home) in Claude since the last switch; run paritydesk doctor"}
+		h.svc.status.Warnings = i18n.Texts([]string{"the folder of work was signed in to another account (home) in Claude since the last switch; run paritydesk doctor"})
 	}},
 	{name: "status_in_folder", args: []string{"status"}, setup: func(h *harness) {
 		h.svc.status.AccountChanges = []orchestrator.AccountChangeView{{Profile: "work", FromMasked: "0000\u2026", ToMasked: "0000\u2026",
 			ToProfile: "home", At: fixedTime, SinceSwitch: true}}
-		h.svc.status.Warnings = []string{"the folder of work holds the account of home: it was signed in to that account in Claude; run paritydesk doctor"}
+		h.svc.status.Warnings = i18n.Texts([]string{"the folder of work holds the account of home: it was signed in to that account in Claude; run paritydesk doctor"})
 	}},
 	{name: "plan", args: []string{"plan", "home"}, setup: func(h *harness) {
 		h.svc.busy = []orchestrator.BusyView{{Session: "local_0000\u2026", Title: "Refactor the parser", WorkingForS: 125}}

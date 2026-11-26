@@ -110,7 +110,7 @@ func (s *Store) Locked(ctx context.Context, f func() error) error {
 	release, err := s.Lock(ctx, LockWait)
 	if err != nil {
 		if pderr.CodeOf(err) == pderr.RunLockBusy {
-			return pderr.New(pderr.RunLockBusy, "online", i18n.T(i18n.OnlineErrBusy))
+			return pderr.NewT(pderr.RunLockBusy, "online", i18n.OnlineErrBusy)
 		}
 		return pderr.Wrap(pderr.Internal, "online lock", err)
 	}

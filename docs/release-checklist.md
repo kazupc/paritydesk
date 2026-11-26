@@ -233,7 +233,6 @@ release:
     project path or alias. Running it again with the same file name is
     refused.
 
-<!-- v0.2 anchor: busy -->
 ## Log signals (v0.2)
 
 - **Doctor.** With Claude running and one Code session working,
@@ -248,7 +247,6 @@ release:
   disconnects that folder's connectors). Confirm only that
   `paritydesk doctor` shows no `account-change` fail line on this Mac.
 
-<!-- v0.2 anchor: fdscan -->
 ## Open-file scan (v0.2)
 
 1. **CI.** The macOS jobs (`macos-latest`, `macos-15-intel`) pass
@@ -264,7 +262,6 @@ release:
    A `warn` with counts means some processes were unreadable and `lsof`
    is used for them; record the counts in the release notes.
 
-<!-- v0.2 anchor: sidebar-offline -->
 ## Collapsed groups and seed keys (v0.2)
 
 Record every result in ADR 0009.
@@ -284,7 +281,6 @@ Record every result in ADR 0009.
 - SO-5. On two folders Claude has already set up, `paritydesk plan
   --json`. Expected: no change of `code-sessions-sort-ascending`.
 
-<!-- v0.2 anchor: scratch -->
 ## Scratch workspaces (v0.2)
 
 Use fictional content only.
@@ -310,8 +306,6 @@ Use fictional content only.
   (`dist/` rewritten): the switch completes; the plan shows held-back or
   deferred items, not exit 3.
 
-
-<!-- v0.2 anchor: online -->
 ## Online reconcile (v0.2)
 
 On a Mac with app 7.x, the plugin 0.2.0 installed and two profiles A and B.
@@ -348,7 +342,6 @@ On a Mac with app 7.x, the plugin 0.2.0 installed and two profiles A and B.
   runs. Expected: the next guarded call is denied with the cancel hint,
   then nothing is armed; nothing in Claude changed.
 
-<!-- v0.2 anchor: pins -->
 ## Pins (v0.2)
 
 On a Mac with app 7.x, the plugin 0.2.0 installed and two profiles A and
@@ -373,7 +366,6 @@ B. These steps are run by the maintainer, never by an agent.
   Expected: no `stale_store`; the Local Storage backup list's `timestamp`
   is not older than the change.
 
-<!-- v0.2 anchor: artifacts -->
 ## Artifact sync (v0.2)
 
 Use only scratch artifacts with fictional content. Until R-AR-4 passes,
@@ -419,7 +411,6 @@ manifest override that sets `publish_via = "files"` (or `"version"`).
   logged. Interrupt a sync, then ask Claude to publish a page of your own:
   not denied (pause and done disarm).
 
-<!-- v0.2 anchor: legacy-adopt -->
 ## Adopting folders of an earlier script (v0.2)
 
 Use fictional accounts only.
@@ -434,8 +425,20 @@ Use fictional accounts only.
   `--quarantine`: it moves into a pinned generation; `backups prune`
   keeps it; `rollback <n>` puts it back; `backups purge` warns first.
 
+## Japanese messages (v0.2)
 
-<!-- v0.2 anchor: i18n-ja -->
+- **J-1** In Terminal with `LANG=ja_JP.UTF-8`: `paritydesk status`,
+  `profile list`, `plan`, `doctor` and `--help` print Japanese and the
+  tables line up; `--ascii` prints English with one warning.
+- **J-2** Read `internal/i18n/catalog_ja.go` and the goldens under
+  `internal/cli/testdata/ja/` as a native speaker; fix wording before the
+  release (ids and verbs stay).
+- **J-3** From a Code session started from the Dock, run `/paritydesk:switch`
+  after `init` in a Japanese terminal: the plan lines the skill shows are
+  Japanese (`display_lines`), the JSON `lines` English.
+- **J-4** Only then decide whether the detached job's notifications may be
+  translated: check that osascript shows Japanese text under the job's
+  `LC_ALL=C` environment. Until then they stay English.
 
 ## Uninstall (last on this Mac)
 

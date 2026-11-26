@@ -3,7 +3,6 @@ package orchestrator
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,6 +12,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/app"
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/gen"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/online"
@@ -99,7 +99,7 @@ type run struct {
 	draft online.Draft
 	// previewWarns are the online warnings P2 added to Result.Warnings;
 	// P5 replaces them with the final draft's.
-	previewWarns []string
+	previewWarns []i18n.Text
 }
 
 func (o *Orchestrator) newRun(kind state.RunKind, opts SwitchOptions) *run {
@@ -129,13 +129,13 @@ func (r *run) newRunID() error {
 func (r *run) d() *Deps { return &r.o.d }
 
 // phase times a phase and reports its start.
-func (r *run) phase(p Phase, msg string) func() {
+func (r *run) phase(p Phase, msg i18n.Text) func() {
 	start := r.o.now()
 	r.o.progress(p, "start", msg)
 	return func() { r.res.Timings[p] += r.o.now().Sub(start) }
 }
 
-func (r *run) warn(p Phase, msg string) {
+func (r *run) warn(p Phase, msg i18n.Text) {
 	r.res.Warnings = append(r.res.Warnings, msg)
 	r.o.progress(p, "warn", msg)
 }
@@ -201,20 +201,20 @@ func (r *run) abort(ctx context.Context, cause error) error {
 		return errors.Join(cause, err)
 	}
 	if quitByUs {
-		r.o.relaunch(cctx, r.root, "relaunched "+string(r.S.Profile.Alias))
+		r.o.relaunch(cctx, r.root, i18n.Tx(i18n.ProgressP11Relaunched, r.S.Profile.Alias))
 	}
 	return cause
 }
 
 // relaunch launches the app if Claude/ holds a registered, identified
 // profile (I4; the caller checked QuitByUs).
-func (o *Orchestrator) relaunch(ctx context.Context, root *state.Root, note string) bool {
+func (o *Orchestrator) relaunch(ctx context.Context, root *state.Root, note i18n.Text) bool {
 	if !o.claudeRegistered(ctx, root) {
-		o.progress(P11Launch, "warn", "Claude was not relaunched: the active folder holds no registered profile")
+		o.progress(P11Launch, "warn", i18n.Tx(i18n.ProgressP11RelaunchNoProfile))
 		return false
 	}
 	if err := o.d.App.Launch(ctx, o.d.Config.App.BundleID); err != nil {
-		o.progress(P11Launch, "warn", "Claude could not be launched; open it manually")
+		o.progress(P11Launch, "warn", i18n.Tx(i18n.ProgressP11LaunchFailed))
 		return false
 	}
 	o.progress(P11Launch, "ok", note)
@@ -253,7 +253,7 @@ func aliasOf(root *state.Root, a ids.AccountID) ids.Alias {
 // check; without it (preview and the interactive parent of a detached
 // run) it is read-only.
 func (r *run) preflight(ctx context.Context, lock bool) error {
-	defer r.phase(P0Preflight, "checking")()
+	defer r.phase(P0Preflight, i18n.Tx(i18n.ProgressP0Checking))()
 	d := r.d()
 	if lock {
 		wait := time.Duration(0)
@@ -272,13 +272,13 @@ func (r *run) preflight(ctx context.Context, lock bool) error {
 	}
 	r.root = root
 	if root.Run != nil {
-		return pderr.New(pderr.NeedsRecover, "preflight", "a previous run was interrupted; run paritydesk recover")
+		return pderr.NewT(pderr.NeedsRecover, "preflight", i18n.ErrPreflightInterrupted)
 	}
 	if err := r.o.checkBinding(root); err != nil {
 		return err
 	}
 	if root.PendingAdd != nil {
-		return pderr.New(pderr.NeedsRecover, "preflight", "a profile add is waiting for its sign-in; run paritydesk recover")
+		return pderr.NewT(pderr.NeedsRecover, "preflight", i18n.ErrPendingAdd)
 	}
 	if err := r.locate(ctx); err != nil {
 		return err
@@ -330,18 +330,18 @@ func (r *run) checkUpdate(ctx context.Context, lock bool) error {
 	d := r.d()
 	staged, err := d.App.UpdateStaged(ctx, d.Config.App.BundleID)
 	if err != nil {
-		r.warn(P0Preflight, "could not check for a staged Claude update")
+		r.warn(P0Preflight, i18n.Tx(i18n.WarnUpdateUnreadable))
 		return nil
 	}
 	if !staged {
 		return nil
 	}
 	if r.previewOnly {
-		r.warn(P0Preflight, "a Claude update is staged; it will install when Claude quits")
+		r.warn(P0Preflight, i18n.Tx(i18n.WarnUpdateStaged))
 		return nil
 	}
 	if !lock {
-		r.warn(P0Preflight, "a Claude update is staged; it will install when Claude quits")
+		r.warn(P0Preflight, i18n.Tx(i18n.WarnUpdateStaged))
 		return nil
 	}
 	return r.updateQuit(ctx)
@@ -378,7 +378,7 @@ func (r *run) updateQuit(ctx context.Context) error {
 	if err := r.o.done(r.root, P0Preflight, state.IntentQuit); err != nil {
 		return err
 	}
-	r.o.progress(P0Preflight, "start", "waiting for the Claude update to install")
+	r.o.progress(P0Preflight, "start", i18n.Tx(i18n.ProgressP0UpdateWait))
 	if err := d.App.WaitUpdateInstalled(ctx, d.Config.App.BundleID, updateTimeout); err != nil {
 		return r.abort(ctx, pderr.Wrap(pderr.UpdatePending, "update", err))
 	}
@@ -387,7 +387,7 @@ func (r *run) updateQuit(ctx context.Context) error {
 	}
 	// The updater may have relaunched the app: its start time is new.
 	r.sinceDone = false
-	r.o.progress(P0Preflight, "ok", "Claude updated to "+r.bundle.Version)
+	r.o.progress(P0Preflight, "ok", i18n.Tx(i18n.ProgressP0Updated, r.bundle.Version))
 	return nil
 }
 
@@ -424,7 +424,7 @@ func (r *run) resolve(ctx context.Context) error {
 	}
 	r.resn = res
 	if res.Active == nil || res.Active.Folder == nil {
-		return pderr.New(pderr.IdentityMismatch, "resolve", "the active folder holds no registered profile")
+		return pderr.NewT(pderr.IdentityMismatch, "resolve", i18n.ErrResolveNoActiveProfile)
 	}
 	r.S = res.Active
 	r.sPath = res.Active.Folder.Path
@@ -455,22 +455,22 @@ func (r *run) pickTarget() error {
 		sort.Strings(others)
 		switch len(others) {
 		case 0:
-			return pderr.New(pderr.Usage, "switch", "no other profile to switch to; register one with paritydesk profile add or profile adopt")
+			return pderr.NewT(pderr.Usage, "switch", i18n.ErrSwitchNoOtherProfile)
 		case 1:
 			to = ids.Alias(others[0])
 		default:
-			return pderr.New(pderr.Usage, "switch", "no previous profile; name the profile to switch to: "+strings.Join(others, ", "))
+			return pderr.NewT(pderr.Usage, "switch", i18n.ErrSwitchNoPrevious, strings.Join(others, ", "))
 		}
 	}
 	t, ok := r.resn.Bindings[to]
 	if !ok || t == nil {
-		return pderr.New(pderr.Usage, "switch", "unknown profile "+string(to))
+		return pderr.NewT(pderr.Usage, "switch", i18n.ErrSwitchUnknownProfile, to)
 	}
 	if t.Profile.Alias == r.S.Profile.Alias {
-		return pderr.New(pderr.Usage, "switch", string(to)+" is already active; use paritydesk sync to re-apply")
+		return pderr.NewT(pderr.Usage, "switch", i18n.ErrSwitchAlreadyActive, to)
 	}
 	if t.Folder == nil {
-		return pderr.New(pderr.IdentityMismatch, "switch", "the folder of "+string(to)+" is missing")
+		return pderr.NewT(pderr.IdentityMismatch, "switch", i18n.ErrSwitchFolderMissing, to)
 	}
 	r.T, r.tPath = t, t.Folder.Path
 	r.res.To = to
@@ -519,25 +519,25 @@ func (r *run) gate(ctx context.Context) error {
 	r.res.Mode = r.decision.Mode
 	switch r.decision.Mode {
 	case compat.ModeRefuse:
-		return pderr.New(pderr.CompatRefused, "compat", "this Claude version or folder layout cannot be handled safely")
+		return pderr.NewT(pderr.CompatRefused, "compat", i18n.ErrCompatRefused)
 	case compat.ModePreviewOnly:
 		if r.locked {
-			return pderr.New(pderr.CompatRefused, "compat", "this Claude version is untested and require_tested is set; only plan works")
+			return pderr.NewT(pderr.CompatRefused, "compat", i18n.ErrCompatUntested)
 		}
 	case compat.ModeSwapOnly:
 		warning, syncErr, known := r.nativeCause()
 		if r.kind == state.RunSync {
 			if known {
-				return pderr.New(pderr.SwapOnly, "compat", syncErr)
+				return pderr.NewT(pderr.SwapOnly, "compat", syncErr.ID, syncErr.Args...)
 			}
-			return pderr.New(pderr.SwapOnly, "compat", "sync is not possible in swap-only mode")
+			return pderr.NewT(pderr.SwapOnly, "compat", i18n.ErrCompatSyncSwapOnly)
 		}
 		if !known {
-			warning = "swap-only mode: the switch will not carry anything"
+			warning = i18n.Tx(i18n.WarnSwapOnly)
 		}
 		r.warn(P0Preflight, warning)
 	case compat.ModeDegraded:
-		r.warn(P0Preflight, "degraded mode: some rows are skipped")
+		r.warn(P0Preflight, i18n.Tx(i18n.WarnDegraded))
 	}
 	r.rows, r.skipped = r.o.selectRows(r.manifest, r.decision, r.opts.Only, r.opts.Skip)
 	if r.swapOnly() {
@@ -625,7 +625,7 @@ func (r *run) lockedChecks(ctx context.Context) error {
 	d := r.d()
 	if r.manifest != nil {
 		if tools := r.o.foreignTools(r.manifest.Footprints); len(tools) > 0 {
-			return pderr.New(pderr.ForeignTool, "preflight", "another account-switching tool was detected: "+tools[0])
+			return pderr.NewT(pderr.ForeignTool, "preflight", i18n.ErrForeignTool, tools[0])
 		}
 	}
 	if r.kind == state.RunSwitch {
@@ -637,7 +637,7 @@ func (r *run) lockedChecks(ctx context.Context) error {
 		need := uint64(freeSpaceFactor*dirSize(sources.LevelDBPath(r.tPath))) + minFreeBytes
 		free, err := d.FS.FreeBytes(d.DataRoot)
 		if err == nil && free < need {
-			return pderr.New(pderr.Internal, "preflight", "not enough free disk space for the backup generation")
+			return pderr.NewT(pderr.Internal, "preflight", i18n.ErrPreflightDiskSpace)
 		}
 	}
 	procs, err := d.App.Running(ctx, r.bundle.Path)
@@ -647,16 +647,16 @@ func (r *run) lockedChecks(ctx context.Context) error {
 	if len(procs) > 0 {
 		switch err := d.App.ProbeAutomation(ctx, d.Config.App.BundleID); {
 		case errors.Is(err, app.ErrAutomationDenied):
-			return pderr.New(pderr.AutomationMissing, "preflight", "Automation permission for Claude is missing")
+			return pderr.NewT(pderr.AutomationMissing, "preflight", i18n.ErrPreflightAutomationMissing)
 		case errors.Is(err, app.ErrEventTimedOut):
 			// -1712: Claude is busy, or macOS shows an Automation prompt
 			// nobody answered. The quit can still work; say what to check.
-			r.warn(P0Preflight, "Claude did not answer an Apple Event in time (AppleScript error -1712); if macOS asks whether paritydesk may control Claude, allow it")
+			r.warn(P0Preflight, i18n.Tx(i18n.WarnAppleEventTimeout))
 		}
 	}
 	if r.resn.OutsideSwitch && r.kind == state.RunSwitch && !r.opts.Yes && r.opts.ConfirmedPlan == "" {
 		c := Confirmation{Kind: ConfirmOutsideSwitch,
-			Lines: []string{"The active account changed outside paritydesk. paritydesk sync can re-apply the shared state; continue with the switch?"}}
+			Lines: []i18n.Text{i18n.Tx(i18n.ConfirmOutsideSwitchLine)}}
 		if err := r.o.ask(ctx, r.interactive, c); err != nil {
 			return err
 		}
@@ -686,8 +686,7 @@ func (r *run) checkParkFree() error {
 	if !taken {
 		return nil
 	}
-	return pderr.New(pderr.IdentityMismatch, "preflight", fmt.Sprintf(
-		"%s already exists, so %s cannot be parked there; nothing was changed; see paritydesk doctor", name, r.S.Profile.Alias))
+	return pderr.NewT(pderr.IdentityMismatch, "preflight", i18n.ErrPreflightParkTaken, name, r.S.Profile.Alias)
 }
 
 // resolveInvoking finds the local session of the invoking Code session.
@@ -702,7 +701,7 @@ func (r *run) resolveInvoking(ctx context.Context) {
 			r.invoking = id
 			return
 		}
-		r.warn(P0Preflight, "the invoking session was not found; it will not be reopened")
+		r.warn(P0Preflight, i18n.Tx(i18n.WarnInvokingNotFound))
 		return
 	}
 	r.invoking = id
@@ -710,7 +709,7 @@ func (r *run) resolveInvoking(ctx context.Context) {
 
 // preview is P2: the approximate plan from snapshots.
 func (r *run) preview(ctx context.Context) error {
-	defer r.phase(P2Preview, "planning")()
+	defer r.phase(P2Preview, i18n.Tx(i18n.ProgressP2Planning))()
 	if r.swapOnly() {
 		r.p2 = &planned{Plan: r.o.emptyPlan(r.res.RunID, r.sideS(), r.sideT(), r.skipped), Work: map[model.RowID]*rowWork{}}
 	} else {
@@ -746,12 +745,12 @@ func (r *run) confirmP2(ctx context.Context) error {
 			return err
 		}
 		if nd := plan.NewDestructive(confirmed, p); len(nd) > 0 {
-			return pderr.New(pderr.Declined, "confirmed plan", fmt.Sprintf("the plan now deletes %d item(s) the confirmed plan did not; run paritydesk plan again", len(nd)))
+			return pderr.NewT(pderr.Declined, "confirmed plan", i18n.ErrConfirmedPlanNewDestructive, len(nd))
 		}
 		// A confirmed plan that showed the first-sync line also confirmed
 		// the union (NeedsConfirmation is part of its hash).
 		if p.NeedsConfirmation && !confirmed.NeedsConfirmation && !r.opts.ConfirmFirstSync {
-			return pderr.New(pderr.BaseInvalid, "confirmed plan", "the confirmed plan was not a first sync, but this run is; run paritydesk plan again")
+			return pderr.NewT(pderr.BaseInvalid, "confirmed plan", i18n.ErrConfirmedPlanFirstSync)
 		}
 		r.confirmedByPerson = true
 		return nil
@@ -770,7 +769,7 @@ func (r *run) confirmP2(ctx context.Context) error {
 	}
 	if p.NeedsConfirmation && !r.opts.ConfirmFirstSync {
 		if !r.interactive {
-			return pderr.New(pderr.BaseInvalid, "plan", "a first-sync union needs confirmation")
+			return pderr.NewT(pderr.BaseInvalid, "plan", i18n.ErrPlanFirstSync)
 		}
 		c := Confirmation{Kind: ConfirmBaseInvalid, Plan: p, Summary: r.res.Summary}
 		if err := r.o.ask(ctx, true, c); err != nil {
@@ -783,7 +782,7 @@ func (r *run) confirmP2(ctx context.Context) error {
 
 // quitApp is P3.
 func (r *run) quitApp(ctx context.Context) error {
-	defer r.phase(P3Quit, "quitting Claude")()
+	defer r.phase(P3Quit, i18n.Tx(i18n.ProgressP3Quitting))()
 	d := r.d()
 	if r.opts.FromRunner && r.invoking != "" {
 		from := app.LogCursor{Ino: r.opts.LogInode, Off: max(r.opts.LogOffset, 0)}
@@ -792,7 +791,7 @@ func (r *run) quitApp(ctx context.Context) error {
 			if ctx.Err() != nil {
 				return r.abort(ctx, pderr.Wrap(pderr.Declined, "interrupted", err))
 			}
-			r.warn(P3Quit, "the invoking session's turn did not end in time; Claude may ask before quitting")
+			r.warn(P3Quit, i18n.Tx(i18n.WarnInvokingTurnNotEnded))
 		}
 	}
 	procs, err := d.App.Running(ctx, r.bundle.Path)
@@ -830,7 +829,7 @@ func (r *run) quitApp(ctx context.Context) error {
 func (r *run) sendQuit(ctx context.Context) error {
 	d := r.d()
 	onVeto := func() {
-		r.o.progress(P3Quit, "warn", "Claude asks whether to quit while work is running; choose Wait for Claude to let the switch continue, or Cancel")
+		r.o.progress(P3Quit, "warn", i18n.Tx(i18n.ProgressP3QuitDialog))
 	}
 	qr, err := d.App.QuitAndWait(ctx, d.Config.App.BundleID, r.bundle.Path, r.sig, r.o.quitTimeout(), onVeto)
 	if err == nil && qr.Exited {
@@ -843,20 +842,17 @@ func (r *run) sendQuit(ctx context.Context) error {
 		r.root.Run.QuitByUs = false
 		return r.abort(cctx, pderr.Wrap(pderr.AutomationMissing, "quit", err))
 	case qr.Pending:
-		r.o.progress(P3Quit, "start", "Claude did not quit in time; watching for a late quit")
+		r.o.progress(P3Quit, "start", i18n.Tx(i18n.ProgressP3LateQuitWatch))
 		exited, werr := d.App.WaitExited(cctx, r.bundle.Path, d.Config.App.LateQuitWatch.Duration)
 		if werr == nil && exited {
-			return r.abort(cctx, &pderr.Error{Code: pderr.AppDidNotQuit, Op: "quit",
-				Msg: "Claude quit late; relaunched " + string(r.S.Profile.Alias), Err: err})
+			return r.abort(cctx, pderr.WrapT(pderr.AppDidNotQuit, "quit", i18n.ErrQuitLate, err, r.S.Profile.Alias))
 		}
 		r.root.Run.QuitByUs = false
 		if qr.Vetoed {
 			r.res.QuitPending = true
-			return r.abort(cctx, &pderr.Error{Code: pderr.AppDidNotQuit, Op: "quit",
-				Msg: "Claude is still asking whether to quit; your answer there decides", Err: err})
+			return r.abort(cctx, pderr.WrapT(pderr.AppDidNotQuit, "quit", i18n.ErrQuitAsking, err))
 		}
-		return r.abort(cctx, &pderr.Error{Code: pderr.AppDidNotQuit, Op: "quit",
-			Msg: quitFailure(err) + "; it is still running and nothing was changed", Err: err})
+		return r.abort(cctx, pderr.WrapT(pderr.AppDidNotQuit, "quit", i18n.ErrQuitStillRunning, err, quitFailure(err)))
 	}
 	if procs, perr := d.App.Running(cctx, r.bundle.Path); perr == nil && len(procs) > 0 {
 		r.root.Run.QuitByUs = false
@@ -868,36 +864,34 @@ func (r *run) sendQuit(ctx context.Context) error {
 	// failed before the app could answer (-10004, no number). Claude is
 	// relaunched only if it is gone after all; the raw error stays in the
 	// chain.
-	return r.abort(cctx, &pderr.Error{Code: pderr.AppDidNotQuit, Op: "quit", Msg: quitFailure(err) + "; nothing was changed", Err: err})
+	return r.abort(cctx, pderr.WrapT(pderr.AppDidNotQuit, "quit", i18n.ErrQuitFailed, err, quitFailure(err)))
 }
 
 // quitFailure describes a failed quit for the exit 10 message, naming the
 // AppleScript error number when there is one, and what to do for the
 // numbers that point outside Claude: -1712 can be an unanswered
 // Automation prompt, -10004 a sandboxed paritydesk.
-func quitFailure(err error) string {
+func quitFailure(err error) i18n.Text {
 	var ce *app.CommandError
 	status := 0
 	if errors.As(err, &ce) {
 		status = ce.OSAStatus
 	}
-	num := ""
+	num := i18n.Raw("")
 	if status != 0 {
-		num = fmt.Sprintf(" (AppleScript error %d)", status)
+		num = i18n.Tx(i18n.ErrQuitOSAStatus, status)
 	}
 	switch {
 	case errors.Is(err, app.ErrQuitRefused):
-		return "Claude refused to quit" + num
+		return i18n.Tx(i18n.ErrQuitRefused, num)
 	case errors.Is(err, app.ErrEventTimedOut):
-		return "Claude did not answer the quit event in time" + num +
-			"; if macOS asked whether paritydesk may control Claude, allow it (paritydesk doctor --grant-automation)"
+		return i18n.Tx(i18n.ErrQuitTimedOut, num)
 	case status == -10004:
-		return "macOS refused to send the quit event to Claude" + num +
-			", as it does for a sandboxed process; run paritydesk outside any sandbox, for example from Terminal"
+		return i18n.Tx(i18n.ErrQuitSandboxed, num)
 	case errors.Is(err, app.ErrQuitNotDelivered):
-		return "the quit event to Claude failed" + num
+		return i18n.Tx(i18n.ErrQuitNotDelivered, num)
 	}
-	return "Claude did not quit" + num
+	return i18n.Tx(i18n.ErrQuitNotQuit, num)
 }
 
 // quiesce is P4 (and the P8 pre-swap check): wait until every quiescence
@@ -913,13 +907,13 @@ func (r *run) quiesce(ctx context.Context, folders ...string) (app.QuiescenceRep
 		}
 		if rep.Quiet {
 			for range rep.ReadOnlyHolders {
-				r.warn(P4Quiesce, "a read-only process (indexing or backup) has a file open; continuing")
+				r.warn(P4Quiesce, i18n.Tx(i18n.WarnReadOnlyHolder))
 				break
 			}
 			return rep, nil
 		}
 		if !r.o.now().Before(deadline) {
-			return rep, pderr.New(pderr.AppDidNotQuit, "quiescence", "files in the data folders are still in use")
+			return rep, pderr.NewT(pderr.AppDidNotQuit, "quiescence", i18n.ErrQuiescenceInUse)
 		}
 		if err := d.Clock.Sleep(ctx, quiescePoll); err != nil {
 			return rep, pderr.Wrap(pderr.Declined, "interrupted", err)
@@ -962,7 +956,7 @@ func (o *Orchestrator) folderInUse(ctx context.Context, bundlePath, folder strin
 
 // p4 waits for quiescence after the quit.
 func (r *run) p4(ctx context.Context) error {
-	defer r.phase(P4Quiesce, "waiting for files to close")()
+	defer r.phase(P4Quiesce, i18n.Tx(i18n.ProgressP4Waiting))()
 	folders := []string{r.sPath}
 	if r.kind == state.RunSwitch {
 		folders = append(folders, r.tPath)

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/kazupc/paritydesk/internal/compat"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/online"
@@ -32,12 +33,13 @@ const (
 	P12Verify   Phase = "P12"
 )
 
-// Event is one progress event. Message is already localized and
-// sanitized; Data holds only validated, non-secret fields.
+// Event is one progress event. Message is a catalog text rendered late
+// (English in JSON and logs); Data holds only validated, non-secret
+// fields.
 type Event struct {
 	Phase   Phase          `json:"phase"`
 	Status  string         `json:"status"` // "start" | "ok" | "warn" | "fail"; "paused" only from the e2e fault (PARITYDESK_FAULT=pause:P7)
-	Message string         `json:"message"`
+	Message i18n.Text      `json:"message"`
 	Data    map[string]any `json:"data,omitempty"`
 	Elapsed time.Duration  `json:"elapsed_ns,omitempty"`
 }
@@ -78,8 +80,9 @@ type Confirmation struct {
 	Kind    ConfirmKind
 	Plan    *plan.Plan
 	Summary *plan.Summary
-	// Lines are extra sanitized lines (busy sessions, identities masked).
-	Lines []string
+	// Lines are extra lines (busy sessions, identities masked); their
+	// arguments are sanitized when printed.
+	Lines []i18n.Text
 }
 
 // UI is the front end's side of the conversation.
@@ -154,19 +157,17 @@ type Result struct {
 	Generation        uint64                  `json:"generation,omitempty"`
 	Code              pderr.Code              `json:"code"`
 	Timings           map[Phase]time.Duration `json:"timings,omitempty"`
-	Warnings          []string                `json:"warnings,omitempty"`
+	Warnings          []i18n.Text             `json:"warnings,omitempty"`
 	Detached          bool                    `json:"detached,omitempty"`
 	// QuitPending is set when the app vetoed the quit and had not quit by
 	// the end of the late-quit watch: the user's answer in the app decides.
 	QuitPending bool `json:"quit_pending,omitempty"`
-	// v0.2 anchor: result busy
 	// Busy lists the sessions still working in the leaving folder's app
 	// run (preview only); titles are data written by other sessions.
 	Busy []BusyView `json:"busy,omitempty"`
 	// BusyWait is how long a switch waits for them (quit_timeout).
 	BusyWait time.Duration `json:"-"`
 
-	// v0.2 anchor: result online
 	// Online counts what the run queued (or, for a preview, would queue)
 	// for inside Claude; not part of the plan hash.
 	Online *online.Summary `json:"online,omitempty"`

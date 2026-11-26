@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/kazupc/paritydesk/internal/compat"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/sources"
@@ -64,8 +65,7 @@ func (o *Orchestrator) compareLS(ctx context.Context, in verifyIn, res *VerifyRe
 			res.Unverified = append(res.Unverified, t.row)
 			names = append(names, string(t.row))
 		}
-		o.progress(P12Verify, "warn", "Local Storage could not be read back while Claude runs; checked at the next switch: "+
-			strings.Join(names, ", "))
+		o.progress(P12Verify, "warn", i18n.Tx(i18n.ProgressP12LSUnreadable, strings.Join(names, ", ")))
 		return nil
 	}
 	defer closeReader(reader)
@@ -74,7 +74,7 @@ func (o *Orchestrator) compareLS(ctx context.Context, in verifyIn, res *VerifyRe
 			Spec: t.spec.Expand(in.replica), Manifest: in.manifest})
 		if err != nil {
 			res.Unverified = append(res.Unverified, t.row)
-			o.progress(P12Verify, "warn", string(t.row)+": Local Storage could not be read back while Claude runs; checked at the next switch")
+			o.progress(P12Verify, "warn", i18n.Tx(i18n.ProgressP12LSRowUnreadable, t.row))
 			continue
 		}
 		if err := o.recordObserved(in, res, t, observed); err != nil {

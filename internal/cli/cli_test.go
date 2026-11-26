@@ -14,6 +14,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/config"
 	"github.com/kazupc/paritydesk/internal/fsx"
 	"github.com/kazupc/paritydesk/internal/hook"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/orchestrator"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -302,7 +303,7 @@ func TestReadOnlyEnvironment(t *testing.T) {
 func TestConfirmations(t *testing.T) {
 	summary := fakePlan().Summarize()
 	conf := orchestrator.Confirmation{Kind: orchestrator.ConfirmPlan, Plan: fakePlan(), Summary: &summary,
-		Lines: []string{"busy: local_x\x1b[2J"}}
+		Lines: i18n.Texts([]string{"busy: local_x\x1b[2J"})}
 	tests := []struct {
 		name  string
 		tty   bool
@@ -353,7 +354,7 @@ func TestConfirmations(t *testing.T) {
 }
 
 func TestProgress(t *testing.T) {
-	ev := orchestrator.Event{Phase: orchestrator.P3Quit, Status: "ok", Message: "Claude quit\x1b]52;c;x\x07"}
+	ev := orchestrator.Event{Phase: orchestrator.P3Quit, Status: "ok", Message: i18n.Raw("Claude quit\x1b]52;c;x\x07")}
 	t.Run("plain", func(t *testing.T) {
 		h := newHarness(t)
 		var errb bytes.Buffer
@@ -615,8 +616,8 @@ func TestLogAndHistory(t *testing.T) {
 
 func TestTextOutputIsSanitized(t *testing.T) {
 	h := newHarness(t)
-	h.svc.status.Profiles[1].Problem = "evil\x1b]52;c;eA==\x07\u202etxt"
-	h.svc.status.Warnings = []string{"warn\x1b[31m"}
+	h.svc.status.Profiles[1].Problem = i18n.Raw("evil\x1b]52;c;eA==\x07\u202etxt")
+	h.svc.status.Warnings = i18n.Texts([]string{"warn\x1b[31m"})
 	code, out, errOut := h.run("", "status")
 	if code != 0 {
 		t.Fatal(errOut)
@@ -626,7 +627,7 @@ func TestTextOutputIsSanitized(t *testing.T) {
 			t.Fatalf("control characters printed: %q", s)
 		}
 	}
-	h.svc.result = &orchestrator.Result{From: "work", To: "home", Warnings: []string{"w\x1b[2J"}, Plan: &plan.Plan{}}
+	h.svc.result = &orchestrator.Result{From: "work", To: "home", Warnings: i18n.Texts([]string{"w\x1b[2J"}), Plan: &plan.Plan{}}
 	_, out, _ = h.run("", "switch", "home", "--json")
 	if strings.Contains(out, `\u001b`) {
 		t.Fatalf("warning not sanitized in JSON: %q", out)

@@ -188,6 +188,22 @@ var artifactsCases = []struct {
 			}
 		}
 	}},
+	{name: "artifacts_decide", args: []string{"artifacts", "decide", "--session", olSession, "--question", "artifacts_publish", "--answer", "skip"},
+		setup: func(h *harness) {
+			h.env["CLAUDECODE"] = "1"
+			h.artPair()
+			for i := 0; i < 10; i++ {
+				v := h.artNext()
+				if v.State != online.StateCalls {
+					break
+				}
+				for _, c := range v.Calls {
+					h.artRecord(c, `{"artifacts":[],"next_cursor":null}`)
+				}
+			}
+		}},
+	{name: "artifacts_decide_outside_app", args: []string{"artifacts", "decide", "--session", olSession, "--question", "artifacts_publish", "--answer", "skip"},
+		setup: func(h *harness) { h.artPair() }},
 	{name: "artifacts_next_blocked", args: []string{"artifacts", "next", "--session", olSession}, setup: func(h *harness) {
 		h.env["CLAUDECODE"] = "1"
 		h.artifactsService()

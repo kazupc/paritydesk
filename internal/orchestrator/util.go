@@ -16,6 +16,7 @@ import (
 
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/fsx"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/localstorage"
 	"github.com/kazupc/paritydesk/internal/model"
@@ -59,7 +60,7 @@ func (o *Orchestrator) folderPath(name string) string { return filepath.Join(o.d
 func (o *Orchestrator) now() time.Time { return o.d.Clock.Now() }
 
 // progress reports an event to the UI, if any.
-func (o *Orchestrator) progress(p Phase, status, msg string) {
+func (o *Orchestrator) progress(p Phase, status string, msg i18n.Text) {
 	if o.d.UI != nil {
 		o.d.UI.Progress(Event{Phase: p, Status: status, Message: msg})
 	}
@@ -71,7 +72,7 @@ func (o *Orchestrator) progress(p Phase, status, msg string) {
 const EventAliases = "aliases"
 
 // progressNaming is progress for a message that names profile aliases.
-func (o *Orchestrator) progressNaming(p Phase, status, msg string, aliases ...ids.Alias) {
+func (o *Orchestrator) progressNaming(p Phase, status string, msg i18n.Text, aliases ...ids.Alias) {
 	if o.d.UI == nil {
 		return
 	}
@@ -95,14 +96,14 @@ func (o *Orchestrator) interactive(fromRunner bool) bool {
 // answer.
 func (o *Orchestrator) ask(ctx context.Context, interactive bool, c Confirmation) error {
 	if !interactive {
-		return pderr.New(pderr.Declined, "confirm", "a confirmation is needed; run in a terminal or pass --yes")
+		return pderr.NewT(pderr.Declined, "confirm", i18n.ErrConfirmNoTTY)
 	}
 	ok, err := o.d.UI.Confirm(ctx, c)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		return pderr.New(pderr.Declined, "confirm", "declined")
+		return pderr.NewT(pderr.Declined, "confirm", i18n.ErrConfirmDeclined)
 	}
 	return nil
 }
@@ -183,7 +184,7 @@ func ensureMaps(r *state.Root) {
 // checkBinding refuses a state bound to another data root (two-Mac rule).
 func (o *Orchestrator) checkBinding(r *state.Root) error {
 	if r.DataRoot != "" && filepath.Clean(r.DataRoot) != filepath.Clean(o.d.DataRoot) {
-		return pderr.New(pderr.Usage, "state", "the state belongs to a different data root; pass the matching --state-dir")
+		return pderr.NewT(pderr.Usage, "state", i18n.ErrStateOtherDataRoot)
 	}
 	return nil
 }

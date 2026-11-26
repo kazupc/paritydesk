@@ -15,17 +15,17 @@ type ArtifactsPlanView struct {
 
 // artifactsLines is the artifacts block of PlanLines: the leaving side's
 // line first, then the entering side's.
-func artifactsLines(v PlanView) []string {
+func artifactsLines(l i18n.Lang, v PlanView) []string {
 	a := v.Artifacts
 	if a == nil {
 		return nil
 	}
 	var lines []string
 	if a.Unsynced != "" {
-		lines = append(lines, i18n.T(i18n.PlanArtifactsUnsynced, Sanitize(a.Unsynced, 32)))
+		lines = append(lines, i18n.TIn(l, i18n.PlanArtifactsUnsynced, Sanitize(a.Unsynced, 32)))
 	}
 	if a.Due > 0 {
-		lines = append(lines, i18n.T(i18n.PlanArtifactsDue, a.Due, Sanitize(a.To, 32)))
+		lines = append(lines, i18n.TIn(l, i18n.PlanArtifactsDue, a.Due, Sanitize(a.To, 32)))
 	}
 	return lines
 }

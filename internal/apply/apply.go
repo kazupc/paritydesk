@@ -3,7 +3,6 @@ package apply
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kazupc/paritydesk/internal/fsx"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/localstorage"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -159,7 +159,7 @@ func (a *Applier) Apply(ctx context.Context, in Input) (Result, error) {
 		return r.res, err
 	}
 	if err := a.FS.FullSync(in.Folder); err != nil {
-		return r.res, r.rolledBack(err, "full sync of the folder failed")
+		return r.res, r.rolledBack(err, i18n.Tx(i18n.ErrApplyFullSync))
 	}
 	return r.res, nil
 }
@@ -171,22 +171,22 @@ func (r *run) preflight(ctx context.Context) error {
 		return pderr.Wrap(pderr.Internal, opApply, fsx.ErrReadOnly)
 	}
 	if r.in.Plan == nil || r.in.Folder == "" || r.a.FS == nil {
-		return pderr.New(pderr.Internal, opApply, "incomplete apply input")
+		return pderr.Bug(opApply, "incomplete apply input")
 	}
 	for _, op := range r.in.Plan.Ops {
 		if op.Kind == plan.OpCopyFile && (op.Copy == nil || (op.Copy.Side == plan.SideLeaving && r.in.LeavingFolder == "")) {
-			return pderr.New(pderr.Internal, opApply, "a copy from the leaving folder needs that folder")
+			return pderr.Bug(opApply, "a copy from the leaving folder needs that folder")
 		}
 	}
 	if r.a.Holders == nil {
-		return pderr.New(pderr.Internal, opApply, "no holder check configured")
+		return pderr.Bug(opApply, "no holder check configured")
 	}
 	held, detail, err := r.a.Holders(ctx, r.in.Folder)
 	if err != nil {
-		return &pderr.Error{Code: pderr.Internal, Op: opApply, Msg: "holder check failed", Err: err}
+		return pderr.WrapT(pderr.Internal, opApply, i18n.ErrApplyHolderCheck, err)
 	}
 	if held {
-		return pderr.New(pderr.Internal, opApply, "the folder is in use: "+detail)
+		return pderr.NewT(pderr.Internal, opApply, i18n.ErrApplyInUse, detail)
 	}
 	return nil
 }
@@ -207,28 +207,28 @@ func (r *run) verify(ctx context.Context) error {
 		case op.Kind == plan.OpLSPut || op.Kind == plan.OpLSDelete:
 			lsOps = append(lsOps, op)
 		default:
-			return pderr.New(pderr.Internal, opApply, fmt.Sprintf("op %d has unknown kind %q", i, op.Kind))
+			return pderr.Bugf(opApply, "op %d has unknown kind %q", i, op.Kind)
 		}
 	}
 	if len(lsOps) == 0 {
 		return nil
 	}
 	if r.a.KV == nil {
-		return pderr.New(pderr.Internal, opApply, "no Local Storage opener configured")
+		return pderr.Bug(opApply, "no Local Storage opener configured")
 	}
 	w, err := r.a.KV.OpenWritable(ctx, LSDir(r.in.Folder))
 	if err != nil {
-		return &pderr.Error{Code: pderr.Internal, Op: opApply, Msg: openLSMsg(err), Err: err}
+		return pderr.WrapT(pderr.Internal, opApply, openLSMsg(err), err)
 	}
 	r.w = w
 	r.res.Touched, r.res.LSOpened = true, true
 	for _, op := range lsOps {
 		got, err := lsHash(w, op.Key)
 		if err != nil {
-			return &pderr.Error{Code: pderr.Internal, Op: opApply, Msg: "reading " + lsKey(op.Key) + " failed", Err: err}
+			return pderr.WrapT(pderr.Internal, opApply, i18n.ErrApplyReadFailed, err, lsKey(op.Key))
 		}
 		if got != op.PreHash {
-			return pderr.New(pderr.Internal, opApply, lsKey(op.Key)+" changed since the plan was made")
+			return pderr.NewT(pderr.Internal, opApply, i18n.ErrApplyChanged, lsKey(op.Key))
 		}
 	}
 	return nil
@@ -236,26 +236,26 @@ func (r *run) verify(ctx context.Context) error {
 
 // openLSMsg says why OpenWritable refused Local Storage. Each refusal
 // it names comes before anything is written, so the folder is untouched.
-func openLSMsg(err error) string {
+func openLSMsg(err error) i18n.Msg {
 	switch {
 	case errors.Is(err, kv.ErrLocked):
-		return "the folder is in use: another process holds the Local Storage lock"
+		return i18n.ErrApplyLSLocked
 	case errors.Is(err, kv.ErrUnknownCompression):
-		return "Local Storage uses an unknown block compression"
+		return i18n.ErrApplyLSCompression
 	case errors.Is(err, kv.ErrJournalSequence):
-		return "Local Storage holds journal batches out of order"
+		return i18n.ErrApplyLSJournal
 	}
-	return "opening Local Storage failed"
+	return i18n.ErrApplyLSOpen
 }
 
 // checkFilePre compares a target's current hash with the op's pre-hash.
 func (r *run) checkFilePre(op plan.Op) error {
 	got, err := targetHash(r.in.Folder, op)
 	if err != nil {
-		return &pderr.Error{Code: pderr.Internal, Op: opApply, Msg: "reading " + PostHashKey(op) + " failed", Err: err}
+		return pderr.WrapT(pderr.Internal, opApply, i18n.ErrApplyReadFailed, err, PostHashKey(op))
 	}
 	if got != op.PreHash {
-		return pderr.New(pderr.Internal, opApply, PostHashKey(op)+" changed since the plan was made")
+		return pderr.NewT(pderr.Internal, opApply, i18n.ErrApplyChanged, PostHashKey(op))
 	}
 	return nil
 }
@@ -290,7 +290,7 @@ func (r *run) checkCopySource(op plan.Op) error {
 		r.soft[op.Path] = true
 		return nil
 	}
-	return pderr.New(pderr.Internal, opApply, "the copy source of "+pathKey(op.Path)+" changed since the plan was made")
+	return pderr.NewT(pderr.Internal, opApply, i18n.ErrApplyCopySourceChanged, pathKey(op.Path))
 }
 
 // sourceFolder returns the folder a copy reads from.
@@ -338,7 +338,7 @@ func (r *run) writeFiles() error {
 		r.firstWrite()
 		if i == last {
 			if err := r.a.FS.FullSync(r.in.Folder); err != nil {
-				return r.rolledBack(err, "full sync of the folder failed")
+				return r.rolledBack(err, i18n.Tx(i18n.ErrApplyFullSync))
 			}
 		}
 	}
@@ -351,7 +351,7 @@ func (r *run) writeFile(op plan.Op) error {
 		if len(r.written) == 0 {
 			return err
 		}
-		return r.rolledBack(err, pathKey(op.Path)+" changed during apply")
+		return r.rolledBack(err, i18n.Tx(i18n.ErrApplyChangedDuring, pathKey(op.Path)))
 	}
 	key := PostHashKey(op)
 	want := op.PostHash
@@ -365,7 +365,7 @@ func (r *run) writeFile(op plan.Op) error {
 		case plan.OpWriteFile:
 			mode, merr := r.modeFor(op)
 			if merr != nil {
-				return r.rolledBack(merr, "reading the mode of "+pathKey(op.Path)+" failed")
+				return r.rolledBack(merr, i18n.Tx(i18n.ErrApplyModeFailed, pathKey(op.Path)))
 			}
 			err = r.a.FS.WriteFileAtomic(r.in.Folder, op.Path, op.Content, mode, r.in.TmpDir)
 		case plan.OpQuarantine:
@@ -382,16 +382,16 @@ func (r *run) writeFile(op plan.Op) error {
 			}
 		}
 		if err != nil {
-			return r.rolledBack(err, "writing "+key+" failed")
+			return r.rolledBack(err, i18n.Tx(i18n.ErrApplyWriteFailed, key))
 		}
 	}
 	got, err := targetHash(r.in.Folder, op)
 	if err != nil {
-		return r.rolledBack(err, "reading back "+key+" failed")
+		return r.rolledBack(err, i18n.Tx(i18n.ErrApplyReadBackFailed, key))
 	}
 	r.res.PostHashes[key] = got
 	if got != want {
-		return r.rolledBack(nil, "read-back mismatch for "+key)
+		return r.rolledBack(nil, i18n.Tx(i18n.ErrApplyReadBackMismatch, key))
 	}
 	return nil
 }
@@ -441,7 +441,7 @@ func (r *run) writeLS(ctx context.Context) error {
 		}
 		key, err := localstorage.Key(op.Key)
 		if err != nil {
-			return r.rolledBack(err, "encoding "+lsKey(op.Key)+" failed")
+			return r.rolledBack(err, i18n.Tx(i18n.ErrApplyEncodeFailed, lsKey(op.Key)))
 		}
 		if op.Kind == plan.OpLSDelete {
 			b.Delete(key)
@@ -451,13 +451,13 @@ func (r *run) writeLS(ctx context.Context) error {
 		ops = append(ops, op)
 	}
 	if err := r.w.Write(&b); err != nil {
-		return r.rolledBack(err, "Local Storage write failed")
+		return r.rolledBack(err, i18n.Tx(i18n.ErrApplyLSWrite))
 	}
 	r.res.Applied += len(ops)
 	w := r.w
 	r.w = nil
 	if err := w.Close(); err != nil {
-		return r.rolledBack(err, "closing Local Storage failed")
+		return r.rolledBack(err, i18n.Tx(i18n.ErrApplyLSClose))
 	}
 	r.firstWrite()
 	return r.readBackLS(ctx, ops)
@@ -467,17 +467,17 @@ func (r *run) writeLS(ctx context.Context) error {
 func (r *run) readBackLS(ctx context.Context, ops []plan.Op) error {
 	snap, err := r.a.KV.OpenSnapshot(ctx, LSDir(r.in.Folder))
 	if err != nil {
-		return r.rolledBack(err, "reopening Local Storage failed")
+		return r.rolledBack(err, i18n.Tx(i18n.ErrApplyLSReopen))
 	}
 	defer snap.Close()
 	for _, op := range ops {
 		got, err := lsHash(snap, op.Key)
 		if err != nil {
-			return r.rolledBack(err, "reading back "+lsKey(op.Key)+" failed")
+			return r.rolledBack(err, i18n.Tx(i18n.ErrApplyReadBackFailed, lsKey(op.Key)))
 		}
 		r.res.PostHashes[lsKey(op.Key)] = got
 		if got != op.PostHash {
-			return r.rolledBack(nil, "read-back mismatch for "+lsKey(op.Key))
+			return r.rolledBack(nil, i18n.Tx(i18n.ErrApplyReadBackMismatch, lsKey(op.Key)))
 		}
 	}
 	return nil
@@ -493,13 +493,11 @@ func (r *run) closeWriter() {
 
 // rolledBack returns the ApplyRolledBack error for a failure after the
 // first write, naming the files already written.
-func (r *run) rolledBack(cause error, msg string) *pderr.Error {
+func (r *run) rolledBack(cause error, msg i18n.Text) *pderr.Error {
 	if len(r.written) > 0 {
-		msg += fmt.Sprintf(" (files already written: %s)", strings.Join(r.written, ", "))
-	} else {
-		msg += " (no files written yet)"
+		return pderr.WrapT(pderr.ApplyRolledBack, opApply, i18n.ErrApplyRolledBackWritten, cause, msg, strings.Join(r.written, ", "))
 	}
-	return &pderr.Error{Code: pderr.ApplyRolledBack, Op: opApply, Msg: msg, Err: cause}
+	return pderr.WrapT(pderr.ApplyRolledBack, opApply, i18n.ErrApplyRolledBackNone, cause, msg)
 }
 
 // Check compares the folder against the plan's post-hashes without
@@ -508,7 +506,7 @@ func (r *run) rolledBack(cause error, msg string) *pderr.Error {
 // differs from the op's PostHash ("" for removals).
 func (a *Applier) Check(ctx context.Context, p *plan.Plan, folder string) (matches bool, mismatched []string, err error) {
 	if p == nil || folder == "" {
-		return false, nil, pderr.New(pderr.Internal, opCheck, "incomplete check input")
+		return false, nil, pderr.Bug(opCheck, "incomplete check input")
 	}
 	snap, err := a.openSnapshotIfNeeded(ctx, p, folder)
 	if err != nil {
@@ -536,11 +534,11 @@ func (a *Applier) openSnapshotIfNeeded(ctx context.Context, p *plan.Plan, folder
 			continue
 		}
 		if a.KV == nil {
-			return nil, pderr.New(pderr.Internal, opCheck, "no Local Storage opener configured")
+			return nil, pderr.Bug(opCheck, "no Local Storage opener configured")
 		}
 		snap, err := a.KV.OpenSnapshot(ctx, LSDir(folder))
 		if err != nil {
-			return nil, &pderr.Error{Code: pderr.Internal, Op: opCheck, Msg: "opening Local Storage failed", Err: err}
+			return nil, pderr.WrapT(pderr.Internal, opCheck, i18n.ErrApplyLSOpen, err)
 		}
 		return snap, nil
 	}
@@ -555,17 +553,17 @@ func CurrentHash(snap kv.Reader, folder string, op plan.Op) (string, string, err
 	case isFileOp(op):
 		got, err := targetHash(folder, op)
 		if err != nil {
-			return "", "", &pderr.Error{Code: pderr.Internal, Op: opCheck, Msg: "reading " + PostHashKey(op) + " failed", Err: err}
+			return "", "", pderr.WrapT(pderr.Internal, opCheck, i18n.ErrApplyReadFailed, err, PostHashKey(op))
 		}
 		return got, PostHashKey(op), nil
 	case op.Kind == plan.OpLSPut || op.Kind == plan.OpLSDelete:
 		got, err := lsHash(snap, op.Key)
 		if err != nil {
-			return "", "", &pderr.Error{Code: pderr.Internal, Op: opCheck, Msg: "reading " + lsKey(op.Key) + " failed", Err: err}
+			return "", "", pderr.WrapT(pderr.Internal, opCheck, i18n.ErrApplyReadFailed, err, lsKey(op.Key))
 		}
 		return got, lsKey(op.Key), nil
 	}
-	return "", "", pderr.New(pderr.Internal, opCheck, fmt.Sprintf("unknown op kind %q", op.Kind))
+	return "", "", pderr.Bugf(opCheck, "unknown op kind %q", op.Kind)
 }
 
 // errNotRegular is returned for a target that is a symlink, directory or

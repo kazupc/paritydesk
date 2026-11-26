@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/orchestrator"
 )
@@ -31,7 +32,11 @@ const (
 	valueFile                      // a file name
 	valueDir                       // a directory name
 	valueCategory                  // comma-separated category names
+	valueLang                      // one of langValues
 )
+
+// langValues are the values --lang accepts, offered like one category.
+var langValues = []string{"auto", "en", "ja"}
 
 // flagValueKinds names the flags whose values can be completed.
 var flagValueKinds = map[string]valueKind{
@@ -41,6 +46,7 @@ var flagValueKinds = map[string]valueKind{
 	orchestrator.FlagAppSupportDir: valueDir,
 	orchestrator.FlagOnly:          valueCategory,
 	orchestrator.FlagSkip:          valueCategory,
+	flagLang:                       valueLang,
 }
 
 // argKind says how to complete a command's positional arguments.
@@ -93,7 +99,7 @@ func buildCompTree() *compTree {
 	t := &compTree{globals: visibleFlags(func(fs *flag.FlagSet) { (&globalFlags{}).register(fs) })}
 	var walk func(c *command, path string) *compCmd
 	walk = func(c *command, path string) *compCmd {
-		n := &compCmd{path: path, name: c.name, short: c.short, args: commandArgKinds[path]}
+		n := &compCmd{path: path, name: c.name, short: i18n.En(c.short), args: commandArgKinds[path]}
 		if c.flags != nil {
 			n.flags = visibleFlags(c.flags)
 		}
@@ -128,8 +134,8 @@ func visibleFlags(register func(*flag.FlagSet)) []compFlag {
 		} else if k, ok := flagValueKinds[f.Name]; ok {
 			kind = k
 		}
-		_, usage := flag.UnquoteUsage(f)
-		out = append(out, compFlag{name: f.Name, usage: usage, kind: kind})
+		// Completion scripts are English (generated files, goldens).
+		out = append(out, compFlag{name: f.Name, usage: flagUsageText(i18n.English, f.Usage), kind: kind})
 	})
 	return out
 }
@@ -241,7 +247,7 @@ func completionScript(shell string) (string, error) {
 	case "fish":
 		return t.fish(), nil
 	}
-	return "", usageErrorf("unknown shell %q (one of %s)", shell, strings.Join(completionShells, ", "))
+	return "", usageError(i18n.UsageUnknownShell, shell, strings.Join(completionShells, ", "))
 }
 
 func runCompletion(_ context.Context, e *env, _ *flag.FlagSet, args []string) error {
@@ -384,6 +390,8 @@ _paritydesk() {
 	w("                        case \"$cur\" in *,*) pre=\"${cur%%,*},\" ;; esac\n")
 	w("                        _paritydesk_reply < <(compgen -W %s -P \"$pre\" -- \"${cur##*,}\") ;;\n",
 		shQuote(strings.Join(categoryNames(), " ")))
+	w("                    %s)\n", strings.Join(t.flagsOfKind(valueLang), "|"))
+	w("                        _paritydesk_reply < <(compgen -W %s -- \"$cur\") ;;\n", shQuote(strings.Join(langValues, " ")))
 	w(`                esac
                 return 0
             fi
@@ -510,6 +518,7 @@ func (t *compTree) zsh() string {
 	w("        (%s) _files ;;\n", strings.Join(t.flagsOfKind(valueFile), "|"))
 	w("        (%s) _files -/ ;;\n", strings.Join(t.flagsOfKind(valueDir), "|"))
 	w("        (%s) compset -P '*,'; compadd -- %s ;;\n", strings.Join(t.flagsOfKind(valueCategory), "|"), strings.Join(categoryNames(), " "))
+	w("        (%s) compadd -- %s ;;\n", strings.Join(t.flagsOfKind(valueLang), "|"), strings.Join(langValues, " "))
 	w(`      esac
       return
     fi
@@ -630,6 +639,8 @@ function __paritydesk_categories
 			w(" -x -a '(__fish_complete_directories)'")
 		case valueCategory:
 			w(" -x -a '(__paritydesk_categories)'")
+		case valueLang:
+			w(" -x -a %s", fishQuote(strings.Join(langValues, " ")))
 		case valuePlain:
 			w(" -x")
 		}

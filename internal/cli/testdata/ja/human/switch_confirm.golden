@@ -1,0 +1,13 @@
+計画: work から home へ
+  sessions      +1 件追加  ~1 件更新  -1 件削除
+  pins          1 件移動
+DESTRUCTIVE: 1 件の削除 (sessions 1)
+work から home に切り替えました。
+モード: full
+バックアップ世代: 7
+--- stderr
+計画: work から home へ（Claude が終了するまでは概算です）
+  sessions      +1 件追加  ~1 件更新  -1 件削除
+  pins          1 件移動
+DESTRUCTIVE: 1 件の削除 (sessions 1)
+この計画を適用しますか？ [y/N] 

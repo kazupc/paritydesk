@@ -14,11 +14,11 @@ func (dr *doctor) onlineChecks(root *state.Root, m *compat.Manifest) {
 	o := dr.o
 	switch {
 	case o.d.Online == nil || (m != nil && !o.onlineActive(m)):
-		dr.add("online", "ok", i18n.T(i18n.DoctorOnlineOff))
+		dr.add("online", "ok", i18n.Tx(i18n.DoctorOnlineOff))
 	case !o.defaultSupportDir():
-		dr.add("online", "warn", i18n.T(i18n.DoctorOnlineSupportDir))
+		dr.add("online", "warn", i18n.Tx(i18n.DoctorOnlineSupportDir))
 	default:
-		dr.add("online", "ok", i18n.T(i18n.DoctorOnlineQueue, onlineStateWord(root, o.d.Online)))
+		dr.add("online", "ok", i18n.Tx(i18n.DoctorOnlineQueue, onlineStateWord(root, o.d.Online)))
 	}
 }
 

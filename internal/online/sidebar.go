@@ -300,7 +300,7 @@ func (sidebarProvider) Build(in BuildInput) ([]Step, []Warning, error) {
 	}
 	var warns []Warning
 	if notWritable > 0 {
-		warns = append(warns, Warning{Msg: string(i18n.OnlineWarnSidebarNotWritable), Text: i18n.T(i18n.OnlineWarnSidebarNotWritable, notWritable)})
+		warns = append(warns, Warning{Msg: string(i18n.OnlineWarnSidebarNotWritable), Text: i18n.Tx(i18n.OnlineWarnSidebarNotWritable, notWritable)})
 	}
 	if len(steps) == 0 {
 		return nil, warns, nil

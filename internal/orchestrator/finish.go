@@ -8,6 +8,7 @@ import (
 
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/gen"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -126,7 +127,7 @@ func (o *Orchestrator) readRowLS(ctx context.Context, m *compat.Manifest, folder
 // commitP10 re-reads T, sets its bases from the re-read (only where it
 // equals Desired), and closes the run in one commit.
 func (r *run) commitP10(ctx context.Context) error {
-	defer r.phase(P10Commit, "recording")()
+	defer r.phase(P10Commit, i18n.Tx(i18n.ProgressP10Recording))()
 	d := r.d()
 	root := r.root
 	// T's pins re-read gets the side facts of its P5 read: the probe is
@@ -138,7 +139,7 @@ func (r *run) commitP10(ctx context.Context) error {
 	}
 	reread, err := r.o.rereadRowsPins(ctx, r.manifest, r.tPath, r.T.Replica, r.p5.Rows, r.scratchRereadRefs(), pr)
 	if err != nil {
-		r.warn(P10Commit, "the entering folder could not be re-read; its bases are invalid until the next run")
+		r.warn(P10Commit, i18n.Tx(i18n.WarnEnteringNotReread))
 		reread = nil
 	}
 	for _, row := range r.p5.Rows {
@@ -168,7 +169,7 @@ func (r *run) commitP10(ctx context.Context) error {
 		} else if !ok || !sameRead(snap, want, rows.CarriesOrder(row)) {
 			dropBase(root, tk)
 			if reread != nil {
-				r.warn(P10Commit, fmt.Sprintf("%s: the entering folder does not read back as planned; its base is invalid", row))
+				r.warn(P10Commit, i18n.Tx(i18n.WarnRowNotReadBack, row))
 			}
 			continue
 		}
@@ -227,11 +228,11 @@ func (r *run) commitP10(ctx context.Context) error {
 	r.o.afterPublish(ctx, published)
 	r.artifactsDue(ctx)
 	if err := d.State.GC(root); err != nil {
-		r.warn(P10Commit, "unreferenced state objects could not be removed")
+		r.warn(P10Commit, i18n.Tx(i18n.WarnObjectsNotRemoved))
 	}
 	r.saveScratchCache()
 	if err := d.Gens.Prune(r.o.prunePolicy()); err != nil {
-		r.warn(P10Commit, "old backup generations could not be pruned")
+		r.warn(P10Commit, i18n.Tx(i18n.WarnGenerationsNotPruned))
 	}
 	return nil
 }
@@ -295,18 +296,18 @@ func (o *Orchestrator) prunePolicy() gen.PrunePolicy {
 // launch is P11: launch only when I4 holds, then reopen the invoking
 // session if T has it.
 func (r *run) launch(ctx context.Context) {
-	defer r.phase(P11Launch, "launching")()
+	defer r.phase(P11Launch, i18n.Tx(i18n.ProgressP11Launching))()
 	d := r.d()
 	if r.opts.NoLaunch {
-		r.o.progress(P11Launch, "ok", "not launched (--no-launch)")
+		r.o.progress(P11Launch, "ok", i18n.Tx(i18n.ProgressP11NotLaunched))
 		return
 	}
 	if !r.quitByUs {
-		r.o.progress(P11Launch, "ok", "Claude was not running before; not launched")
+		r.o.progress(P11Launch, "ok", i18n.Tx(i18n.ProgressP11NotRunningBefore))
 		return
 	}
 	if !r.o.claudeRegistered(ctx, r.root) {
-		r.warn(P11Launch, "Claude was not launched: the active folder holds no registered profile")
+		r.warn(P11Launch, i18n.Tx(i18n.WarnLaunchNoProfile))
 		return
 	}
 	if n, err := d.App.LogSize(); err == nil {
@@ -314,7 +315,7 @@ func (r *run) launch(ctx context.Context) {
 	}
 	t0 := r.o.now()
 	if err := d.App.Launch(ctx, d.Config.App.BundleID); err != nil {
-		r.warn(P11Launch, "Claude could not be launched; open it manually")
+		r.warn(P11Launch, i18n.Tx(i18n.WarnLaunchFailed))
 		return
 	}
 	r.launched = true
@@ -323,11 +324,11 @@ func (r *run) launch(ctx context.Context) {
 		return
 	}
 	if r.tSess == nil || !hasItem(r.tSess, string(r.invoking)) {
-		r.warn(P11Launch, "the invoking session is not in the entering profile; it was not reopened")
+		r.warn(P11Launch, i18n.Tx(i18n.WarnInvokingNotInProfile))
 		return
 	}
 	if err := d.App.OpenSession(ctx, r.invoking); err != nil {
-		r.warn(P11Launch, "the invoking session could not be reopened")
+		r.warn(P11Launch, i18n.Tx(i18n.WarnInvokingNotReopened))
 	}
 }
 
@@ -350,11 +351,11 @@ func (r *run) verifyP12(ctx context.Context) error {
 	if r.interactive && !r.opts.FromRunner && r.o.d.Detach != nil {
 		g := JobGlobals{Config: r.o.d.Paths.ConfigFile, StateDir: r.o.d.Paths.StateDir, AppSupportDir: r.o.d.Paths.SupportDir}
 		if _, err := r.o.d.Detach.Submit(ctx, VerifyJobArgs(r.res.RunID, g)); err == nil {
-			r.o.progress(P12Verify, "ok", "Claude is up; the values are checked in the background (paritydesk verify shows the result)")
+			r.o.progress(P12Verify, "ok", i18n.Tx(i18n.ProgressP12BackgroundCheck))
 			return nil
 		}
 	}
-	defer r.phase(P12Verify, "verifying")()
+	defer r.phase(P12Verify, i18n.Tx(i18n.ProgressP12Verifying))()
 	_, err := r.o.verifyCore(ctx, verifyIn{
 		root: r.root, alias: r.T.Profile.Alias, replica: r.T.Replica, manifest: r.manifest, sig: r.sig,
 		from: r.launchAt, session: r.invoking, runID: r.res.RunID, rows: r.p5.Rows, record: true,
@@ -371,10 +372,10 @@ func (r *run) finalCode(verifyErr error) error {
 	switch r.decision.Mode {
 	case compat.ModeSwapOnly:
 		r.res.Code = pderr.SwapOnly
-		return pderr.New(pderr.SwapOnly, "switch", "switched without syncing (swap-only mode)")
+		return pderr.NewT(pderr.SwapOnly, "switch", i18n.ErrSwitchSwapOnly)
 	case compat.ModeDegraded:
 		r.res.Code = pderr.Degraded
-		return pderr.New(pderr.Degraded, "switch", "some rows were skipped")
+		return pderr.NewT(pderr.Degraded, "switch", i18n.ErrSwitchDegraded)
 	}
 	r.res.Code = pderr.OK
 	return nil

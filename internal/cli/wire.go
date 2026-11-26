@@ -20,6 +20,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/fsx"
 	"github.com/kazupc/paritydesk/internal/gen"
 	"github.com/kazupc/paritydesk/internal/hook"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/online"
@@ -258,7 +259,7 @@ func (l *lazyArchive) RemoveProfile(ctx context.Context, a ids.Alias) error {
 }
 
 // Doctor is the doctor view (orchestrator's artifactsDoctor).
-func (l *lazyArchive) Doctor() (int, string, error) { return l.get().Doctor() }
+func (l *lazyArchive) Doctor() (int, i18n.Text, error) { return l.get().Doctor() }
 
 // onlineService returns the online layer over <supportDir>/online, with
 // the online lock in <supportDir>/locks and the built-in providers

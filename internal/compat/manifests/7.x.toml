@@ -240,7 +240,6 @@ run_state = ["leasedBy", "leaseCleared"]
 # replaces the target's own entry.
 worktree_path = ["path"]
 
-# v0.2 anchor: rows scratch
 [[row]]
 row = "scratch"
 write_path = "off"
@@ -265,8 +264,6 @@ dependency_dirs = ["node_modules", ".venv", "vendor"]
 vcs_dirs = [".sl", ".jj", ".bzr", "_darcs", ".svn"]
 # Informational, for doctor's text.
 sweep_untouched_days = 7
-
-# v0.2 anchor: rows sidebar-offline
 
 [[row]]
 row = "sidebar-collapse"
@@ -326,7 +323,6 @@ seed_only = ["code-sessions-sort-ascending"]
 seed_section = ["sessions"]
 seed_from = ["ascending", "show.emptyGroups"]
 
-# v0.2 anchor: rows pins
 [[row]]
 row = "pins"
 write_path = "on"
@@ -597,14 +593,11 @@ target = "window-state.json"
 path = []
 type = "object"
 
-# v0.2 anchor: probes scratch
 [[probe]]
 id = "scratch-root"
 row = "scratch"
 kind = "dir-optional"
 target = "scratch-workspaces"
-
-# v0.2 anchor: probes sidebar-offline
 
 [[probe]]
 id = "collapse-groups-shape"
@@ -913,8 +906,6 @@ account_changed_hint = [
 # detects no other tool. init lists parked Claude-* folders that hold an
 # account no profile registers and suggests profile adopt for them.
 
-# v0.2 anchor: tables online
-
 # ---------------------------------------------------------------- online
 #
 # The online layer (ADR 0005): changes made after the launch through the
@@ -982,7 +973,6 @@ manual = ["date", "state", "none"]
 [online.responses]
 tools_off = ["Sidebar tools are turned off right now."]
 
-# v0.2 anchor: tables pins
 [online.pins]
 max_steps = 200
 skip_if_true = ["isArchived"]
@@ -1007,7 +997,6 @@ assign_store_key = "dframe-store"
 assign_path = ["state", "customGroupsByScope", "{acct}/{org}"]
 row_key_prefix = "code:"
 
-# v0.2 anchor: tables artifacts
 # ---------------------------------------------------------------- artifacts
 #
 # Artifact sync through the claude-artifacts MCP tools (beta). Tool names and
@@ -1080,7 +1069,6 @@ not_found = []
 client_refused = []
 too_large = []
 
-# v0.2 anchor: tables legacy
 # ---------------------------------------------------------------- legacy migration
 #
 # Used only by profile adopt --from-legacy. Account-scoped directories that

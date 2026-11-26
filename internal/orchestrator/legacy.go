@@ -296,15 +296,15 @@ func (o *Orchestrator) legacyApply(ctx context.Context, opts LegacyOptions) (*Le
 	}
 	switch lp.p.Status {
 	case legacy.PlanNoActive:
-		return nil, pderr.New(pderr.NeedsRecover, legacyOp, i18n.T(i18n.LegacyWarnNoActive))
+		return nil, pderr.NewT(pderr.NeedsRecover, legacyOp, i18n.LegacyWarnNoActive)
 	case legacy.PlanNoActiveIdentity:
-		return nil, pderr.New(pderr.IdentityMismatch, legacyOp, i18n.T(i18n.LegacyWarnNoActiveIdentity))
+		return nil, pderr.NewT(pderr.IdentityMismatch, legacyOp, i18n.LegacyWarnNoActiveIdentity)
 	}
 	if err := checkLegacyHash(opts.PlanHash, lp.hash); err != nil {
 		return nil, err
 	}
 	if len(lp.foreign) > 0 {
-		return nil, pderr.New(pderr.ForeignTool, legacyOp, "another account-switching tool was detected: "+lp.foreign[0])
+		return nil, pderr.NewT(pderr.ForeignTool, legacyOp, i18n.ErrForeignTool, lp.foreign[0])
 	}
 	res := o.legacyResult(lp, false)
 	runID, err := runner.NewRunID(o.now())
@@ -324,7 +324,7 @@ func (o *Orchestrator) legacyApply(ctx context.Context, opts LegacyOptions) (*Le
 	}
 	res.Applied = true
 	if res.MovesDeferred+res.MovesFailed > 0 || hasPrefixed(res.Warnings, LegacyWarnMarker) {
-		return res, pderr.New(pderr.Degraded, legacyOp, "registration is complete, but some leftovers were kept for now or a marker could not be written")
+		return res, pderr.NewT(pderr.Degraded, legacyOp, i18n.ErrLegacyDegraded)
 	}
 	return res, nil
 }
@@ -343,13 +343,13 @@ func hasPrefixed(list []string, prefix string) bool {
 // different inputs half means the flags differ.
 func checkLegacyHash(given, now string) error {
 	if given == "" {
-		return pderr.New(pderr.Declined, legacyOp, i18n.T(i18n.ErrorLegacyPlanRequired))
+		return pderr.NewT(pderr.Declined, legacyOp, i18n.ErrorLegacyPlanRequired)
 	}
 	switch legacy.CompareHash(given, now) {
 	case legacy.HashFoldersDiffer:
-		return pderr.New(pderr.Declined, legacyOp, i18n.T(i18n.ErrorLegacyPlanChanged))
+		return pderr.NewT(pderr.Declined, legacyOp, i18n.ErrorLegacyPlanChanged)
 	case legacy.HashInputsDiffer:
-		return pderr.New(pderr.Declined, legacyOp, i18n.T(i18n.ErrorLegacyPlanFlags))
+		return pderr.NewT(pderr.Declined, legacyOp, i18n.ErrorLegacyPlanFlags)
 	}
 	return nil
 }
@@ -365,19 +365,19 @@ func (o *Orchestrator) legacyPlan(ctx context.Context, root *state.Root, opts Le
 		boundOrg: map[string]ids.OrgID{}, leftIn: map[string]legacy.LeftoverInput{}}
 	for name := range opts.Aliases {
 		if name != ids.DefaultFolder && lp.folder(name) == nil {
-			return nil, pderr.New(pderr.Usage, legacyOp, "--legacy-alias names "+name+", which is not a folder next to Claude")
+			return nil, pderr.NewT(pderr.Usage, legacyOp, i18n.ErrLegacyAliasNotFolder, name)
 		}
 	}
 	for _, name := range opts.Exclude {
 		if name != ids.DefaultFolder && lp.folder(name) == nil {
-			return nil, pderr.New(pderr.Usage, legacyOp, "--legacy-exclude names "+name+", which is not a folder next to Claude")
+			return nil, pderr.NewT(pderr.Usage, legacyOp, i18n.ErrLegacyExcludeNotFolder, name)
 		}
 	}
 	var hint *legacy.Hint
 	if opts.HintPath != "" {
 		h, warn, err := legacy.ReadHint(opts.HintPath)
 		if err != nil {
-			return nil, pderr.New(pderr.Usage, legacyOp, "--legacy-state: "+err.Error())
+			return nil, pderr.NewT(pderr.Usage, legacyOp, i18n.ErrLegacyState, err.Error())
 		}
 		hint, lp.hintWarn, lp.hintGiven = h, warn, true
 	}
@@ -977,7 +977,7 @@ func (o *Orchestrator) legacyRegister(ctx context.Context, root *state.Root, lp 
 		return err
 	}
 	if len(names) > 0 {
-		o.progressNaming(P10Commit, "ok", fmt.Sprintf("registered %d profile(s)", len(names)), toAliases(names)...)
+		o.progressNaming(P10Commit, "ok", i18n.Tx(i18n.ProgressP10Registered, len(names)), toAliases(names)...)
 	}
 	// A6: markers; a failure leaves that profile's bases invalid (union).
 	for _, p := range marked {
@@ -1198,7 +1198,7 @@ func (o *Orchestrator) quarantineFolder(ctx context.Context, root *state.Root, l
 	// Q4.
 	if moved == 0 {
 		if _, err := d.Gens.DeleteUnmoved(n); err != nil {
-			o.progress(P10Commit, "warn", "an empty backup generation could not be removed")
+			o.progress(P10Commit, "warn", i18n.Tx(i18n.ProgressP10EmptyGenerationKept))
 		}
 	} else {
 		root.Generations = append(root.Generations, state.GenerationRef{N: n, RunID: runID, Target: fp.Alias, At: o.now(), Purpose: gen.PurposeLegacyQuarantine})

@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/kazupc/paritydesk/internal/app"
 	"github.com/kazupc/paritydesk/internal/compat"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/jsonx"
 	"github.com/kazupc/paritydesk/internal/model"
@@ -160,7 +160,7 @@ func holdTrusted(folder string, prefs []string) bool {
 // only (the quit veto then protects working sessions, and doctor says
 // so). Warnings about stale sessions, a short log and a log that could
 // not be read are added once.
-func (r *run) busyNow(ctx context.Context) (app.BusyReport, []string) {
+func (r *run) busyNow(ctx context.Context) (app.BusyReport, []i18n.Text) {
 	procs, err := r.d().App.Running(ctx, r.bundle.Path)
 	if err != nil || len(procs) == 0 {
 		return app.BusyReport{}, nil
@@ -175,25 +175,25 @@ func (r *run) busyNow(ctx context.Context) (app.BusyReport, []string) {
 	r.busyTitles = titles
 	if lg == busyLogUnread && ctx.Err() == nil && !r.warnedBusyLog {
 		r.warnedBusyLog = true
-		r.warn(P0Preflight, txtWarnBusyLogUnreadable)
+		r.warn(P0Preflight, i18n.Tx(i18n.WarnBusyLogUnreadable))
 	}
 	now := r.o.now()
-	var lines []string
+	var lines []i18n.Text
 	for _, s := range rep.Working {
 		title := busyTitle(titles, s.ID)
 		if s.StartedAt.IsZero() {
-			lines = append(lines, fmt.Sprintf(txtConfirmBusyLineNoTime, title, maskSession(s.ID)))
+			lines = append(lines, i18n.Tx(i18n.ConfirmBusyLineNoTime, title, maskSession(s.ID)))
 			continue
 		}
-		lines = append(lines, fmt.Sprintf(txtConfirmBusyLine, title, maskSession(s.ID), humanAge(now.Sub(s.StartedAt))))
+		lines = append(lines, i18n.Tx(i18n.ConfirmBusyLine, title, maskSession(s.ID), humanAge(now.Sub(s.StartedAt))))
 	}
 	if len(rep.Stale) > 0 && !r.warnedStale {
 		r.warnedStale = true
-		r.warn(P0Preflight, fmt.Sprintf(txtWarnBusyStale, len(rep.Stale), humanAge(r.staleAfter())))
+		r.warn(P0Preflight, i18n.Tx(i18n.WarnBusyStale, len(rep.Stale), humanAge(r.staleAfter())))
 	}
 	if rep.Truncated && !r.warnedTruncated {
 		r.warnedTruncated = true
-		r.warn(P0Preflight, txtWarnBusyTruncated)
+		r.warn(P0Preflight, i18n.Tx(i18n.WarnBusyTruncated))
 	}
 	return rep, lines
 }
@@ -208,12 +208,12 @@ func (r *run) staleAfter() time.Duration {
 
 // busyTitle returns the sanitized title of a session, or the untitled
 // text for a session without a Code record (a Cowork session).
-func busyTitle(titles map[ids.SessionID]string, id ids.SessionID) string {
+func busyTitle(titles map[ids.SessionID]string, id ids.SessionID) i18n.Text {
 	t, ok := titles[id]
 	if !ok {
-		return txtConfirmBusyUntitled
+		return i18n.Tx(i18n.ConfirmBusyUntitled)
 	}
-	return sanitizeTitle(t)
+	return i18n.Raw(sanitizeTitle(t))
 }
 
 // busyViews builds the --json busy list: working sessions, then stale
@@ -221,7 +221,7 @@ func busyTitle(titles map[ids.SessionID]string, id ids.SessionID) string {
 func busyViews(rep app.BusyReport, titles map[ids.SessionID]string, now time.Time) []BusyView {
 	var out []BusyView
 	add := func(s app.BusySession, stale bool) {
-		v := BusyView{Session: maskSession(s.ID), Title: render.Sanitize(busyTitle(titles, s.ID), 80), Stale: stale}
+		v := BusyView{Session: maskSession(s.ID), Title: render.Sanitize(busyTitle(titles, s.ID).English(), 80), Stale: stale}
 		if !s.StartedAt.IsZero() {
 			v.WorkingForS = int64(max(0, now.Sub(s.StartedAt)) / time.Second)
 			v.StartedKnown = true
@@ -289,10 +289,10 @@ func (r *run) checkBusyP0(ctx context.Context) error {
 		}
 		return nil
 	case r.opts.FromRunner:
-		r.warn(P0Preflight, fmt.Sprintf(txtWarnBusyPreview, len(rep.Working), humanAge(r.o.quitTimeout())))
+		r.warn(P0Preflight, i18n.Tx(i18n.WarnBusyPreview, len(rep.Working), humanAge(r.o.quitTimeout())))
 		return nil
 	}
-	return pderr.New(pderr.SessionsBusy, "preflight", fmt.Sprintf("%d Code session(s) are still working", len(rep.Working)))
+	return pderr.NewT(pderr.SessionsBusy, "preflight", i18n.ErrPreflightSessionsBusy, len(rep.Working))
 }
 
 // waitBusy is the P3 busy wait. It waits up to quit_timeout for the
@@ -310,7 +310,7 @@ func (r *run) waitBusy(ctx context.Context) error {
 		if n == 0 {
 			return nil
 		}
-		busyErr := pderr.New(pderr.SessionsBusy, "quit", fmt.Sprintf("%d Code session(s) are still working; Claude was not asked to quit", n))
+		busyErr := pderr.NewT(pderr.SessionsBusy, "quit", i18n.ErrQuitSessionsBusy, n)
 		if r.interactive {
 			grown := false
 			for _, id := range sessionIDs(rep.Working) {
@@ -326,7 +326,7 @@ func (r *run) waitBusy(ctx context.Context) error {
 			}
 			if !r.o.now().Before(deadline) {
 				c := Confirmation{Kind: ConfirmBusyStill,
-					Lines: append(lines, fmt.Sprintf(txtConfirmBusyWaited, humanAge(r.o.quitTimeout())))}
+					Lines: append(lines, i18n.Tx(i18n.ConfirmBusyWaited, humanAge(r.o.quitTimeout())))}
 				ok, err := d.UI.Confirm(ctx, c)
 				if err != nil {
 					return err
@@ -338,7 +338,7 @@ func (r *run) waitBusy(ctx context.Context) error {
 			}
 			if now := r.o.now(); lastProgress.IsZero() || now.Sub(lastProgress) >= busyProgressEvery {
 				lastProgress = now
-				r.o.progress(P3Quit, "wait", fmt.Sprintf(txtProgressBusyWait, n))
+				r.o.progress(P3Quit, "wait", i18n.Tx(i18n.ProgressP3BusyWait, n))
 			}
 		} else if !r.o.now().Before(deadline) {
 			return busyErr

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/plan"
 )
@@ -46,7 +47,7 @@ func TestScratchSummaryCounts(t *testing.T) {
 	}
 	// Every scratch op is in the entering replica's own scope here: no
 	// preview notice.
-	for _, l := range ScratchNotices(p, "a", "b") {
+	for _, l := range i18n.Strings(i18n.English, ScratchNotices(p, "a", "b")) {
 		if strings.Contains(l, "Browser pane") {
 			t.Error("preview notice for the account's own workspace")
 		}
@@ -95,7 +96,7 @@ func TestScratchLimitNotices(t *testing.T) {
 		},
 		ScratchNotes: &plan.ScratchNotes{MaxFilesPerWorkspace: 20000, MaxWorkspaceBytes: 2 << 30, MaxRunBytes: 8 << 30, MaxRunFiles: 50000},
 	}
-	lines := ScratchNotices(p, "home", "work")
+	lines := i18n.Strings(i18n.English, ScratchNotices(p, "home", "work"))
 	joined := strings.Join(lines, "\n")
 	for _, want := range []string{
 		"Scratch workspace scratch-2026-01-02-0a0b0c was not carried: it is over the limit of 20000 files or 2.0 GiB.",
@@ -116,14 +117,14 @@ func TestScratchLimitNotices(t *testing.T) {
 	// Without ScratchNotes (a plan read from a file) the limit lines are
 	// left out, the others stay.
 	p.ScratchNotes = nil
-	joined = strings.Join(ScratchNotices(p, "home", "work"), "\n")
+	joined = strings.Join(i18n.Strings(i18n.English, ScratchNotices(p, "home", "work")), "\n")
 	if strings.Contains(joined, "over the limit") || strings.Contains(joined, "per-switch limit") || !strings.Contains(joined, "dependency, build") {
 		t.Errorf("without limits:\n%s", joined)
 	}
 	// Not enough free space: the row was left out with the check's numbers.
 	p = &plan.Plan{Skipped: map[model.RowID]string{model.RowScratch: ReasonScratchSpace},
 		ScratchNotes: &plan.ScratchNotes{NeedBytes: 3 << 30, FreeBytes: 1 << 30}}
-	if got := strings.Join(ScratchNotices(p, "home", "work"), "\n"); !strings.Contains(got, "may need 3.0 GiB and only 1.0 GiB is free") {
+	if got := strings.Join(i18n.Strings(i18n.English, ScratchNotices(p, "home", "work")), "\n"); !strings.Contains(got, "may need 3.0 GiB and only 1.0 GiB is free") {
 		t.Errorf("no space: %q", got)
 	}
 }

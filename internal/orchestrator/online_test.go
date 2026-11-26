@@ -428,7 +428,7 @@ func TestOnlineStatusAndDoctor(t *testing.T) {
 			got = &checks[i]
 		}
 	}
-	if got == nil || got.Status != "ok" || got.Detail != "Waiting changes in Claude: pending" {
+	if got == nil || got.Status != "ok" || got.Detail.English() != "Waiting changes in Claude: pending" {
 		t.Fatalf("doctor online %+v", got)
 	}
 	w.paths.SupportDir = filepath.Join(w.home, "elsewhere")

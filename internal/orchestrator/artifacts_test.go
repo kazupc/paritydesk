@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/kazupc/paritydesk/internal/config"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/online"
@@ -50,7 +51,9 @@ func (f *fakeArtifacts) RemoveProfile(_ context.Context, a ids.Alias) error {
 	f.removes = append(f.removes, a)
 	return nil
 }
-func (f *fakeArtifacts) Doctor() (int, string, error) { return 3, "off (capture only)", f.doctorErr }
+func (f *fakeArtifacts) Doctor() (int, i18n.Text, error) {
+	return 3, i18n.Raw("off (capture only)"), f.doctorErr
+}
 
 func artifactsEnv(t *testing.T) (*env, *fakeArtifacts) {
 	t.Helper()

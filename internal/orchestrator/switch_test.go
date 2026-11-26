@@ -12,6 +12,7 @@ import (
 
 	"github.com/kazupc/paritydesk/internal/app"
 	"github.com/kazupc/paritydesk/internal/compat"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -173,8 +174,8 @@ func TestBusyAtP0(t *testing.T) {
 		if err != nil || e.app.quits != 1 {
 			t.Fatalf("err = %v, quits %d", err, e.app.quits)
 		}
-		if !slices.ContainsFunc(res.Warnings, func(w string) bool { return strings.Contains(w, "the switch waits up to 1m for them") }) {
-			t.Errorf("warnings %q", res.Warnings)
+		if !slices.ContainsFunc(i18n.Strings(i18n.English, res.Warnings), func(w string) bool { return strings.Contains(w, "the switch waits up to 1m for them") }) {
+			t.Errorf("warnings %q", i18n.Strings(i18n.English, res.Warnings))
 		}
 		if e.clk.Now().Sub(start) < busyPoll {
 			t.Error("did not wait at P3")
@@ -188,8 +189,8 @@ func TestBusyAtP0(t *testing.T) {
 		if err != nil || slices.Contains(e.ui.asked, ConfirmBusy) {
 			t.Fatalf("err %v asked %v", err, e.ui.asked)
 		}
-		if !slices.ContainsFunc(res.Warnings, func(w string) bool { return strings.Contains(w, "1 session(s) started a turn more than 6h00m ago") }) {
-			t.Errorf("warnings %q", res.Warnings)
+		if !slices.ContainsFunc(i18n.Strings(i18n.English, res.Warnings), func(w string) bool { return strings.Contains(w, "1 session(s) started a turn more than 6h00m ago") }) {
+			t.Errorf("warnings %q", i18n.Strings(i18n.English, res.Warnings))
 		}
 	})
 	t.Run("Counted is true for Code records only", func(t *testing.T) {
@@ -210,8 +211,8 @@ func TestBusyAtP0(t *testing.T) {
 		e := newEnv(t)
 		e.app.busySeq = []app.BusyReport{{Truncated: true}}
 		res, err := e.orch().Switch(context.Background(), yes("b"))
-		if err != nil || !slices.Contains(res.Warnings, txtWarnBusyTruncated) {
-			t.Fatalf("err %v warnings %q", err, res.Warnings)
+		if err != nil || !slices.Contains(i18n.Strings(i18n.English, res.Warnings), i18n.En(i18n.WarnBusyTruncated)) {
+			t.Fatalf("err %v warnings %q", err, i18n.Strings(i18n.English, res.Warnings))
 		}
 	})
 }
@@ -780,8 +781,8 @@ func TestReopenSkipsSessionNotInTarget(t *testing.T) {
 	if len(e.app.opened) != 0 {
 		t.Errorf("opened %v", e.app.opened)
 	}
-	if !slices.ContainsFunc(res.Warnings, func(w string) bool { return strings.Contains(w, "not reopened") }) {
-		t.Errorf("warnings = %v", res.Warnings)
+	if !slices.ContainsFunc(i18n.Strings(i18n.English, res.Warnings), func(w string) bool { return strings.Contains(w, "not reopened") }) {
+		t.Errorf("warnings = %v", i18n.Strings(i18n.English, res.Warnings))
 	}
 }
 

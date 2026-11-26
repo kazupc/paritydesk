@@ -237,6 +237,17 @@ var onlineCases = []struct {
 				{ID: "r001", Kind: online.KindRead, Status: online.StatusDone},
 				{ID: "s000", Kind: online.KindSidebar, Status: online.StatusDone}}}
 	}},
+	{name: "online_decide", args: []string{"online", "decide", "--session", olSession, "--question", "pins", "--answer", "apply"},
+		setup: func(h *harness) {
+			h.publish(pinDraft(h.t, false))
+			h.nextJSON("--session", olSession)
+			h.recordProbe()
+			h.nextJSON("--session", olSession)
+		}},
+	{name: "online_retry", args: []string{"online", "retry", "--session", olSession}, setup: func(h *harness) {
+		h.publish(sidebarDraft(h.t, manifest7(h.t)))
+		h.nextJSON("--session", olSession)
+	}},
 	{name: "online_cancel", args: []string{"online", "cancel"}, setup: func(h *harness) {
 		h.publish(sidebarDraft(h.t, manifest7(h.t)))
 	}},
@@ -253,13 +264,13 @@ var onlineCases = []struct {
 	{name: "plan_only_pins", args: []string{"plan", "--only", "pins", "home"}, setup: func(h *harness) {
 		r := h.svc.runResult(fakePlan())
 		r.Online = &online.Summary{PinsAdd: 1, PinsRemove: 1, PinsKeep: 1, PinsBlocked: 1, PinsSource: "idb"}
-		r.Warnings = []string{i18n.T(i18n.OnlineWarnPinsFamilyBlocked, 1)}
+		r.Warnings = []i18n.Text{i18n.Tx(i18n.OnlineWarnPinsFamilyBlocked, 1)}
 		h.svc.result = r
 	}},
 	{name: "plan_pins_unreadable", args: []string{"plan", "home"}, setup: func(h *harness) {
 		r := h.svc.runResult(fakePlan())
 		r.Online = &online.Summary{Sidebar: 1, PinsSource: "none", PinsReason: "unsupported"}
-		r.Warnings = []string{i18n.T(i18n.OnlineWarnPinsUnreadable, "home"), i18n.T(i18n.OnlineWarnPinsReason, i18n.T(i18n.PinsReasonUnsupported))}
+		r.Warnings = []i18n.Text{i18n.Tx(i18n.OnlineWarnPinsUnreadable, "home"), i18n.Tx(i18n.OnlineWarnPinsReason, i18n.Tx(i18n.PinsReasonUnsupported))}
 		h.svc.result = r
 	}},
 	{name: "plan_pins_preview", args: []string{"plan", "home"}, setup: func(h *harness) {
@@ -274,12 +285,12 @@ var onlineCases = []struct {
 	}},
 	{name: "doctor_pins", args: []string{"doctor"}, setup: func(h *harness) {
 		h.svc.doctorChecks = []orchestrator.Check{
-			{ID: "pins", Status: "ok", Detail: i18n.T(i18n.DoctorOnlinePinsIDBCount, 3)},
-			{ID: "pins-mirror", Status: "warn", Detail: i18n.T(i18n.DoctorOnlinePinsMirrorDiffers)},
-			{ID: "pins", Status: "ok", Detail: i18n.T(i18n.DoctorOnlinePinsOff)},
-			{ID: "pins", Status: "warn", Detail: i18n.T(i18n.DoctorOnlinePinsMirrorCount, i18n.T(i18n.PinsReasonBlobWrapped), 3)},
-			{ID: "pins", Status: "warn", Detail: i18n.T(i18n.DoctorOnlinePinsUnavailableReason, i18n.T(i18n.PinsReasonUnsupported))},
-			{ID: "pins", Status: "fail", Detail: i18n.T(i18n.DoctorOnlinePinsStale)},
+			{ID: "pins", Status: "ok", Detail: i18n.Tx(i18n.DoctorOnlinePinsIDBCount, 3)},
+			{ID: "pins-mirror", Status: "warn", Detail: i18n.Tx(i18n.DoctorOnlinePinsMirrorDiffers)},
+			{ID: "pins", Status: "ok", Detail: i18n.Tx(i18n.DoctorOnlinePinsOff)},
+			{ID: "pins", Status: "warn", Detail: i18n.Tx(i18n.DoctorOnlinePinsMirrorCount, i18n.T(i18n.PinsReasonBlobWrapped), 3)},
+			{ID: "pins", Status: "warn", Detail: i18n.Tx(i18n.DoctorOnlinePinsUnavailableReason, i18n.T(i18n.PinsReasonUnsupported))},
+			{ID: "pins", Status: "fail", Detail: i18n.Tx(i18n.DoctorOnlinePinsStale)},
 		}
 	}},
 	{name: "status_online", args: []string{"status"}, setup: func(h *harness) {

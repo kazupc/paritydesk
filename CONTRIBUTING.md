@@ -214,19 +214,16 @@ with the real bundle id or with paths under the real
 Idiomatic Go, small functions, doc comments on exported identifiers,
 errors wrapped with context, table-driven tests. Code comments may cite
 the decision, finding and spike ids indexed in
-[docs/architecture.md](docs/architecture.md). Every message that
-`internal/cli` and `internal/render` print goes through `internal/i18n`;
-command and flag help text lives in the command tree in `internal/cli`.
-The progress, doctor and recover details built in `internal/orchestrator`
-are still English-only strings and move into the catalog with the v0.2
-translations. Printed text must stay ASCII-safe under `--ascii`.
+[docs/architecture.md](docs/architecture.md). Every message a person
+reads comes from the catalog in `internal/i18n` (see "Adding a message"
+below); command short texts and flag usages are catalog ids too. Printed
+text must stay ASCII-safe under `--ascii` (paritydesk then prints English).
 
 ## Capability claims
 
 The README claims a capability only after a runtime spike on the real app
 is recorded in `docs/adr/0003-online-reconcile.md` (decision D26).
 
-<!-- v0.2 anchor: busy -->
 ## Writing a log signal pattern
 
 Signal patterns in `internal/compat/manifests/*.toml` (`[signals]`) are
@@ -246,23 +243,36 @@ message after that header, and anchored at its start by the loader. So:
   fake ids only. Continuation lines of multi-line messages are never
   matched, because they can hold text Claude does not control.
 
-<!-- v0.2 anchor: fdscan -->
 The native open-file scan (`internal/fdscan`) calls libSystem through
 assembly trampolines and a linknamed `syscall.syscall6`; if a Go release
 ever refuses that, build with `-tags pd_nofdscan` to compile the stub
 (paritydesk then uses `lsof`), and keep every native-only file behind
 `//go:build darwin && !pd_nofdscan` (the policy tests check it).
 
-<!-- v0.2 anchor: sidebar-offline -->
+## Adding a message
 
-<!-- v0.2 anchor: scratch -->
+Every text a person reads is a catalog message; the rules and the tests
+are in [docs/dev/i18n.md](docs/dev/i18n.md). In short:
 
-<!-- v0.2 anchor: online -->
-
-<!-- v0.2 anchor: pins -->
-
-<!-- v0.2 anchor: artifacts -->
-
-<!-- v0.2 anchor: legacy-adopt -->
-
-<!-- v0.2 anchor: i18n-ja -->
+- Add the id and the English text to `internal/i18n/catalog.go`, and the
+  Japanese to `internal/i18n/catalog_ja.go` at the same place (the files
+  keep the same order; the style rules and the glossary are the comment
+  at the top of `catalog_ja.go`). `hook.*`, `guard.*` and `notify.*` ids
+  are English only.
+- Pass values as arguments of a format, never by joining strings, and
+  keep catalog text out of `Printer.Line` (use `Printer.Msg` or
+  `Printer.Text`; `Line` takes a constant format for data).
+- Errors a person can act on use `pderr.NewT` or `pderr.WrapT`; a broken
+  invariant is `pderr.Bug` or `pderr.Bugf` (English). A package-level
+  sentinel a person reads is an `i18n.NewErr`.
+- Fields that reach people (`Detail`, `Message`, `Warnings`, `Lines`,
+  `Actions`, `Problem`) hold `i18n.Text`; JSON encodes them in English.
+- Run `go test ./internal/i18n ./internal/policy` (completeness, verbs,
+  layout, protected tokens, style, order) and regenerate the goldens with
+  `go test ./internal/cli ./internal/render -run Golden -update`, then read
+  the diff, including `testdata/ja/`.
+- Tests write Japanese only as `\u` escapes; only `catalog_ja.go`,
+  `README.ja.md` and the `testdata/ja/` goldens hold Japanese letters.
+- Maintainers add the kana and kanji forms of every personal label to the
+  private deny-list too: the Japanese check compares every window of the
+  Japanese files with them.

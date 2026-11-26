@@ -31,7 +31,7 @@ func (e *env) service(ctx context.Context, ui orchestrator.UI) (orchestrator.Ser
 func (e *env) emit(v any, text func(p *render.Printer), err error) error {
 	p := e.printer()
 	if p.Mode.JSON {
-		if jerr := p.JSON(v); jerr != nil {
+		if jerr := p.JSON(withDisplay(v, i18n.DisplayLang())); jerr != nil {
 			return jerr
 		}
 		if err != nil {
@@ -52,9 +52,9 @@ func resultErr(op string, code pderr.Code, err error) error {
 }
 
 // warn prints sanitized warnings on stderr.
-func warn(p *render.Printer, ws []string) {
+func warn(p *render.Printer, ws []i18n.Text) {
 	for _, w := range ws {
-		p.Warn(w)
+		p.WarnText(w)
 	}
 }
 
@@ -69,7 +69,7 @@ func runPlan(ctx context.Context, e *env, fs *flag.FlagSet, args []string) error
 	}
 	invoking := getString(fs, flagInvokingSession)
 	if invoking != "" && !ids.IsUUID(invoking) {
-		return usageErrorf("--%s must be a session UUID", flagInvokingSession)
+		return usageError(i18n.UsageSessionUuid, flagInvokingSession)
 	}
 	svc, err := e.service(ctx, e.newUI(false, false))
 	if err != nil {
@@ -83,14 +83,14 @@ func runPlan(ctx context.Context, e *env, fs *flag.FlagSet, args []string) error
 	v := newRunView(res)
 	v.Saved = &save
 	return e.emit(v, func(p *render.Printer) {
-		p.Lines(v.Lines)
+		p.Lines(v.HumanLines())
 		p.Lines(v.humanBusy)
 		warn(p, v.Warnings)
 		switch {
 		case !save:
-			p.Line(i18n.T(i18n.PlanNotSaved))
+			p.Msg(i18n.PlanNotSaved)
 		default:
-			p.Line(i18n.T(i18n.PlanSaved))
+			p.Msg(i18n.PlanSaved)
 		}
 	}, resultErr("plan", res.Code, err))
 }
@@ -118,25 +118,25 @@ func runSwitch(ctx context.Context, e *env, fs *flag.FlagSet, args []string) err
 	return e.emit(v, func(p *render.Printer) {
 		switch {
 		case v.Detached:
-			p.Line(i18n.T(i18n.SwitchDetached, "%s"), v.Run)
+			p.Msg(i18n.SwitchDetached, v.Run)
 		case v.QuitPending:
-			p.Line(i18n.T(i18n.SwitchQuitPending))
+			p.Msg(i18n.SwitchQuitPending)
 		case v.Code == pderr.Declined:
 			// The plan was shown with the question; the error says the rest.
 		default:
-			p.Lines(v.Lines)
+			p.Lines(v.HumanLines())
 			p.Lines(v.humanBusy)
 			if v.Code == pderr.OK || v.Code == pderr.SwapOnly || v.Code == pderr.Degraded {
-				p.Line(i18n.T(i18n.SwitchDone, "%s", "%s"), string(v.From), string(v.To))
+				p.Msg(i18n.SwitchDone, string(v.From), string(v.To))
 			}
 			if v.Mode != "" {
-				p.Line(i18n.T(i18n.SwitchMode, "%s"), string(v.Mode))
+				p.Msg(i18n.SwitchMode, string(v.Mode))
 			}
 			if v.Generation > 0 {
-				p.Line(i18n.T(i18n.SwitchGeneration, v.Generation))
+				p.Msg(i18n.SwitchGeneration, v.Generation)
 			}
 			if v.Online != nil && v.Online.Queued {
-				p.Line("%s", i18n.T(i18n.SwitchOnlineNext))
+				p.Msg(i18n.SwitchOnlineNext)
 			}
 		}
 		warn(p, v.Warnings)
@@ -156,7 +156,7 @@ func finishJob(e *env, opts orchestrator.SwitchOptions, res *orchestrator.Result
 		return
 	}
 	if err := writeJobResult(e, id, res); err != nil {
-		e.printer().Warn(i18n.T(i18n.SwitchJobResult))
+		e.printer().WarnText(i18n.Tx(i18n.SwitchJobResult))
 	}
 }
 
@@ -187,7 +187,7 @@ func runSync(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 		NoLaunch:       getBool(fs, orchestrator.FlagNoLaunch),
 	}
 	if opts.AllowDeletions < 0 {
-		return usageErrorf("--%s must not be negative", orchestrator.FlagAllowDeletions)
+		return usageError(i18n.UsageNegative, orchestrator.FlagAllowDeletions)
 	}
 	ui := e.newUI(opts.Yes, getBool(fs, flagJSONProgress))
 	svc, err := e.service(ctx, ui)
@@ -201,12 +201,12 @@ func runSync(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 	e.writeRunLog(res, ui.events)
 	v := newRunView(res)
 	return e.emit(v, func(p *render.Printer) {
-		p.Lines(v.Lines)
+		p.Lines(v.HumanLines())
 		if v.Code == pderr.OK {
-			p.Line(i18n.T(i18n.SyncDone, "%s"), string(v.To))
+			p.Msg(i18n.SyncDone, string(v.To))
 		}
 		if v.Online != nil && v.Online.Queued {
-			p.Line("%s", i18n.T(i18n.SwitchOnlineNext))
+			p.Msg(i18n.SwitchOnlineNext)
 		}
 		warn(p, v.Warnings)
 	}, resultErr("sync", res.Code, err))
@@ -233,7 +233,7 @@ func runVerify(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error 
 	after := getString(fs, orchestrator.FlagAfterRun)
 	if after != "" {
 		if !runner.ValidRunID(after) {
-			return usageErrorf("--%s is not a run id", orchestrator.FlagAfterRun)
+			return usageError(i18n.UsageBadRunID, orchestrator.FlagAfterRun)
 		}
 		res, err = svc.VerifyAfter(ctx, after)
 		// The background job writes its result so the runner can reap it.
@@ -265,27 +265,27 @@ func runVerify(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error 
 	v.Code = pderr.CodeOf(err)
 	return e.emit(v, func(p *render.Printer) {
 		if len(v.Replaced) > 0 {
-			p.Line(i18n.T(i18n.VerifyReplaced, "%s"), joinRows(v.Replaced))
+			p.Msg(i18n.VerifyReplaced, joinRows(v.Replaced))
 		}
 		if len(v.Unverified) > 0 {
-			p.Line(i18n.T(i18n.VerifyUnverified, "%s"), joinRows(v.Unverified))
+			p.Msg(i18n.VerifyUnverified, joinRows(v.Unverified))
 		}
 		switch {
 		case len(v.Drift) > 0:
-			p.Line(i18n.T(i18n.VerifyDrift, "%s"), joinRows(v.Drift))
+			p.Msg(i18n.VerifyDrift, joinRows(v.Drift))
 		case !v.SignInNeeded:
-			p.Line(i18n.T(i18n.VerifyOK))
+			p.Msg(i18n.VerifyOK)
 		}
 		if v.SignInNeeded {
-			p.Line(i18n.T(i18n.VerifySignIn))
+			p.Msg(i18n.VerifySignIn)
 		}
 		if v.SessionFocused {
-			p.Line(i18n.T(i18n.VerifyFocused))
+			p.Msg(i18n.VerifyFocused)
 		}
 		// Claude in Chrome connects on first use, not at launch, so no
 		// connection line is no sign of a problem: only a seen one is shown.
 		if v.BridgeSeen {
-			p.Line(i18n.T(i18n.VerifyBridge))
+			p.Msg(i18n.VerifyBridge)
 		}
 	}, err)
 }
@@ -309,19 +309,19 @@ func runRecover(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error
 		return orInternal(err, "recover")
 	}
 	v := *res
-	v.Actions = sanitizeAll(v.Actions)
+	v.Actions = sanitizeTexts(v.Actions)
 	if v.Actions == nil {
-		v.Actions = []string{}
+		v.Actions = []i18n.Text{}
 	}
 	return e.emit(v, func(p *render.Printer) {
 		if len(v.Actions) == 0 {
-			p.Line(i18n.T(i18n.RecoverNone))
+			p.Msg(i18n.RecoverNone)
 		}
 		for _, a := range v.Actions {
-			p.Line(i18n.T(i18n.RecoverAction, "%s"), a)
+			p.Msg(i18n.RecoverAction, a)
 		}
 		if v.Active != "" {
-			p.Line(i18n.T(i18n.RecoverActive, "%s"), string(v.Active))
+			p.Msg(i18n.RecoverActive, string(v.Active))
 		}
 	}, err)
 }
@@ -343,9 +343,9 @@ func runRollback(ctx context.Context, e *env, fs *flag.FlagSet, args []string) e
 	v := *res
 	v.Conflicts = sanitizeAll(v.Conflicts)
 	return e.emit(v, func(p *render.Printer) {
-		p.Line(i18n.T(i18n.RollbackDone, v.Generation, v.Restored))
+		p.Msg(i18n.RollbackDone, v.Generation, v.Restored)
 		for _, c := range v.Conflicts {
-			p.Line(i18n.T(i18n.RollbackConflict, "%s"), c)
+			p.Msg(i18n.RollbackConflict, c)
 		}
 	}, err)
 }
@@ -358,7 +358,7 @@ func runRebase(ctx context.Context, e *env, _ *flag.FlagSet, _ []string) error {
 	if err := svc.Rebase(ctx); err != nil {
 		return err
 	}
-	return e.emit(okView{OK: true}, func(p *render.Printer) { p.Line(i18n.T(i18n.RebaseDone)) }, nil)
+	return e.emit(okView{OK: true}, func(p *render.Printer) { p.Msg(i18n.RebaseDone) }, nil)
 }
 
 func runStatus(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
@@ -384,45 +384,45 @@ func printStatus(p *render.Printer, s *orchestrator.Status, short bool) {
 		}
 		switch {
 		case s.NeedsRecover:
-			p.Line(i18n.T(i18n.StatusNeedsRecover) + tail)
+			p.Line("%s%s", p.Render(i18n.Tx(i18n.StatusNeedsRecover), 0), tail)
 		case s.Active != "":
-			p.Line(i18n.T(i18n.StatusActive, "%s")+tail, string(s.Active))
+			p.Line("%s%s", p.Render(i18n.Tx(i18n.StatusActive, string(s.Active)), 0), tail)
 		default:
-			p.Line(i18n.T(i18n.StatusNoActive) + tail)
+			p.Line("%s%s", p.Render(i18n.Tx(i18n.StatusNoActive), 0), tail)
 		}
 		return
 	}
 	if s.Active != "" {
-		p.Line(i18n.T(i18n.StatusActive, "%s"), string(s.Active))
+		p.Msg(i18n.StatusActive, string(s.Active))
 	} else {
-		p.Line(i18n.T(i18n.StatusNoActive))
+		p.Msg(i18n.StatusNoActive)
 	}
 	if s.Previous != "" {
-		p.Line(i18n.T(i18n.StatusPrevious, "%s"), string(s.Previous))
+		p.Msg(i18n.StatusPrevious, string(s.Previous))
 	}
 	if len(s.Profiles) > 0 {
 		printProfiles(p, s.Profiles)
 	}
 	if s.AppRunning {
-		p.Line(i18n.T(i18n.StatusAppRunning))
+		p.Msg(i18n.StatusAppRunning)
 	}
 	if s.NeedsRecover {
-		p.Line(i18n.T(i18n.StatusNeedsRecover))
+		p.Msg(i18n.StatusNeedsRecover)
 	}
 	if s.UpdateStaged {
-		p.Line(i18n.T(i18n.StatusUpdate))
+		p.Msg(i18n.StatusUpdate)
 	}
 	if lv := s.LastVerify; lv != nil {
 		if lv.SignIn {
-			p.Line(i18n.T(i18n.StatusSignIn))
+			p.Msg(i18n.StatusSignIn)
 		}
 		if len(lv.Drift) > 0 {
-			p.Line(i18n.T(i18n.StatusDrift, "%s"), joinRows(lv.Drift))
+			p.Msg(i18n.StatusDrift, joinRows(lv.Drift))
 		}
 	}
-	p.Line(i18n.T(i18n.StatusGenerations, s.Generations))
+	p.Msg(i18n.StatusGenerations, s.Generations)
 	if o := s.Online; o.Pending() > 0 {
-		p.Line(i18n.T(i18n.OnlineStatusPending, o.Counts.PinsAdd, o.Counts.PinsRemove, o.Counts.Sidebar, "%s"), render.Sanitize(string(o.Profile), 32))
+		p.Msg(i18n.OnlineStatusPending, o.Counts.PinsAdd, o.Counts.PinsRemove, o.Counts.Sidebar, render.Sanitize(string(o.Profile), 32))
 	}
 	warn(p, s.Warnings)
 }
@@ -442,7 +442,7 @@ func printProfiles(p *render.Printer, ps []orchestrator.ProfileStatus) {
 	}
 	rows := make([][]string, len(ps))
 	for i, s := range ps {
-		rows[i] = []string{string(s.Alias), s.Folder, yn(s.Active), s.Account, yn(s.Managed), base(s.BaseValid), s.Problem}
+		rows[i] = []string{string(s.Alias), s.Folder, yn(s.Active), s.Account, yn(s.Managed), base(s.BaseValid), p.Render(s.Problem, 0)}
 	}
 	p.Table([]string{i18n.T(i18n.ColAlias), i18n.T(i18n.ColFolder), i18n.T(i18n.ColActive), i18n.T(i18n.ColAccount),
 		i18n.T(i18n.ColManaged), i18n.T(i18n.ColBase), i18n.T(i18n.ColProblem)}, rows)
@@ -468,7 +468,7 @@ func runProfileList(ctx context.Context, e *env, _ *flag.FlagSet, _ []string) er
 	s := normalizeStatus(st)
 	return e.emit(profilesView{Active: s.Active, Profiles: s.Profiles}, func(p *render.Printer) {
 		if len(s.Profiles) == 0 {
-			p.Line(i18n.T(i18n.ProfileNone))
+			p.Msg(i18n.ProfileNone)
 			return
 		}
 		printProfiles(p, s.Profiles)
@@ -478,16 +478,16 @@ func runProfileList(ctx context.Context, e *env, _ *flag.FlagSet, _ []string) er
 func runProfileAdopt(ctx context.Context, e *env, fs *flag.FlagSet, args []string) error {
 	if getBool(fs, flagFromLegacy) {
 		if len(args) > 0 {
-			return usageErrorf("profile adopt --from-legacy takes no arguments")
+			return usageError(i18n.UsageLegacyNoArgs)
 		}
 		return runProfileAdoptLegacy(ctx, e, fs)
 	}
 	if len(args) != 2 {
-		return usageErrorf("%s %s", fs.Name(), "<alias> <folder>")
+		return usageError(i18n.UsageSyntax, fs.Name(), "<alias> <folder>")
 	}
 	for _, name := range legacyOnlyFlags {
 		if flagSet(fs, name) {
-			return usageErrorf("--%s needs --%s", name, flagFromLegacy)
+			return usageError(i18n.UsageNeedsFlag, name, flagFromLegacy)
 		}
 	}
 	alias, err := parseAlias(args[0])
@@ -495,7 +495,7 @@ func runProfileAdopt(ctx context.Context, e *env, fs *flag.FlagSet, args []strin
 		return err
 	}
 	if err := ids.ValidateFolder(args[1]); err != nil {
-		return usageErrorf("%q is not a parked folder name (Claude-<name>)", args[1])
+		return usageError(i18n.UsageBadFolder, args[1])
 	}
 	managed, err := managedChoice(ctx, e, fs, alias)
 	if err != nil {
@@ -509,7 +509,7 @@ func runProfileAdopt(ctx context.Context, e *env, fs *flag.FlagSet, args []strin
 		return err
 	}
 	return e.emit(okView{OK: true, Alias: alias}, func(p *render.Printer) {
-		p.Line(i18n.T(i18n.ProfileAdopted, "%s"), string(alias))
+		p.Msg(i18n.ProfileAdopted, string(alias))
 	}, nil)
 }
 
@@ -530,8 +530,8 @@ func runProfileAdd(ctx context.Context, e *env, fs *flag.FlagSet, args []string)
 		return err
 	}
 	return e.emit(okView{OK: true, Alias: alias}, func(p *render.Printer) {
-		p.Line(i18n.T(i18n.ProfileAdded, "%s"), string(alias))
-		p.Line(i18n.T(i18n.ChromeSetup))
+		p.Msg(i18n.ProfileAdded, string(alias))
+		p.Msg(i18n.ChromeSetup)
 	}, nil)
 }
 
@@ -552,7 +552,7 @@ func runProfileRename(ctx context.Context, e *env, _ *flag.FlagSet, args []strin
 		return err
 	}
 	return e.emit(okView{OK: true, From: from, To: to}, func(p *render.Printer) {
-		p.Line(i18n.T(i18n.ProfileRenamed, "%s", "%s"), string(from), string(to))
+		p.Msg(i18n.ProfileRenamed, string(from), string(to))
 	}, nil)
 }
 
@@ -569,7 +569,7 @@ func runProfileRemove(ctx context.Context, e *env, _ *flag.FlagSet, args []strin
 		return err
 	}
 	return e.emit(okView{OK: true, Alias: alias}, func(p *render.Printer) {
-		p.Line(i18n.T(i18n.ProfileRemoved, "%s"), string(alias))
+		p.Msg(i18n.ProfileRemoved, string(alias))
 	}, nil)
 }
 
@@ -595,7 +595,8 @@ func runDoctor(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error 
 	if err != nil {
 		return err
 	}
-	checks, err := svc.Doctor(ctx, orchestrator.DoctorOptions{GrantAutomation: getBool(fs, "grant-automation")})
+	checks, err := svc.Doctor(ctx, orchestrator.DoctorOptions{GrantAutomation: getBool(fs, "grant-automation"),
+		Lang: e.ls.lang, LangForced: e.ls.forced})
 	if err != nil {
 		return err
 	}
@@ -604,8 +605,8 @@ func runDoctor(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error 
 	red := e.redactor()
 	v := doctorView{Checks: make([]orchestrator.Check, len(checks))}
 	for i, c := range checks {
-		v.Checks[i] = orchestrator.Check{ID: render.Sanitize(c.ID, 64), Status: render.Sanitize(c.Status, 8),
-			Detail: render.Sanitize(red.String(c.Detail), 300)}
+		detail := c.Detail.MapStrings(red.String).MapStrings(func(s string) string { return render.Sanitize(s, 0) }).Cut(300)
+		v.Checks[i] = orchestrator.Check{ID: render.Sanitize(c.ID, 64), Status: render.Sanitize(c.Status, 8), Detail: detail}
 	}
 	hookBinary, err := e.recordHookBinary()
 	if err != nil {
@@ -621,14 +622,15 @@ func runDoctor(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error 
 	return e.emit(v, func(p *render.Printer) {
 		rows := make([][]string, len(v.Checks))
 		for i, c := range v.Checks {
-			rows[i] = []string{c.ID, c.Status, c.Detail}
+			rows[i] = []string{c.ID, c.Status, p.Render(c.Detail, 0)}
 		}
-		p.Table([]string{i18n.T(i18n.ColCheck), i18n.T(i18n.ColStatus), i18n.T(i18n.ColDetail)}, rows)
+		p.TableWith([]string{i18n.T(i18n.ColCheck), i18n.T(i18n.ColStatus), i18n.T(i18n.ColDetail)}, rows,
+			render.TableOptions{FreeLast: true})
 		if v.HookBinary != "" {
-			p.Line(i18n.T(i18n.DoctorHookBinary, "%s"), v.HookBinary)
+			p.Msg(i18n.DoctorHookBinary, v.HookBinary)
 		}
 		if v.Bundle != "" {
-			p.Line(i18n.T(i18n.DoctorBundleDone, "%s"), v.Bundle)
+			p.Msg(i18n.DoctorBundleDone, v.Bundle)
 		}
 	}, nil)
 }
@@ -648,11 +650,11 @@ func managedChoice(ctx context.Context, e *env, fs *flag.FlagSet, alias ids.Alia
 	managed, unmanaged := getBool(fs, "managed"), getBool(fs, "unmanaged")
 	switch {
 	case managed && unmanaged:
-		return false, usageErrorf("--managed and --unmanaged exclude each other")
+		return false, usageError(i18n.UsageManagedBoth)
 	case managed || unmanaged:
 		return managed, nil
 	case !e.interactive():
-		return false, usageErrorf("--managed or --unmanaged is required when there is no terminal to ask")
+		return false, usageError(i18n.UsageManagedRequired)
 	}
 	return e.newUI(false, false).ask(ctx, i18n.T(i18n.AskManaged, string(alias)))
 }
@@ -661,7 +663,7 @@ func runInit(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 	raw := getString(fs, "alias")
 	if raw == "" {
 		if !e.interactive() {
-			return usageErrorf("--alias is required when there is no terminal to ask")
+			return usageError(i18n.UsageAliasRequired)
 		}
 		u := e.newUI(false, false)
 		_, _ = u.p.Out.Write([]byte(i18n.T(i18n.AskAlias)))
@@ -669,7 +671,7 @@ func runInit(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 		if err != nil {
 			return err
 		}
-		raw = strings.TrimSpace(line)
+		raw = foldAnswer(line)
 	}
 	alias, err := parseAlias(raw)
 	if err != nil {
@@ -677,7 +679,7 @@ func runInit(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 	}
 	label := getString(fs, "label")
 	if render.Sanitize(label, config.MaxLabelRunes) != label {
-		return usageErrorf("--label: at most %d printable characters", config.MaxLabelRunes)
+		return usageError(i18n.UsageLabelTooLong, config.MaxLabelRunes)
 	}
 	managed, err := managedChoice(ctx, e, fs, alias)
 	if err != nil {
@@ -687,7 +689,19 @@ func runInit(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 	if err != nil {
 		return err
 	}
-	if err := svc.Init(ctx, orchestrator.InitOptions{Alias: alias, Label: label, Managed: managed}); err != nil {
+	opts := orchestrator.InitOptions{Alias: alias, Label: label, Managed: managed}
+	langSaved, langHint := false, false
+	if res := e.ls.lang; res.Lang == i18n.Japanese {
+		switch res.Source {
+		case i18n.SourceEnv, i18n.SourceLocale:
+			opts.FallbackLang = i18n.Japanese
+			_, fb := e.readUI()
+			langSaved = fb == "" || strings.EqualFold(fb, config.LangAuto)
+		case i18n.SourceFlag:
+			langHint = true
+		}
+	}
+	if err := svc.Init(ctx, opts); err != nil {
 		return err
 	}
 	v := initView{OK: true, Alias: alias}
@@ -695,10 +709,16 @@ func runInit(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 		return err
 	}
 	return e.emit(v, func(p *render.Printer) {
-		p.Line(i18n.T(i18n.InitDone, "%s"), string(alias))
-		p.Line(i18n.T(i18n.ChromeSetup))
+		p.Msg(i18n.InitDone, string(alias))
+		p.Msg(i18n.ChromeSetup)
+		if langSaved {
+			p.Msg(i18n.InitLangSaved)
+		}
+		if langHint {
+			p.Msg(i18n.InitLangHint)
+		}
 		if v.HookBinary != "" {
-			p.Line(i18n.T(i18n.DoctorHookBinary, "%s"), v.HookBinary)
+			p.Msg(i18n.DoctorHookBinary, v.HookBinary)
 		}
 	}, nil)
 }
@@ -709,5 +729,5 @@ func orInternal(err error, op string) error {
 	if err != nil {
 		return err
 	}
-	return pderr.New(pderr.Internal, op, "no result")
+	return pderr.Bug(op, "no result")
 }

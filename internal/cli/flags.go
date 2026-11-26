@@ -47,13 +47,13 @@ func parseCategories(flagName, s string) ([]model.Category, error) {
 	for _, part := range strings.Split(s, ",") {
 		c := model.Category(strings.TrimSpace(part))
 		if c == model.CatArtifacts {
-			return nil, usageErrorf("--%s: artifacts are synced by /paritydesk:artifacts, not by switch", flagName)
+			return nil, usageError(i18n.UsageCategoryArtifacts, flagName)
 		}
 		if !slices.Contains(model.AllCategories, c) {
-			return nil, usageErrorf("--%s: unknown category %q (one of %s)", flagName, string(c), strings.Join(categoryNames(), ","))
+			return nil, usageError(i18n.UsageUnknownCategory, flagName, string(c), strings.Join(categoryNames(), ","))
 		}
 		if slices.Contains(out, c) {
-			return nil, usageErrorf("--%s: category %q given twice", flagName, string(c))
+			return nil, usageError(i18n.UsageCategoryTwice, flagName, string(c))
 		}
 		out = append(out, c)
 	}
@@ -70,13 +70,13 @@ func categoryOptions(fs *flag.FlagSet) (only, skip []model.Category, err error) 
 	}
 	for _, c := range only {
 		if slices.Contains(skip, c) {
-			return nil, nil, usageErrorf("category %q is in both --only and --skip", string(c))
+			return nil, nil, usageError(i18n.UsageCategoryOnlyAndSkip, string(c))
 		}
 	}
 	// Scratch workspaces follow the sessions that name them.
 	for _, c := range only {
 		if imp := model.ImpliedBy(c); imp != "" && !slices.Contains(only, imp) {
-			return nil, nil, usageErrorf("%s", i18n.T(i18n.CliOnlyScratch))
+			return nil, nil, usageError(i18n.CliOnlyScratch)
 		}
 	}
 	return only, skip, nil
@@ -86,7 +86,7 @@ func categoryOptions(fs *flag.FlagSet) (only, skip []model.Category, err error) 
 func parseAlias(s string) (ids.Alias, error) {
 	a, err := ids.ParseAlias(s)
 	if err != nil {
-		return "", usageErrorf("%q is not a profile alias (a-z, 0-9 and -, starting with a letter or digit)", s)
+		return "", usageError(i18n.UsageBadAlias, s)
 	}
 	return a, nil
 }
@@ -108,7 +108,7 @@ func parseGeneration(args []string) (uint64, error) {
 	}
 	n, err := strconv.ParseUint(args[0], 10, 64)
 	if err != nil {
-		return 0, usageErrorf("%q is not a generation number", args[0])
+		return 0, usageError(i18n.UsageBadGeneration, args[0])
 	}
 	return n, nil
 }
@@ -143,16 +143,16 @@ func switchOptions(fs *flag.FlagSet, args []string) (orchestrator.SwitchOptions,
 	// An empty --reopen-session means no reopen; anything else must be a
 	// Claude Code session id (a UUID).
 	if o.ReopenCLISession != "" && !ids.IsUUID(o.ReopenCLISession) {
-		return orchestrator.SwitchOptions{}, usageErrorf("--%s must be a session UUID", orchestrator.FlagReopenSession)
+		return orchestrator.SwitchOptions{}, usageError(i18n.UsageSessionUuid, orchestrator.FlagReopenSession)
 	}
 	if o.AllowDeletions < 0 {
-		return orchestrator.SwitchOptions{}, usageErrorf("--%s must not be negative", orchestrator.FlagAllowDeletions)
+		return orchestrator.SwitchOptions{}, usageError(i18n.UsageNegative, orchestrator.FlagAllowDeletions)
 	}
 	if o.LogOffset < -1 {
-		return orchestrator.SwitchOptions{}, usageErrorf("--%s must not be negative", orchestrator.FlagLogOffset)
+		return orchestrator.SwitchOptions{}, usageError(i18n.UsageNegative, orchestrator.FlagLogOffset)
 	}
 	if o.ConfirmedPlan != "" && !isHexHash(o.ConfirmedPlan) {
-		return orchestrator.SwitchOptions{}, usageErrorf("--%s must be the plan_hash printed by paritydesk plan --json", orchestrator.FlagConfirmedPlan)
+		return orchestrator.SwitchOptions{}, usageError(i18n.UsagePlanHash, orchestrator.FlagConfirmedPlan)
 	}
 	return o, nil
 }

@@ -28,49 +28,49 @@ var allowFlags = []string{"capabilities", "shared", "public", "restore", "create
 // and done are used by /paritydesk:artifacts.
 func artifactsGroup() *command {
 	hidden := func(c *command) *command { c.hidden = true; return c }
-	profileFlag := func(fs *flag.FlagSet) { fs.String("profile", "", "profile alias (default: the active profile)") }
+	profileFlag := func(fs *flag.FlagSet) { fs.String("profile", "", usage(i18n.FlagProfile)) }
 	return group("artifacts", "<status|plan|ingest|allow|skip|forget|import-legacy>",
-		"Keep claude.ai artifacts the same on every profile (beta)", false,
-		leaf("status", "", "Show the artifact archive", 0, 0, func(fs *flag.FlagSet) {
+		i18n.HelpArtifacts, false,
+		leaf("status", "", i18n.HelpArtifactsStatus, 0, 0, func(fs *flag.FlagSet) {
 			profileFlag(fs)
-			fs.Bool("all", false, "include forgotten and ignored artifacts")
-			fs.Bool("titles", false, "include titles in --json output")
+			fs.Bool("all", false, usage(i18n.FlagAll))
+			fs.Bool("titles", false, usage(i18n.FlagTitles))
 		}, runArtifactsStatus),
-		leaf("plan", "", "Preview what a sync on a profile would do (approximate)", 0, 0, profileFlag, runArtifactsPlan),
-		leaf("ingest", "", "Record a finished sync round now", 0, 0, nil, runArtifactsIngest),
-		leaf("allow", "[<id>]", "Decide about one artifact (Terminal only)", 0, 1, func(fs *flag.FlagSet) {
-			fs.Bool("capabilities", false, "sync it although it declares capabilities")
-			fs.Bool("shared", false, "publish to copies shared with other people")
-			fs.Bool("public", false, "publish to public copies (implies --shared)")
-			fs.Bool("restore", false, "create it again on a profile where it was deleted")
-			fs.Bool("create", false, "create it on a profile although the title is taken there")
-			fs.Bool("resume", false, "sync a skipped or ignored artifact again")
-			fs.Bool("rehome", false, "stop tracking a copy in an organization the profile no longer uses")
-			fs.Bool("roundtrip", false, "allow publishing again after a page read back differently")
+		leaf("plan", "", i18n.HelpArtifactsPlan, 0, 0, profileFlag, runArtifactsPlan),
+		leaf("ingest", "", i18n.HelpArtifactsIngest, 0, 0, nil, runArtifactsIngest),
+		leaf("allow", "[<id>]", i18n.HelpArtifactsAllow, 0, 1, func(fs *flag.FlagSet) {
+			fs.Bool("capabilities", false, usage(i18n.FlagCapabilities))
+			fs.Bool("shared", false, usage(i18n.FlagShared))
+			fs.Bool("public", false, usage(i18n.FlagPublic))
+			fs.Bool("restore", false, usage(i18n.FlagRestore))
+			fs.Bool("create", false, usage(i18n.FlagCreate))
+			fs.Bool("resume", false, usage(i18n.FlagResume))
+			fs.Bool("rehome", false, usage(i18n.FlagRehome))
+			fs.Bool("roundtrip", false, usage(i18n.FlagRoundtrip))
 			profileFlag(fs)
 			yesFlag(fs)
 		}, runArtifactsAllow),
-		leaf("skip", "<id>", "Stop syncing an artifact (it stays in the archive)", 1, 1, nil, runArtifactsSkip),
-		leaf("forget", "<id>", "Stop tracking an artifact (Terminal only)", 1, 1, yesFlag, runArtifactsForget),
-		leaf("import-legacy", "", "Import the artifact archive of an earlier folder-swap script", 0, 0, func(fs *flag.FlagSet) {
-			fs.String("from", "", "absolute path of the old archive folder (required)")
-			fs.Var(&multiFlag{}, "map", "<account-uuid>=<alias>; may be repeated")
-			fs.Bool("apply", false, "import (default: dry run; Terminal only)")
+		leaf("skip", "<id>", i18n.HelpArtifactsSkip, 1, 1, nil, runArtifactsSkip),
+		leaf("forget", "<id>", i18n.HelpArtifactsForget, 1, 1, yesFlag, runArtifactsForget),
+		leaf("import-legacy", "", i18n.HelpArtifactsImportLegacy, 0, 0, func(fs *flag.FlagSet) {
+			fs.String("from", "", usage(i18n.FlagFrom))
+			fs.Var(&multiFlag{}, "map", usage(i18n.FlagMap))
+			fs.Bool("apply", false, usage(i18n.FlagApply))
 			yesFlag(fs)
 		}, runArtifactsImport),
-		hidden(leaf("next", "", "Internal: the next calls of an artifact sync (used by /paritydesk:artifacts)", 0, 0, func(fs *flag.FlagSet) {
+		hidden(leaf("next", "", i18n.HelpArtifactsNext, 0, 0, func(fs *flag.FlagSet) {
 			callerFlags(fs)
-			fs.String("unavailable", "", "tools the session could not load, comma-separated")
-			fs.String("refused", "", "step ids whose call was declined, comma-separated")
-			fs.Bool("wait", false, "wait until the next calls can be made (at most 60 s)")
+			fs.String("unavailable", "", usage(i18n.FlagUnavailable))
+			fs.String("refused", "", usage(i18n.FlagRefused))
+			fs.Bool("wait", false, usage(i18n.FlagWait))
 		}, runArtifactsNext)),
-		hidden(leaf("decide", "", "Internal: record an answer (used by /paritydesk:artifacts)", 0, 0, func(fs *flag.FlagSet) {
+		hidden(leaf("decide", "", i18n.HelpArtifactsDecide, 0, 0, func(fs *flag.FlagSet) {
 			callerFlags(fs)
-			fs.String("question", "", "question id")
-			fs.String("answer", "", "option id")
+			fs.String("question", "", usage(i18n.FlagQuestion))
+			fs.String("answer", "", usage(i18n.FlagAnswer))
 		}, runArtifactsDecide)),
-		hidden(leaf("pause", "", "Internal: stop an artifact sync for now", 0, 0, callerFlags, runArtifactsPause)),
-		hidden(leaf("done", "", "Internal: finish an artifact sync (used by /paritydesk:artifacts)", 0, 0, callerFlags, runArtifactsDone)),
+		hidden(leaf("pause", "", i18n.HelpArtifactsPause, 0, 0, callerFlags, runArtifactsPause)),
+		hidden(leaf("done", "", i18n.HelpArtifactsDone, 0, 0, callerFlags, runArtifactsDone)),
 	)
 }
 
@@ -139,7 +139,7 @@ func realArtifacts(ctx context.Context, e *env) (*artifacts.Service, error) {
 
 // errTerminalOnly is the refusal of a decision leaf inside Claude (9.3).
 func errTerminalOnly() error {
-	return pderr.New(pderr.Usage, "artifacts", i18n.T(i18n.ArtifactsErrTerminalOnly))
+	return pderr.NewT(pderr.Usage, "artifacts", i18n.ArtifactsErrTerminalOnly)
 }
 
 // insideClaude reports the Claude environment (9.3).
@@ -154,14 +154,14 @@ func (e *env) confirmArtifacts(ctx context.Context, yes bool) artifacts.Confirm 
 		}
 		u := e.newUI(false, false)
 		if !u.interactive {
-			return pderr.New(pderr.Declined, "artifacts", i18n.T(i18n.ArtifactsErrNeedsYes))
+			return pderr.NewT(pderr.Declined, "artifacts", i18n.ArtifactsErrNeedsYes)
 		}
 		ok, err := u.ask(ctx, question)
 		if err != nil {
 			return err
 		}
 		if !ok {
-			return pderr.New(pderr.Declined, "confirm", i18n.T(i18n.Declined))
+			return pderr.NewT(pderr.Declined, "confirm", i18n.Declined)
 		}
 		return nil
 	}
@@ -175,7 +175,7 @@ func aliasFlag(fs *flag.FlagSet) (ids.Alias, error) {
 	}
 	a, err := ids.ParseAlias(s)
 	if err != nil {
-		return "", usageErrorf("--profile: %v", err)
+		return "", usageError(i18n.UsageProfileFlag, err)
 	}
 	return a, nil
 }
@@ -215,7 +215,7 @@ func runArtifactsStatus(ctx context.Context, e *env, fs *flag.FlagSet, _ []strin
 		for _, ig := range v.Ignored {
 			p.Line("%s  %s: %s", ids.Mask(string(ig.Slug)), string(ig.Profile), ig.Reason)
 		}
-		p.Lines(v.Lines)
+		p.Texts(v.Lines)
 	}, nil)
 }
 
@@ -234,7 +234,7 @@ func runArtifactsPlan(ctx context.Context, e *env, fs *flag.FlagSet, _ []string)
 		}
 	}
 	if a == "" {
-		return usageErrorf("--profile names the profile (no profile is active)")
+		return usageError(i18n.UsageProfileNoneActive)
 	}
 	v, err := svc.Plan(a)
 	if err != nil {
@@ -243,13 +243,13 @@ func runArtifactsPlan(ctx context.Context, e *env, fs *flag.FlagSet, _ []string)
 	return e.emit(v, func(p *render.Printer) {
 		p.Line("%s", i18n.T(i18n.ArtifactsPlanSummary,
 			len(v.Read), len(v.Publish), len(v.Create), len(v.Deleted), len(v.Skipped), v.NewHere))
-		p.Lines(v.Lines)
+		p.Texts(v.Lines)
 	}, nil)
 }
 
 func runArtifactsIngest(ctx context.Context, e *env, _ *flag.FlagSet, _ []string) error {
 	if e.readOnly() {
-		return pderr.New(pderr.Usage, "artifacts ingest", i18n.T(i18n.ArtifactsErrReadOnly))
+		return pderr.NewT(pderr.Usage, "artifacts ingest", i18n.ArtifactsErrReadOnly)
 	}
 	svc, err := e.artifactsService(ctx)
 	if err != nil {
@@ -259,7 +259,7 @@ func runArtifactsIngest(ctx context.Context, e *env, _ *flag.FlagSet, _ []string
 	if err != nil {
 		return err
 	}
-	return e.emit(v, func(p *render.Printer) { p.Lines(v.Lines) }, nil)
+	return e.emit(v, func(p *render.Printer) { p.Texts(v.Lines) }, nil)
 }
 
 func runArtifactsAllow(ctx context.Context, e *env, fs *flag.FlagSet, args []string) error {
@@ -273,20 +273,20 @@ func runArtifactsAllow(ctx context.Context, e *env, fs *flag.FlagSet, args []str
 		}
 	}
 	if len(what) != 1 {
-		return usageErrorf("artifacts allow takes exactly one of --%s", strings.Join(allowFlags, ", --"))
+		return usageError(i18n.UsageAllowOneOf, strings.Join(allowFlags, ", --"))
 	}
 	if what[0] == "roundtrip" && len(args) > 0 {
-		return usageErrorf("artifacts allow --roundtrip takes no id")
+		return usageError(i18n.UsageAllowRoundtripNoID)
 	}
 	if what[0] != "roundtrip" && len(args) != 1 {
-		return usageErrorf("artifacts allow <id> --%s", what[0])
+		return usageError(i18n.UsageAllowNeedsID, what[0])
 	}
 	a, err := aliasFlag(fs)
 	if err != nil {
 		return err
 	}
 	if e.readOnly() {
-		return pderr.New(pderr.Usage, "artifacts allow", i18n.T(i18n.ArtifactsErrReadOnly))
+		return pderr.NewT(pderr.Usage, "artifacts allow", i18n.ArtifactsErrReadOnly)
 	}
 	svc, err := e.artifactsService(ctx)
 	if err != nil {
@@ -304,13 +304,13 @@ func runArtifactsAllow(ctx context.Context, e *env, fs *flag.FlagSet, args []str
 		if v.Slug != "" {
 			p.Line("%s", v.Slug)
 		}
-		p.Lines(v.Lines)
+		p.Texts(v.Lines)
 	}, nil)
 }
 
 func runArtifactsSkip(ctx context.Context, e *env, _ *flag.FlagSet, args []string) error {
 	if e.readOnly() {
-		return pderr.New(pderr.Usage, "artifacts skip", i18n.T(i18n.ArtifactsErrReadOnly))
+		return pderr.NewT(pderr.Usage, "artifacts skip", i18n.ArtifactsErrReadOnly)
 	}
 	svc, err := e.artifactsService(ctx)
 	if err != nil {
@@ -320,7 +320,7 @@ func runArtifactsSkip(ctx context.Context, e *env, _ *flag.FlagSet, args []strin
 	if err != nil {
 		return err
 	}
-	return e.emit(v, func(p *render.Printer) { p.Lines(v.Lines) }, nil)
+	return e.emit(v, func(p *render.Printer) { p.Texts(v.Lines) }, nil)
 }
 
 func runArtifactsForget(ctx context.Context, e *env, fs *flag.FlagSet, args []string) error {
@@ -328,7 +328,7 @@ func runArtifactsForget(ctx context.Context, e *env, fs *flag.FlagSet, args []st
 		return errTerminalOnly()
 	}
 	if e.readOnly() {
-		return pderr.New(pderr.Usage, "artifacts forget", i18n.T(i18n.ArtifactsErrReadOnly))
+		return pderr.NewT(pderr.Usage, "artifacts forget", i18n.ArtifactsErrReadOnly)
 	}
 	svc, err := e.artifactsService(ctx)
 	if err != nil {
@@ -338,7 +338,7 @@ func runArtifactsForget(ctx context.Context, e *env, fs *flag.FlagSet, args []st
 	if err != nil {
 		return err
 	}
-	return e.emit(v, func(p *render.Printer) { p.Lines(v.Lines) }, nil)
+	return e.emit(v, func(p *render.Printer) { p.Texts(v.Lines) }, nil)
 }
 
 // mapFlagRE is one --map value.
@@ -351,18 +351,18 @@ func runArtifactsImport(ctx context.Context, e *env, fs *flag.FlagSet, _ []strin
 	}
 	from := getString(fs, "from")
 	if from == "" {
-		return usageErrorf("artifacts import-legacy needs --from <folder>")
+		return usageError(i18n.UsageImportLegacyFrom)
 	}
 	mapping := map[ids.AccountID]ids.Alias{}
 	for _, m := range getStrings(fs, "map") {
 		parts := mapFlagRE.FindStringSubmatch(m)
 		if parts == nil {
-			return usageErrorf("--map takes <account-uuid>=<alias>")
+			return usageError(i18n.UsageMapSyntax)
 		}
 		mapping[ids.AccountID(parts[1])] = ids.Alias(parts[2])
 	}
 	if apply && e.readOnly() {
-		return pderr.New(pderr.Usage, "artifacts import-legacy", i18n.T(i18n.ArtifactsErrReadOnly))
+		return pderr.NewT(pderr.Usage, "artifacts import-legacy", i18n.ArtifactsErrReadOnly)
 	}
 	svc, err := e.artifactsService(ctx)
 	if err != nil {
@@ -376,7 +376,7 @@ func runArtifactsImport(ctx context.Context, e *env, fs *flag.FlagSet, _ []strin
 	if err != nil {
 		return err
 	}
-	return e.emit(v, func(p *render.Printer) { p.Lines(v.Lines) }, nil)
+	return e.emit(v, func(p *render.Printer) { p.Texts(v.Lines) }, nil)
 }
 
 // refusedRE is one --refused step id.
@@ -384,8 +384,8 @@ var refusedRE = regexp.MustCompile(`^a[0-9]{3}$`)
 
 // hiddenNone is the `state: none` answer of a hidden leaf.
 func hiddenNone(e *env, m i18n.Msg) error {
-	v := artifacts.NextOut{State: online.StateNone, Calls: []online.Call{}, Tools: []string{}, Lines: []string{i18n.T(m)}}
-	return e.emit(v, func(p *render.Printer) { p.Lines(v.Lines) }, nil)
+	v := artifacts.NextOut{State: online.StateNone, Calls: []online.Call{}, Tools: []string{}, Lines: []i18n.Text{i18n.Tx(m)}}
+	return e.emit(v, func(p *render.Printer) { p.Texts(v.Lines) }, nil)
 }
 
 func runArtifactsNext(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
@@ -398,7 +398,7 @@ func runArtifactsNext(ctx context.Context, e *env, fs *flag.FlagSet, _ []string)
 		for _, t := range strings.Split(s, ",") {
 			t = strings.TrimSpace(t)
 			if !online.ValidTool(t) {
-				return usageErrorf("--unavailable takes tool names")
+				return usageError(i18n.UsageUnavailableSyntax)
 			}
 			a.Unavailable = append(a.Unavailable, t)
 		}
@@ -407,7 +407,7 @@ func runArtifactsNext(ctx context.Context, e *env, fs *flag.FlagSet, _ []string)
 		for _, id := range strings.Split(s, ",") {
 			id = strings.TrimSpace(id)
 			if !refusedRE.MatchString(id) {
-				return usageErrorf("--refused takes step ids such as a001")
+				return usageError(i18n.UsageRefusedSyntax)
 			}
 			a.Refused = append(a.Refused, online.StepID(id))
 		}
@@ -430,7 +430,7 @@ func runArtifactsNext(ctx context.Context, e *env, fs *flag.FlagSet, _ []string)
 		for _, call := range v.Calls {
 			p.Line("%s %s", string(call.ID), call.Tool)
 		}
-		p.Lines(v.Lines)
+		p.Texts(v.Lines)
 	}, nil)
 }
 
@@ -445,7 +445,7 @@ func hiddenLeaf(ctx context.Context, e *env, fs *flag.FlagSet, op string) (*arti
 		return nil, c, false, hiddenNone(e, i18n.ArtifactsErrOutsideApp)
 	}
 	if e.readOnly() {
-		return nil, c, false, pderr.New(pderr.Usage, op, i18n.T(i18n.ArtifactsErrReadOnly))
+		return nil, c, false, pderr.NewT(pderr.Usage, op, i18n.ArtifactsErrReadOnly)
 	}
 	svc, err := e.artifactsService(ctx)
 	return svc, c, err == nil, err
@@ -454,7 +454,7 @@ func hiddenLeaf(ctx context.Context, e *env, fs *flag.FlagSet, op string) (*arti
 func runArtifactsDecide(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 	question, answer := getString(fs, "question"), getString(fs, "answer")
 	if !answerRE.MatchString(question) || !answerRE.MatchString(answer) {
-		return usageErrorf("--question and --answer take ids")
+		return usageError(i18n.UsageQuestionAnswer)
 	}
 	svc, c, ok, err := hiddenLeaf(ctx, e, fs, "artifacts decide")
 	if !ok {
@@ -464,7 +464,7 @@ func runArtifactsDecide(ctx context.Context, e *env, fs *flag.FlagSet, _ []strin
 	if err != nil {
 		return err
 	}
-	return e.emit(v, func(p *render.Printer) { p.Lines(v.Lines) }, nil)
+	return e.emit(v, func(p *render.Printer) { p.Texts(v.Lines) }, nil)
 }
 
 func runArtifactsPause(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
@@ -476,7 +476,7 @@ func runArtifactsPause(ctx context.Context, e *env, fs *flag.FlagSet, _ []string
 	if err != nil {
 		return err
 	}
-	return e.emit(v, func(p *render.Printer) { p.Lines(v.Lines) }, nil)
+	return e.emit(v, func(p *render.Printer) { p.Texts(v.Lines) }, nil)
 }
 
 func runArtifactsDone(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
@@ -488,18 +488,18 @@ func runArtifactsDone(ctx context.Context, e *env, fs *flag.FlagSet, _ []string)
 	if err != nil {
 		return err
 	}
-	return e.emit(v, func(p *render.Printer) { p.Lines(v.Lines) }, nil)
+	return e.emit(v, func(p *render.Printer) { p.Texts(v.Lines) }, nil)
 }
 
 // artifactsNextLine is online done's last line (A17): artifacts from
 // another profile wait for the active profile in this epoch.
-func artifactsNextLine(supportDir string, root *state.Root) string {
+func artifactsNextLine(supportDir string, root *state.Root) i18n.Text {
 	if root == nil || root.Active == "" {
-		return ""
+		return i18n.Text{}
 	}
 	d := artifacts.NewArchive(supportDir, fsx.ReadOnly(fsx.Default()), compat.ArtifactsSpec{}).LoadDue()
 	if d == nil || d.Count <= 0 || d.Profile != root.Active || d.Epoch != root.Epoch {
-		return ""
+		return i18n.Text{}
 	}
-	return i18n.T(i18n.OnlineArtifactsNext)
+	return i18n.Tx(i18n.OnlineArtifactsNext)
 }

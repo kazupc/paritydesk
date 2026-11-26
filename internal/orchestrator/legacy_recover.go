@@ -3,13 +3,13 @@ package orchestrator
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"strconv"
 
 	"github.com/kazupc/paritydesk/internal/fsx"
 	"github.com/kazupc/paritydesk/internal/gen"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/state"
 )
@@ -30,21 +30,21 @@ func (rc *recovery) quarantine(ctx context.Context) error {
 		}
 	}
 	if n == 0 {
-		return rc.closeRun(ctx, "closed the interrupted move of leftovers; nothing was moved")
+		return rc.closeRun(ctx, i18n.Tx(i18n.RecoverClosedLeftoversUnmoved))
 	}
 	m, err := d.Gens.Load(n)
 	if err != nil || !m.Complete {
 		if _, derr := d.Gens.DeleteIncomplete(n); derr != nil {
 			return pderr.Wrap(pderr.Internal, "recover", derr)
 		}
-		return rc.closeRun(ctx, "closed the interrupted move of leftovers; nothing was moved")
+		return rc.closeRun(ctx, i18n.Tx(i18n.RecoverClosedLeftoversUnmoved))
 	}
 	gone, err := d.Gens.DeleteUnmoved(n)
 	if err != nil {
 		return pderr.Wrap(pderr.Internal, "recover", err)
 	}
 	if gone {
-		return rc.closeRun(ctx, "closed the interrupted move of leftovers; nothing was moved and its empty backup generation was removed")
+		return rc.closeRun(ctx, i18n.Tx(i18n.RecoverClosedLeftoversGenRemoved))
 	}
 	recorded := false
 	for _, g := range rc.root.Generations {
@@ -66,6 +66,6 @@ func (rc *recovery) quarantine(ctx context.Context) error {
 			moved++
 		}
 	}
-	rc.note(fmt.Sprintf("%d of %d leftover directories were moved into backup generation %d; paritydesk rollback %d puts them back", moved, len(m.Entries), n, n))
-	return rc.closeRun(ctx, "closed the interrupted move of leftovers")
+	rc.note(i18n.Tx(i18n.RecoverLeftoversMoved, moved, len(m.Entries), n, n))
+	return rc.closeRun(ctx, i18n.Tx(i18n.RecoverClosedLeftovers))
 }

@@ -25,7 +25,7 @@ func (dr *doctor) pinsChecks(ctx context.Context, m *compat.Manifest, root *stat
 	}
 	ad := o.d.Adapters[model.RowPins]
 	if !o.d.Config.Sync.Pins || !ok || spec.WritePath != compat.PathOn || spec.IDB == nil || !o.onlineRowSelectable(m, model.RowPins) || ad == nil {
-		dr.add("pins", "ok", i18n.T(i18n.DoctorOnlinePinsOff))
+		dr.add("pins", "ok", i18n.Tx(i18n.DoctorOnlinePinsOff))
 		return
 	}
 	ps := root.Profiles[root.Active]
@@ -53,19 +53,19 @@ func (dr *doctor) pinsChecks(ctx context.Context, m *compat.Manifest, root *stat
 	snap, err := ad.Read(ctx, rc)
 	switch {
 	case err != nil && pins.ReasonOf(err) == idb.ReasonStaleStore:
-		dr.add("pins", "fail", i18n.T(i18n.DoctorOnlinePinsStale))
+		dr.add("pins", "fail", i18n.Tx(i18n.DoctorOnlinePinsStale))
 	case err != nil:
 		reason := pins.ReasonOf(err)
 		if !errors.Is(err, sources.ErrSourceUnavailable) || reason == "" {
 			reason = idb.ReasonOther
 		}
-		dr.add("pins", "warn", i18n.T(i18n.DoctorOnlinePinsUnavailableReason, pinsReasonText(reason)))
+		dr.add("pins", "warn", i18n.Tx(i18n.DoctorOnlinePinsUnavailableReason, pinsReasonText(reason)))
 	case report.PinsSource == pins.SourceMirror:
-		dr.add("pins", "warn", i18n.T(i18n.DoctorOnlinePinsMirrorCount, pinsReasonText(idb.Reason(report.PinsReason)), len(snap.Items)))
+		dr.add("pins", "warn", i18n.Tx(i18n.DoctorOnlinePinsMirrorCount, pinsReasonText(idb.Reason(report.PinsReason)), len(snap.Items)))
 	default:
-		dr.add("pins", "ok", i18n.T(i18n.DoctorOnlinePinsIDBCount, len(snap.Items)))
+		dr.add("pins", "ok", i18n.Tx(i18n.DoctorOnlinePinsIDBCount, len(snap.Items)))
 		if report.MirrorDiffers {
-			dr.add("pins-mirror", "warn", i18n.T(i18n.DoctorOnlinePinsMirrorDiffers))
+			dr.add("pins-mirror", "warn", i18n.Tx(i18n.DoctorOnlinePinsMirrorDiffers))
 		}
 	}
 }

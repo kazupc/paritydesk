@@ -36,13 +36,10 @@ func RegistryWith(o Options) sources.Registry {
 		prefs.NewAppPrefs(), prefs.NewMCPServers(),
 		worktrees.New(),
 		windowstate.New(),
-		// v0.2 anchor: adapters scratch
 		scratch.New(scratch.DefaultLimits(), nil, nil, nil),
 
-		// v0.2 anchor: adapters sidebar-offline
 		sidebar.NewCollapse(), sidebar.NewSeed(),
 
-		// v0.2 anchor: adapters pins
 		pins.New(o.pinsOptions()),
 	} {
 		r[a.Row()] = a

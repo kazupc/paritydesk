@@ -4,18 +4,24 @@ import (
 	"context"
 	"time"
 
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/pderr"
 )
 
 // Notifications a detached switch posts, because nobody watches its
 // output. The text is fixed (PRIVACY.md): no profile names, ids or paths.
+// The texts are the English-only catalog ids notify.* (osascript runs
+// under LC_ALL=C; Japanese there is not verified).
 const (
-	notifyTitle    = "paritydesk"
-	notifySwitched = "The switch finished. Claude is open on the other account."
-	notifyFinished = "The switch finished."
-	notifyCheck    = "The switch finished, but the check after launch found a problem. Run paritydesk status in Terminal."
-	notifyStopped  = "The switch did not finish. Run paritydesk status in Terminal."
-	notifyTimeout  = 10 * time.Second
+	notifyTitle   = "paritydesk"
+	notifyTimeout = 10 * time.Second
+)
+
+var (
+	notifySwitched = i18n.En(i18n.NotifySwitched)
+	notifyFinished = i18n.En(i18n.NotifyFinished)
+	notifyCheck    = i18n.En(i18n.NotifyCheck)
+	notifyStopped  = i18n.En(i18n.NotifyStopped)
 )
 
 // notify posts a notification for a detached run. A failure is ignored:

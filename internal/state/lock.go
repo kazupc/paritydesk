@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/pderr"
 )
 
@@ -51,7 +52,7 @@ func (s *Store) Lock(ctx context.Context, wait time.Duration) (*Lock, error) {
 		}
 		if !s.clock.Now().Before(deadline) {
 			f.Close()
-			return nil, pderr.New(pderr.RunLockBusy, "state/lock", "another paritydesk run holds the lock for this data root")
+			return nil, pderr.NewT(pderr.RunLockBusy, "state/lock", i18n.ErrStateLockBusy)
 		}
 		if err := s.clock.Sleep(ctx, lockRetry); err != nil {
 			f.Close()

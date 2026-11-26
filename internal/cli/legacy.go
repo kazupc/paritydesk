@@ -61,7 +61,7 @@ func legacyOptions(e *env, fs *flag.FlagSet) (orchestrator.LegacyOptions, error)
 		Aliases:    map[string]ids.Alias{},
 	}
 	if o.Apply && o.Quarantine && !e.terminal() {
-		return o, pderr.New(pderr.Usage, "profile adopt", i18n.T(i18n.ErrorLegacyQuarantineTerminal))
+		return o, pderr.NewT(pderr.Usage, "profile adopt", i18n.ErrorLegacyQuarantineTerminal)
 	}
 	if st := getString(fs, flagLegacyState); st != "" {
 		home, err := e.sys.home()
@@ -70,27 +70,27 @@ func legacyOptions(e *env, fs *flag.FlagSet) (orchestrator.LegacyOptions, error)
 		}
 		st = config.ExpandHome(home, st)
 		if !filepath.IsAbs(st) {
-			return o, usageErrorf("--%s must be an absolute path", flagLegacyState)
+			return o, usageError(i18n.UsageAbsolutePath, flagLegacyState)
 		}
 		o.HintPath = filepath.Clean(st)
 	}
 	for _, v := range getStrings(fs, flagLegacyAlias) {
 		folder, alias, ok := strings.Cut(v, "=")
 		if !ok || !legacyFolderRE.MatchString(folder) {
-			return o, usageErrorf("--%s takes <folder>=<alias>, where <folder> is Claude or a Claude-<name> folder", flagLegacyAlias)
+			return o, usageError(i18n.UsageLegacyAliasSyntax, flagLegacyAlias)
 		}
 		a, err := parseAlias(alias)
 		if err != nil {
 			return o, err
 		}
 		if _, dup := o.Aliases[folder]; dup {
-			return o, usageErrorf("--%s names %s twice", flagLegacyAlias, folder)
+			return o, usageError(i18n.UsageLegacyAliasTwice, flagLegacyAlias, folder)
 		}
 		o.Aliases[folder] = a
 	}
 	for _, x := range getStrings(fs, flagLegacyExclude) {
 		if !legacyFolderRE.MatchString(x) {
-			return o, usageErrorf("--%s takes Claude or a Claude-<name> folder", flagLegacyExclude)
+			return o, usageError(i18n.UsageLegacyExcludeSyntax, flagLegacyExclude)
 		}
 		if !slices.Contains(o.Exclude, x) {
 			o.Exclude = append(o.Exclude, x)
@@ -98,15 +98,15 @@ func legacyOptions(e *env, fs *flag.FlagSet) (orchestrator.LegacyOptions, error)
 	}
 	if o.PlanHash != "" {
 		if _, _, ok := legacy.SplitHash(o.PlanHash); !ok {
-			return o, usageErrorf("--%s must be the plan hash the dry run printed", flagLegacyPlan)
+			return o, usageError(i18n.UsageLegacyPlanHash, flagLegacyPlan)
 		}
 	}
 	managed, unmanaged, list := getBool(fs, "managed"), getBool(fs, "unmanaged"), getString(fs, flagLegacyManaged)
 	switch {
 	case managed && unmanaged:
-		return o, usageErrorf("--managed and --unmanaged exclude each other")
+		return o, usageError(i18n.UsageManagedBoth)
 	case list != "" && (managed || unmanaged):
-		return o, usageErrorf("--%s excludes --managed and --unmanaged", flagLegacyManaged)
+		return o, usageError(i18n.UsageLegacyManagedBoth, flagLegacyManaged)
 	}
 	if list != "" {
 		for _, a := range strings.Split(list, ",") {
@@ -117,10 +117,10 @@ func legacyOptions(e *env, fs *flag.FlagSet) (orchestrator.LegacyOptions, error)
 	}
 	if o.Apply && !e.interactive() {
 		if o.PlanHash == "" {
-			return o, pderr.New(pderr.Declined, "profile adopt", i18n.T(i18n.ErrorLegacyPlanRequired))
+			return o, pderr.NewT(pderr.Declined, "profile adopt", i18n.ErrorLegacyPlanRequired)
 		}
 		if !managed && !unmanaged && list == "" {
-			return o, usageErrorf("--managed or --unmanaged is required when there is no terminal to ask (or --%s)", flagLegacyManaged)
+			return o, usageError(i18n.UsageLegacyManagedRequired, flagLegacyManaged)
 		}
 	}
 	return o, nil
@@ -139,7 +139,7 @@ func legacyManaged(ctx context.Context, e *env, fs *flag.FlagSet, newAliases []i
 		for _, raw := range strings.Split(list, ",") {
 			a := ids.Alias(strings.TrimSpace(raw))
 			if !slices.Contains(newAliases, a) {
-				return nil, usageErrorf("--%s: %s is not a profile this run creates", flagLegacyManaged, a)
+				return nil, usageError(i18n.UsageLegacyManagedUnknown, flagLegacyManaged, a)
 			}
 			out[a] = true
 		}
@@ -150,7 +150,7 @@ func legacyManaged(ctx context.Context, e *env, fs *flag.FlagSet, newAliases []i
 		}
 		return out, nil
 	case !e.interactive():
-		return nil, usageErrorf("--managed or --unmanaged is required when there is no terminal to ask (or --%s)", flagLegacyManaged)
+		return nil, usageError(i18n.UsageLegacyManagedRequired, flagLegacyManaged)
 	}
 	u := e.newUI(false, false)
 	for _, a := range newAliases {
@@ -191,7 +191,7 @@ func runProfileAdoptLegacy(ctx context.Context, e *env, fs *flag.FlagSet) error 
 		if err != nil {
 			return err
 		}
-		a, err := parseAlias(strings.TrimSpace(line))
+		a, err := parseAlias(foldAnswer(line))
 		if err != nil {
 			return err
 		}
@@ -205,7 +205,7 @@ func runProfileAdoptLegacy(ctx context.Context, e *env, fs *flag.FlagSet) error 
 		return e.emit(newLegacyView(res, true), func(p *render.Printer) { printLegacy(p, res) }, nil)
 	}
 	if c := activeFolder(res); c != nil && c.Reason == legacy.ReasonNeedsAlias && res.Status == legacy.PlanOK {
-		return usageErrorf("pass --%s Claude=<alias> when there is no terminal to ask", flagLegacyAlias)
+		return usageError(i18n.UsageLegacyAliasRequired, flagLegacyAlias)
 	}
 	if e.interactive() && !e.g.JSON {
 		// Step 3: the plan the person is asked about. Without a terminal
@@ -219,9 +219,9 @@ func runProfileAdoptLegacy(ctx context.Context, e *env, fs *flag.FlagSet) error 
 		// the lock. Only the inputs half differing means other flags.
 		switch legacy.CompareHash(opts.PlanHash, res.PlanHash) {
 		case legacy.HashFoldersDiffer:
-			return pderr.New(pderr.Declined, "profile adopt", i18n.T(i18n.ErrorLegacyPlanChanged))
+			return pderr.NewT(pderr.Declined, "profile adopt", i18n.ErrorLegacyPlanChanged)
 		case legacy.HashInputsDiffer:
-			return pderr.New(pderr.Declined, "profile adopt", i18n.T(i18n.ErrorLegacyPlanFlags))
+			return pderr.NewT(pderr.Declined, "profile adopt", i18n.ErrorLegacyPlanFlags)
 		}
 	}
 	var newAliases []ids.Alias
@@ -243,7 +243,7 @@ func runProfileAdoptLegacy(ctx context.Context, e *env, fs *flag.FlagSet) error 
 			return err
 		}
 		if !ok {
-			return pderr.New(pderr.Declined, "confirm", i18n.T(i18n.Declined))
+			return pderr.NewT(pderr.Declined, "confirm", i18n.Declined)
 		}
 	}
 	out, err := svc.AdoptLegacy(ctx, opts)

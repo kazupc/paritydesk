@@ -46,7 +46,7 @@ function __paritydesk_value_flags
         case 'sync'
             printf '%s\n' --allow-deletions
     end
-    printf '%s\n' --app-support-dir --config --state-dir
+    printf '%s\n' --app-support-dir --config --lang --state-dir
 end
 
 # __paritydesk_path prints the command path typed so far, such as
@@ -213,6 +213,7 @@ complete -c paritydesk -l app-support-dir -x -a '(__fish_complete_directories)' 
 complete -c paritydesk -l ascii -d 'ASCII only'
 complete -c paritydesk -l config -r -F -d 'config file (also PARITYDESK_CONFIG)'
 complete -c paritydesk -l json -d 'print one JSON document'
+complete -c paritydesk -l lang -x -a 'auto en ja' -d 'message language: auto, en or ja (also PARITYDESK_LANG)'
 complete -c paritydesk -l no-color -d 'no colour (also NO_COLOR, TERM=dumb)'
 complete -c paritydesk -l plain -d 'plain lines, no tables or spinners'
 complete -c paritydesk -l read-only -d 'plan only; never write (also PARITYDESK_READONLY=1)'
