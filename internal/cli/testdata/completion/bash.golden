@@ -9,7 +9,7 @@ _paritydesk_subs() {
         'backups') echo 'prune purge' ;;
         'config') echo 'path show validate' ;;
         'generations') echo 'list show' ;;
-        'online') echo 'cancel status' ;;
+        'online') echo 'cancel retry status' ;;
         'profile') echo 'add adopt list remove rename' ;;
     esac
 }
@@ -26,6 +26,7 @@ _paritydesk_flags() {
         'doctor') echo '--bundle --bundle-logs --grant-automation' ;;
         'init') echo '--alias --label --managed --unmanaged' ;;
         'log') echo '--run' ;;
+        'online retry') echo '--session --token' ;;
         'plan') echo '--invoking-session --only --skip' ;;
         'profile add') echo '--managed --unmanaged' ;;
         'profile adopt') echo '--managed --unmanaged' ;;
@@ -49,6 +50,7 @@ _paritydesk_value_flags() {
         'doctor') echo '--bundle --bundle-logs' ;;
         'init') echo '--alias --label' ;;
         'log') echo '--run' ;;
+        'online retry') echo '--session --token' ;;
         'plan') echo '--invoking-session --only --skip' ;;
         'switch') echo '--allow-deletions --confirmed-plan --only --reopen-session --skip' ;;
         'sync') echo '--allow-deletions' ;;

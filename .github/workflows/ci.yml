@@ -121,7 +121,10 @@ jobs:
 
       - name: open-file scan benchmark (not gating)
         # Logs the native scan's time for the holder child and, on the
-        # runner only, for every process (BenchmarkScanAll).
+        # runner only, for every process (BenchmarkScanAll). Correctness
+        # is gated by the go test -race step; a failure here is logged
+        # and the later steps still run.
+        continue-on-error: true
         run: go test -run '^$' -bench . -benchtime 3x ./internal/fdscan/
 
       - name: go test under a network-deny sandbox

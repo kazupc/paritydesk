@@ -109,6 +109,8 @@ func TestDenyDocumentsGolden(t *testing.T) {
 	for name, m := range map[string]i18n.Msg{
 		"deny_floor": i18n.GuardDenyFloor, "deny_unplanned": i18n.GuardDenyUnplanned, "deny_not_yet": i18n.GuardDenyNotYet,
 		"deny_unreadable": i18n.GuardDenyUnreadable, "deny_duplicate": i18n.GuardDenyDuplicate, "deny_artifact_tool": i18n.GuardDenyArtifactTool,
+		"deny_unplanned_artifacts": i18n.GuardDenyUnplannedArtifacts, "deny_not_yet_artifacts": i18n.GuardDenyNotYetArtifacts,
+		"deny_duplicate_artifacts": i18n.GuardDenyDuplicateArtifacts,
 	} {
 		doc := string(DenyDocument(m))
 		if strings.Count(doc, "\n") != 1 || strings.Contains(doc, "allow") {

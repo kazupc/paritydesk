@@ -24,6 +24,13 @@ An unknown value in `PARITYDESK_FAULT` (the release checklist's
 recovery drill) also exits 2, for every command, `status` and `recover`
 included: unset the variable.
 
+Some commands make decisions or move directories and run only in
+Terminal: `paritydesk artifacts allow`, `paritydesk artifacts forget`,
+`paritydesk artifacts import-legacy --apply` and `paritydesk sync` exit 2
+when run inside Claude (a Code session or the plugin), and `paritydesk
+profile adopt --from-legacy --apply --quarantine` exits 2 without a
+terminal. They change nothing. Run the same command in Terminal.
+
 <a id="declined"></a>
 ## Exit 3: the plan was not confirmed (PD-E3)
 
@@ -111,8 +118,8 @@ them; paritydesk can adopt the other tool's parked folders by identity
 with `paritydesk profile adopt`.
 
 The compatibility manifests for Claude 6.x and 7.x list no other tool's
-footprints yet, so v0.1 does not detect other tools and does not exit
-14. `paritydesk init` still lists parked `Claude-*` folders that hold an
+footprints yet, so this version does not detect other tools and does not
+exit 14. `paritydesk init` still lists parked `Claude-*` folders that hold an
 account no profile registers, and suggests `paritydesk profile adopt`
 for them.
 
@@ -137,6 +144,31 @@ holds an account that its profile does not expect, for example after a
 folder was moved by hand. `paritydesk doctor` shows the masked
 identities. Fix the folder names, or register the folder with
 `paritydesk profile adopt`.
+
+If the message says the folder was signed in, inside Claude, to the
+account of another profile, do not rename folders or run
+`profile adopt`. Switch the account back inside Claude instead; see
+[a folder was signed in to another profile's account](#signed-in-to-another-account)
+below.
+
+<a id="signed-in-to-another-account"></a>
+## Exit 20: a folder was signed in to another profile's account
+
+Nothing was changed, and every account stays signed in. Claude holds
+the folder of one profile, but inside Claude that folder was signed in to
+the account of another profile, so paritydesk cannot tell whose sessions
+and settings the folder now holds. The message names both profiles. In
+Claude, switch that folder back to the account of the profile it belongs
+to (Claude's account menu, or sign in again with that account), then run
+the command again. `paritydesk doctor` shows the change in its
+`account-change` check (accounts masked). paritydesk sees this from the
+folder's marker, or from Claude's log line that records the account
+change since the last switch.
+
+If the folder changed accounts twice since the last switch (for example
+with Claude's own multi-account mode), the next switch only swaps folders
+and carries nothing, and `paritydesk sync` exits 31; the switch after
+that is normal again.
 
 <a id="base-invalid"></a>
 ## Exit 21: a first-sync merge needs your confirmation (PD-E21)
@@ -194,6 +226,12 @@ organization data when the active organization could not be determined.
 `paritydesk doctor` lists the failed probes, the rows a run would skip,
 the reasons, and the active organization (masked) or that it is
 unknown.
+
+`paritydesk profile adopt --from-legacy` also exits 32, although it syncs
+nothing: the registration is complete, but some leftovers were kept for
+now, or a folder marker could not be written. Quit Claude and run the
+same command again; see [Adopting folders from an earlier
+script](#legacy-adopt).
 
 <a id="apply-rolled-back"></a>
 ## Exit 40: applying the plan failed and was rolled back (PD-E40)
@@ -261,6 +299,13 @@ The recovery drill of the release checklist (`PARITYDESK_FAULT=after:<phase>`)
 also exits 70 on purpose: the run stops as if the process had been
 killed, and `paritydesk status` then asks for `paritydesk recover`.
 
+If the message says paritydesk cannot read other processes' open files
+("is it running inside a sandbox?"), this is not a bug: paritydesk runs
+inside a sandbox (for example a Code session's sandbox, or
+`sandbox-exec`) that hides other processes' open files, so a switch
+stops before writing anything. Run paritydesk from Terminal.
+`paritydesk doctor` shows the `open-file-scan` check.
+
 ## Reporting a problem: the support archive
 
 `paritydesk doctor --bundle <file>` runs doctor and also writes a
@@ -277,25 +322,6 @@ directory.
 [PRIVACY.md](../PRIVACY.md#the-support-archive) lists every file in it
 and every redaction rule. Open it (`tar -xzf <file>`) and read it before
 you attach it to an issue.
-
-<a id="signed-in-to-another-account"></a>
-## Exit 20: a folder was signed in to another profile's account
-
-Nothing was changed, and every account stays signed in. Claude holds
-the folder of one profile, but inside Claude that folder was signed in to
-the account of another profile, so paritydesk cannot tell whose sessions
-and settings the folder now holds. The message names both profiles. In
-Claude, switch that folder back to the account of the profile it belongs
-to (Claude's account menu, or sign in again with that account), then run
-the command again. `paritydesk doctor` shows the change in its
-`account-change` check (accounts masked). paritydesk sees this from the
-folder's marker, or from Claude's log line that records the account
-change since the last switch.
-
-If the folder changed accounts twice since the last switch (for example
-with Claude's own multi-account mode), the next switch only swaps folders
-and carries nothing, and `paritydesk sync` exits 31; the switch after
-that is normal again.
 
 ## A carried scratch session says "folder not found" or shows no previews
 
@@ -379,8 +405,9 @@ as on a first sync).
 - *"The artifact list did not come from this profile's account"*: the
   list named an artifact recorded for another profile. Check which
   account Claude is on; nothing was recorded.
-- *Publishing paused for this Claude version*: a published page read back
-  differently from the archive. The archive and every copy are unchanged
+- *Publishing paused for this Claude version* (only when publishing is
+  on; v0.2 ships capture only, so this cannot happen yet): a published
+  page read back differently from the archive. The archive and every copy are unchanged
   since then; `paritydesk artifacts status` shows the gate. After an
   update of Claude or paritydesk, `paritydesk artifacts allow --roundtrip`
   (in Terminal) allows one verified publish again.
@@ -391,9 +418,12 @@ as on a first sync).
   its history (`paritydesk artifacts status`), and the older version stays
   in `<SupportDir>/artifacts/blobs`.
 - *An artifact was deleted on one account*: paritydesk records the
-  deletion and never deletes the other copies; `paritydesk artifacts
-  allow <id> --restore --profile <name>` creates it again there.
+  deletion and never deletes the other copies. `paritydesk artifacts
+  allow <id> --restore --profile <name>` records that the copy should be
+  created again there. v0.2 is capture only, so the copy is made by the
+  first sync after publishing is turned on.
 
+<a id="legacy-adopt"></a>
 ## Adopting folders from an earlier script stops or keeps leftovers
 
 `paritydesk profile adopt --from-legacy` explains each folder it leaves

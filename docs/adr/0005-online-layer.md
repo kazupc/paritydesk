@@ -89,6 +89,10 @@ work item.
    approval cards stay. An in-flight marker created exclusively is the
    gate against parallel duplicates. The shim denies on its own while the
    lease's deadline lies ahead and the binary is missing or fails.
+   The manifest's `guarded_servers_extra` and `guarded_tools_extra` take
+   effect only for names the plugin matcher already covers; a new server
+   needs a plugin release (the policy test keeps the matcher equal to the
+   code's guarded tables).
 4. **Recorder.** A PostToolUse hook records only validated fields of the
    result of a matching step (first result wins).
 5. **Lease and token.** `online next` arms a lease (20 minutes by default,

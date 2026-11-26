@@ -1,0 +1,1 @@
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"paritydesk: only the calls paritydesk listed may run now, with exactly the listed input. Run paritydesk artifacts next for the list, or paritydesk online cancel in Terminal to stop."}}

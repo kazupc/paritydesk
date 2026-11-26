@@ -114,7 +114,7 @@ Run `paritydesk init` once after installing.
 
 ## Install the Claude Code plugin
 
-The plugin adds the `/paritydesk:switch` command and a SessionStart hook. In Claude Code (the Code tab of the desktop app or the `claude` command line):
+The plugin adds three commands, `/paritydesk:switch`, `/paritydesk:reconcile` and `/paritydesk:artifacts`, and three hooks. A SessionStart hook prints one line when something is waiting. PreToolUse and PostToolUse hooks run on Claude's sidebar, session, settings, directory and artifact tools. They change nothing unless `/paritydesk:reconcile` or `/paritydesk:artifacts` is running; while queued changes are being applied, the PreToolUse hook lets only the listed calls run and never approves anything for you. In Claude Code (the Code tab of the desktop app or the `claude` command line):
 
 ```
 /plugin marketplace add kazupc/paritydesk
@@ -126,7 +126,7 @@ Where `/plugin` is not available, the same works from a terminal:
 `claude plugin install paritydesk@paritydesk`. To try a change to the
 plugin from a clone, add the clone's path instead of `kazupc/paritydesk`.
 
-Run `paritydesk init` once before using it. The SessionStart hook finds the binary through the path that `paritydesk init` records, but `/paritydesk:switch` runs `paritydesk` from the `PATH` of Claude Code's shell, so the binary must be on that `PATH` too (and it should be the same binary).
+Run `paritydesk init` once before using it. The hooks find the binary through the path that `paritydesk init` records (or the Homebrew locations), never through `PATH`. If the binary cannot be found while changes are being applied, the PreToolUse hook blocks those tool calls. The commands run `paritydesk` from the `PATH` of Claude Code's shell, so the binary must be on that `PATH` too, and it should be the same binary.
 
 ## Integrations
 

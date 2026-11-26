@@ -223,6 +223,13 @@ func TestScanAllFindsChild(t *testing.T) {
 	t.Logf("stats: listed %d scanned %d denied %d unreadable %d partial %d exited %d reused %d calls %d elapsed %v",
 		res.Stats.Listed, res.Stats.Scanned, res.Stats.Denied, res.Stats.Unreadable, res.Stats.Partial,
 		res.Stats.Exited, res.Stats.Reused, res.Stats.Calls, res.Stats.Elapsed)
+	if errors.Is(err, ErrPartial) && res.Stats.Unreadable+res.Stats.Partial > 0 && res.Stats.Scanned > 0 {
+		// Some same-user system agents (UserEventAgent, lsd,
+		// nsurlsessiond) always answer a listed descriptor with 0, and
+		// ErrPartial drops every record: check the child on its own.
+		t.Logf("full scan: %v; rescanning the child alone", err)
+		res, err = System().Scan(t.Context(), Options{PIDs: []int{pid}, Match: prefixMatcher(t, dir, sockDir)})
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -130,7 +130,9 @@ func (a *Archive) checkDirs(rel string) error {
 	return nil
 }
 
-// read reads root/rel (at most max bytes), never following a symlink.
+// read reads root/rel (at most max bytes), never following a symlink;
+// the open is O_NONBLOCK so a FIFO fails the regular-file check instead
+// of blocking.
 // A missing file is (nil, nil).
 func (a *Archive) read(rel string, max int64) ([]byte, error) {
 	p, err := fsx.Contained(a.Root, rel)
@@ -140,7 +142,7 @@ func (a *Archive) read(rel string, max int64) ([]byte, error) {
 	if err := a.checkDirs(rel); err != nil {
 		return nil, err
 	}
-	f, err := os.OpenFile(p, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	f, err := os.OpenFile(p, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}

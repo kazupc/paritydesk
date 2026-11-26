@@ -566,8 +566,14 @@ func (s *Service) Allow(ctx context.Context, in AllowInput, confirm Confirm) (De
 	default:
 		return out, pderr.NewT(pderr.Usage, "artifacts allow", i18n.ErrArtifactsUnknownDecision)
 	}
-	if (in.What == "restore" || in.What == "create" || in.What == "rehome") && !validAlias(alias) {
+	publishDecision := in.What == "restore" || in.What == "create" || in.What == "rehome"
+	if publishDecision && !validAlias(alias) {
 		return out, pderr.NewT(pderr.Usage, "artifacts allow", i18n.ErrArtifactsProfileNamesProfile)
+	}
+	if publishDecision && !s.publishes() {
+		// Capture only (5.8): the decision is kept, but no sync acts on it
+		// until publishing is on.
+		out.Lines = []i18n.Text{i18n.Tx(i18n.ArtifactsAllowedPublishOff)}
 	}
 	if in.What == "rehome" {
 		c := p.Copies[alias]

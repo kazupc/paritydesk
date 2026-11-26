@@ -15,8 +15,8 @@ import (
 var ErrLegacyPath = errors.New("artifacts: unusable legacy folder")
 
 // legacyDir reads files below a legacy folder: every path component is
-// Lstat'ed (no symlink), files are opened O_NOFOLLOW and must be
-// regular; nothing is ever written there.
+// Lstat'ed (no symlink), files are opened O_NOFOLLOW|O_NONBLOCK (a FIFO
+// must not block) and must be regular; nothing is ever written there.
 type legacyDir struct{ root string }
 
 // openLegacyDir checks the folder (10.1): absolute, a real directory,
@@ -116,7 +116,7 @@ func (d *legacyDir) Read(rel string, max int64) ([]byte, error) {
 		}
 	}
 	p = filepath.Join(p, parts[len(parts)-1])
-	f, err := os.OpenFile(p, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	f, err := os.OpenFile(p, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}

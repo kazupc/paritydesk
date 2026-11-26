@@ -5,8 +5,14 @@ connection** of any kind: it does not import `net`, `net/http` or
 `crypto/tls` (a test checks its whole dependency graph for them), and it
 has no telemetry, update check or crash reporting. A CI run with the
 network denied is designed to catch socket use in the tests. It starts
-only local helper programs (`git`, `open`, `osascript`, `launchctl`). You can confirm this while a switch runs
-with `nettop -p $(pgrep paritydesk)` or a firewall such as LuLu.
+only these local helper programs, at fixed paths and with fixed
+arguments: `open` (to launch Claude and open a session link),
+`osascript` (to quit Claude, ask for Automation permission and post a
+notification), `launchctl` (for one-shot background jobs), `git` (the
+read-only worktree status), `lsof` (the fallback for the open-file check)
+and `plutil` (to convert a binary `Info.plist`). You can confirm this
+while a switch runs with `nettop -p $(pgrep paritydesk)` or a firewall
+such as LuLu.
 
 paritydesk never reads, copies or moves credentials: no OAuth tokens, no
 browser cookie stores, no saved-password databases, no Keychain items. A
@@ -22,7 +28,9 @@ directory; the data root is `~/Library/Application Support` unless
 | Path | Access | Contents |
 |---|---|---|
 | `~/.config/paritydesk/config.toml` (or `$XDG_CONFIG_HOME/paritydesk/config.toml`, `PARITYDESK_CONFIG`, `--config`) | read, written by `init` and the profile commands (mode 0600) | Your choices only: aliases, labels, folder names, what to sync. Never account or organization ids. |
-| `~/Library/Application Support/paritydesk/` (mode 0700) | read and written | `state/` (the journal `root.json` and content-addressed sync bases), `generations/` (backups), `run/` (background-job property lists, result files, confirmed plans), `locks/` (the run lock), `hook-binary` (the absolute path of the paritydesk binary, for the plugin), `compat.d/` (optional compatibility overrides you add; read only). |
+| `~/Library/Application Support/paritydesk/` (mode 0700) | read and written | `state/` (the journal `root.json` and content-addressed sync bases), `generations/` (backups), `run/` (background-job property lists, result files, confirmed plans), `locks/` (the run lock, `online.lock`, `artifacts.lock`), `hook-binary` (the absolute path of the paritydesk binary, for the plugin), `compat.d/` (optional compatibility overrides you add; read only). |
+| `~/Library/Application Support/paritydesk/online/` (folders 0700, files 0600) | read and written by paritydesk; the plugin's hooks only create files there | The online layer: `queue.json` and `capture.json` (the tool calls paritydesk has planned), `lease.json` (which session works on the queue), the `armed` and `stop` markers, `steps/` (large step inputs), `inflight/` (markers of calls in progress: a counter and times), `results/` and `captures/` (what the hooks recorded, see [The plugin's hooks](#the-plugins-hooks)), `denials/` (refused calls), `shown/` (SessionStart line counters) and `.tmp/`. Results stay until a new queue replaces theirs or the queue is reset or cancelled; `paritydesk uninstall` removes the whole folder. |
+| `~/Library/Application Support/paritydesk/artifacts/` (folders 0700, files 0600) | read and written | The artifact archive described below, plus `outbox/`: copies of the pages staged for the publish round being built, removed when the round is ingested (a leftover copy older than an hour goes at the next ingest). |
 | `~/Library/Logs/paritydesk/` (mode 0700) | written | One JSON-lines debug log per run (`<run>.jsonl`, identifiers redacted by default) and the output of background jobs. |
 | `<data root>/.paritydesk-tmp/` | written, then removed | Temporary copies of Local Storage for reading, and temporary files that are renamed into place. |
 
@@ -157,6 +165,44 @@ forget` stops tracking an artifact but keeps its saved versions.
   empty one. The earlier script's state file is read only when you name
   it, and its labels are never printed or stored. Moved directories stay
   in a pinned backup generation (mode 0700) until you remove it.
+
+## The plugin's hooks
+
+When the paritydesk plugin is installed in Claude, Claude runs
+`paritydesk-hook` (which runs the paritydesk binary named in
+`hook-binary`) on your Mac at these points, in every session:
+
+- **SessionStart**: paritydesk reads its own state and online folder and
+  prints at most one fixed line (no titles or other names) when
+  something waits for you; a counter in `online/shown/` limits how often.
+  Nothing from the session is stored.
+- **PreToolUse and PostToolUse**: before and after every call of the
+  `mcp__ccd_sidebar__*`, `mcp__ccd_session_mgmt__*`,
+  `mcp__ccd_settings__*`, `mcp__claude-artifacts__*` and
+  `mcp__ccd_directory__*` tools and of `Artifact`, `ArtifactComments`,
+  `ArtifactData` and `ArtifactCheck`, paritydesk receives the call's
+  input and, after the call, its response, together with the session id.
+
+What happens to them:
+
+- A call that is not a step of a live queue or capture is only checked
+  by the guard and is not stored (a refused call leaves only the denial
+  record below).
+- For a call that matches a step, the hook writes to `online/results/`
+  or `online/captures/` a sha256 of the input, the session and tool-use
+  ids, times, the outcome and only the fields that the step's parser
+  validates (for example ids, versions and section-name hashes; for
+  reads of your own artifacts, the page text and title). The raw
+  response is never stored. paritydesk then ingests these files into its
+  state or the artifact archive.
+- A refused call is recorded in `online/denials/` with its time, the
+  tool name, a fixed reason and the queue id, never its input; at most
+  200 records are kept, and records older than `online.queue_max_age`
+  (14 days by default) are removed at the next queue change.
+- In-flight markers in `online/inflight/` hold only a counter and times.
+
+Nothing the hooks receive leaves your Mac, and none of it goes into
+paritydesk's logs.
 
 ## Things paritydesk asks macOS to do
 

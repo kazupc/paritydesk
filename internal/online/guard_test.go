@@ -2,6 +2,7 @@ package online
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -221,6 +222,57 @@ func TestGuardRules(t *testing.T) {
 				t.Fatalf("N %d", d.N)
 			}
 		})
+	}
+}
+
+// TestGuardArtifactsWording: in an artifacts round the reasons that name
+// the next command name paritydesk artifacts next; online next only
+// answers that the queue belongs to /paritydesk:artifacts there. The
+// other reasons keep their wording.
+func TestGuardArtifactsWording(t *testing.T) {
+	artifacts := func(st StepStatus) *Queue {
+		q := guardQueue(st, true)
+		q.Kind = QueueKindArtifacts
+		return q
+	}
+	tests := []struct {
+		name string
+		in   func() GuardInput
+		want i18n.Msg
+	}{
+		{"unplanned", func() GuardInput {
+			return guardInput(artifacts(StatusOffered), "mcp__ccd_sidebar__set_unread", `{"session_id":"self","unread":true}`)
+		}, i18n.GuardDenyUnplannedArtifacts},
+		{"not yet", func() GuardInput { return guardInput(artifacts(StatusPending), toolSetPinnedFull, pinInput) }, i18n.GuardDenyNotYetArtifacts},
+		{"unbound lease", func() GuardInput {
+			g := guardInput(artifacts(StatusOffered), toolSetPinnedFull, pinInput)
+			g.Lease.Session = ""
+			return g
+		}, i18n.GuardDenyNotYetArtifacts},
+		{"duplicate", func() GuardInput {
+			g := guardInput(artifacts(StatusOffered), toolSetPinnedFull, pinInput)
+			g.Inflight = map[StepID]int{"p000": 1}
+			return g
+		}, i18n.GuardDenyDuplicateArtifacts},
+		{"floor", func() GuardInput {
+			return guardInput(artifacts(StatusOffered), "mcp__ccd_session_mgmt__delete_session", "{}")
+		}, i18n.GuardDenyFloor},
+		{"unreadable", func() GuardInput { return guardInput(artifacts(StatusOffered), toolSetPinnedFull, "") }, i18n.GuardDenyUnreadable},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if d := Decide(tc.in()); !d.Deny || d.Reason != tc.want {
+				t.Fatalf("decision %+v, want %q", d, tc.want)
+			}
+		})
+	}
+	for _, m := range []i18n.Msg{i18n.GuardDenyUnplannedArtifacts, i18n.GuardDenyNotYetArtifacts, i18n.GuardDenyDuplicateArtifacts} {
+		if txt := i18n.T(m); !strings.Contains(txt, "paritydesk artifacts next") || strings.Contains(txt, "online next") {
+			t.Fatalf("%s: %q", m, txt)
+		}
+	}
+	if got := DenyReasonFor(guardQueue(StatusOffered, true), i18n.GuardDenyUnplanned); got != i18n.GuardDenyUnplanned {
+		t.Fatalf("switch round reason %q", got)
 	}
 }
 

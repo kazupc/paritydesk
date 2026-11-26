@@ -1,9 +1,10 @@
-使い方: paritydesk online <status|cancel>
+使い方: paritydesk online <status|retry|cancel>
 
 Claude で適用を待っている変更を表示または破棄します
 
 コマンド:
   cancel       待っている変更を破棄します（Claude では何も変わりません）
+  retry        適用されなかった変更をもう一度提示します（その後 /paritydesk:reconcile を実行してください）
   status       Claude で適用を待っている変更を表示します
 
 共通フラグ:

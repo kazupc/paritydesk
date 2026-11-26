@@ -300,7 +300,15 @@ func readString(ctx context.Context, folder string, spec Spec) (Value, error) {
 }
 
 // readTable checks the block types of one live table and walks it.
-func readTable(ctx context.Context, open func(string) (*os.File, error), name string, t leveldb.TableFile, c *collector) error {
+func readTable(ctx context.Context, open func(string) (*os.File, error), name string, t leveldb.TableFile, c *collector) (err error) {
+	// goleveldb's block decoder trusts length varints and can panic on a
+	// crafted block that still carries a valid checksum; treat that as
+	// damage (spec-pins 4.3 step 3), never a crash.
+	defer func() {
+		if recover() != nil {
+			err = fail("table "+name, ErrUnclean)
+		}
+	}()
 	f, err := open(name)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {

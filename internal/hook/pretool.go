@@ -228,7 +228,7 @@ func preDecide(in io.Reader, d ToolDeps, lease *online.Lease, stop, armedAny, le
 		case err == nil:
 			return nil
 		case errors.Is(err, online.ErrExists):
-			dec = online.GuardDecision{Deny: true, Reason: i18n.GuardDenyDuplicate}
+			dec = online.GuardDecision{Deny: true, Reason: online.DenyReasonFor(q, i18n.GuardDenyDuplicate)}
 		default:
 			dec = online.GuardDecision{Deny: true, Reason: i18n.GuardDenyUnreadable}
 		}

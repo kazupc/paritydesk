@@ -138,6 +138,24 @@ func TestPluginVersionsAgree(t *testing.T) {
 	if plugin.Version != "0.2.0" || market.Metadata.Version != plugin.Version || len(market.Plugins) != 1 || market.Plugins[0].Version != plugin.Version {
 		t.Fatalf("plugin %q, marketplace %+v", plugin.Version, market)
 	}
+	// The binary's default version agrees in major and minor, so a plain
+	// build from a clone is not skewed against the in-tree plugin.
+	m := regexp.MustCompile(`(?m)^\s*Version\s*=\s*"([^"]+)"`).FindStringSubmatch(mustRead(t, filepath.Join(root, "internal", "cli", "cli.go")))
+	if m == nil {
+		t.Fatal("default Version not found in internal/cli/cli.go")
+	}
+	if got, want := majorMinorOf(m[1]), majorMinorOf(plugin.Version); got == "" || got != want {
+		t.Fatalf("cli.Version %q, plugin %q: major.minor differ", m[1], plugin.Version)
+	}
+}
+
+// majorMinorOf returns the part of a version before its second dot.
+func majorMinorOf(v string) string {
+	parts := strings.SplitN(strings.TrimPrefix(v, "v"), ".", 3)
+	if len(parts) < 3 {
+		return ""
+	}
+	return parts[0] + "." + parts[1]
 }
 
 // TestShimDenyEqualsCatalog: the shim's fixed deny document is the
@@ -214,7 +232,8 @@ func TestSkillsOnlineRules(t *testing.T) {
 		t.Error(`switch skill: "Switch" must come before "Cancel"`)
 	}
 	for _, want := range []string{"Never run\n     paritydesk in the same message as the calls", "remaining_batches", "+ 4", "40 answers",
-		"without running `paritydesk online done`", "--unavailable", "--wait", "online decide", "online done"} {
+		"without running `paritydesk online done`", "--unavailable", "--wait", "online decide", "online done",
+		"with `error` instead of `state`: stop the loop", "`error.next`"} {
 		if !strings.Contains(rc, want) {
 			t.Errorf("reconcile skill misses %q", want)
 		}

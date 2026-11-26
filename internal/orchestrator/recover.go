@@ -465,7 +465,13 @@ func (rc *recovery) finishP10(ctx context.Context) error {
 	if rc.republishOnline(ctx) {
 		rc.note(i18n.Tx(i18n.RecoverOnlineRequeued))
 	}
-	return rc.closeRun(ctx, i18n.Tx(i18n.RecoverCompleted, t))
+	if err := rc.closeRun(ctx, i18n.Tx(i18n.RecoverCompleted, t)); err != nil {
+		return err
+	}
+	// Recover stands in for P10: due.json for T and the new epoch
+	// (spec-artifacts 4.6). Best effort, as at P10.
+	rc.o.writeArtifactsDue(ctx, rc.manifest, t, ps.Replica, root.Epoch)
+	return nil
 }
 
 // recoverSync implements the RunSync table.

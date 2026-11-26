@@ -236,8 +236,8 @@ func Default() *Config {
 			Secrets:      "same-boundary",
 			Pins:         true,
 			Artifacts:    true,
-			// On by default once release checklist step 11 (collapsed
-			// groups survive a relaunch) has passed; the CHANGELOG says so
+			// On by default once release checklist SO-1 (collapsed groups
+			// survive a relaunch) has passed; the CHANGELOG says so
 			// if a release ships it off.
 			CollapsedGroups: true,
 		},

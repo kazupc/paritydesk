@@ -25,6 +25,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/rows"
 	"github.com/kazupc/paritydesk/internal/sources"
 	"github.com/kazupc/paritydesk/internal/sources/configjson"
+	"github.com/kazupc/paritydesk/internal/sources/pins"
 	"github.com/kazupc/paritydesk/internal/state"
 )
 
@@ -1058,3 +1059,117 @@ func TestLegacyCanary(t *testing.T) {
 // The policy forbids home-relative literals in the legacy code; the test
 // manifest above names none either.
 var _ = config.Default
+
+// A quarantine rollback records no epoch event, so a pending online queue
+// stays valid and is kept (spec-online 16.3 drops it only on an epoch
+// event).
+func TestLegacyQuarantineRollbackKeepsOnline(t *testing.T) {
+	e := quarantineEnv(t)
+	opts := legacyFlags(nil)
+	opts.Quarantine = true
+	res, err := e.applyLegacy(opts)
+	if err != nil || len(res.Generations) != 1 {
+		t.Fatalf("apply %+v %v", res, err)
+	}
+	n := res.Generations[0].N
+	root := e.st.root(t)
+	root.Online = &state.OnlineRecord{Profile: root.Active, Queue: "q-quarantine", Epoch: root.Epoch, State: "pending"}
+	if err := e.st.Commit(root); err != nil {
+		t.Fatal(err)
+	}
+	epoch := root.Epoch
+	e.app.running = true
+	e.ui.interactive, e.ui.answers[ConfirmRollback] = true, true
+	if rb, err := e.orch().Rollback(context.Background(), n, false); err != nil || rb.Restored != 1 {
+		t.Fatalf("rollback %+v %v", rb, err)
+	}
+	root = e.st.root(t)
+	if root.Epoch != epoch || root.Online == nil || root.Online.Queue != "q-quarantine" || root.Online.Epoch != epoch {
+		t.Fatalf("quarantine rollback dropped the online queue: epoch %d online %+v", root.Epoch, root.Online)
+	}
+}
+
+// legacyPinsEnv is newLegacyEnv with the 7.x pins row and the real pins
+// adapter; neither folder has a pin store or a mirror.
+func legacyPinsEnv(t *testing.T) *env {
+	t.Helper()
+	e := newLegacyEnv(t)
+	ms, err := compat.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, m := range ms {
+		for _, r := range m.Rows {
+			if r.Row == model.RowPins && r.IDB != nil && !found {
+				e.compat.m.Rows = append(e.compat.m.Rows, r)
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no pins row in the embedded manifests")
+	}
+	tweak := e.tweak
+	e.tweak = func(d *Deps) {
+		tweak(d)
+		d.Adapters[model.RowPins] = pins.New(pins.Options{})
+	}
+	return e
+}
+
+func seedRow(res *LegacyResult, r model.RowID) (LegacySeedRow, bool) {
+	for _, row := range res.Seed.Rows {
+		if row.Row == r {
+			return row, true
+		}
+	}
+	return LegacySeedRow{}, false
+}
+
+// TestLegacySeedPinsAbsentStore: folders where nothing was ever pinned
+// (no pin store, no isStarred) seed an empty pins base; an isStarred
+// session with the store absent leaves the row unreadable.
+func TestLegacySeedPinsAbsentStore(t *testing.T) {
+	e := legacyPinsEnv(t)
+	res := e.dry(legacyFlags(nil))
+	row, ok := seedRow(res, model.RowPins)
+	if !ok || !row.Seeded || row.Reason != "" || row.Agreed != 0 || row.Differing != 0 {
+		t.Fatalf("pins seed row %+v (found %v)", row, ok)
+	}
+	applied, err := e.applyLegacy(legacyFlags(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row, _ := seedRow(applied, model.RowPins); !row.Seeded {
+		t.Fatalf("pins not seeded on apply: %+v", row)
+	}
+	root := e.st.root(t)
+	n := 0
+	for k, ref := range root.Bases {
+		if !strings.HasSuffix(k, "/"+string(model.RowPins)) {
+			continue
+		}
+		n++
+		if snap, err := e.st.GetSnapshot(ref); err != nil || len(snap.Items) != 0 {
+			t.Fatalf("pins base %s: %+v %v", k, snap, err)
+		}
+	}
+	if n != 2 {
+		t.Fatalf("%d pins bases, want 2 (%v)", n, root.Bases)
+	}
+
+	// A starred session without a pin store: unreadable, not empty.
+	e = legacyPinsEnv(t)
+	e.makeFolder(ids.DefaultFolder, model.Replica{Account: lgW, Org: lgWO}, map[model.RowID]map[string]any{
+		model.RowSessions: {
+			string(fakeSession(1)): map[string]any{"title": "shared", "isStarred": true},
+			string(fakeSession(2)): map[string]any{"title": "work only"},
+		},
+		model.RowEnvironments: {"preset/p1": map[string]any{"name": "env"}},
+	})
+	res = e.dry(legacyFlags(nil))
+	if row, ok := seedRow(res, model.RowPins); !ok || row.Seeded || row.Reason != SeedUnreadable {
+		t.Fatalf("starred, no store: %+v (found %v)", row, ok)
+	}
+}

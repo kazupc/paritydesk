@@ -228,6 +228,9 @@ const (
 	GuardDenyUnreadable          Msg = "guard.deny_unreadable"
 	GuardDenyDuplicate           Msg = "guard.deny_duplicate"
 	GuardDenyArtifactTool        Msg = "guard.deny_artifact_tool"
+	GuardDenyUnplannedArtifacts  Msg = "guard.deny_unplanned_artifacts"
+	GuardDenyNotYetArtifacts     Msg = "guard.deny_not_yet_artifacts"
+	GuardDenyDuplicateArtifacts  Msg = "guard.deny_duplicate_artifacts"
 	OnlineArtifactsQueue         Msg = "online.artifacts_queue"
 	OnlineQPinsHeader            Msg = "online.q_pins_header"
 	OnlineQPinsText              Msg = "online.q_pins_text"
@@ -350,6 +353,7 @@ const (
 	ArtifactsAskResume            Msg = "artifacts.ask_resume"
 	ArtifactsAskImport            Msg = "artifacts.ask_import"
 	ArtifactsAllowed              Msg = "artifacts.allowed"
+	ArtifactsAllowedPublishOff    Msg = "artifacts.allowed_publish_off"
 	ArtifactsSkippedPair          Msg = "artifacts.skipped_pair"
 	ArtifactsForgotten            Msg = "artifacts.forgotten"
 	ArtifactsIngested             Msg = "artifacts.ingested"
@@ -1322,6 +1326,9 @@ var catalog = map[Msg]string{
 	GuardDenyUnreadable:          "paritydesk could not check this call, so it was blocked. Run paritydesk online cancel in Terminal to stop applying changes.",
 	GuardDenyDuplicate:           "paritydesk: this exact call is already running once. Wait for it, then run paritydesk online next.",
 	GuardDenyArtifactTool:        "paritydesk is syncing artifacts in this session; Claude's own artifact tool is paused until it finishes. To stop the sync, run paritydesk online cancel in Terminal.",
+	GuardDenyUnplannedArtifacts:  "paritydesk: only the calls paritydesk listed may run now, with exactly the listed input. Run paritydesk artifacts next for the list, or paritydesk online cancel in Terminal to stop.",
+	GuardDenyNotYetArtifacts:     "paritydesk: this call is listed but not ready yet. Run paritydesk artifacts next first.",
+	GuardDenyDuplicateArtifacts:  "paritydesk: this exact call is already running once. Wait for it, then run paritydesk artifacts next.",
 	OnlineArtifactsQueue:         "This queue belongs to /paritydesk:artifacts.",
 	OnlineQPinsHeader:            "Pins",
 	OnlineQPinsText:              "To match %s, paritydesk will pin %d and unpin %d session(s) here. Claude may ask you to approve each change to another session (up to %d).",
@@ -1444,6 +1451,7 @@ var catalog = map[Msg]string{
 	ArtifactsAskResume:            "Sync this artifact again?",
 	ArtifactsAskImport:            "Import these artifacts into paritydesk's archive? The old folder is not changed.",
 	ArtifactsAllowed:              "Recorded. The next /paritydesk:artifacts uses it.",
+	ArtifactsAllowedPublishOff:    "Recorded. Publishing is off in this version (capture only), so the copy is created only after publishing is turned on.",
 	ArtifactsSkippedPair:          "paritydesk no longer syncs this artifact. Its archived versions are kept.",
 	ArtifactsForgotten:            "paritydesk no longer tracks this artifact. Its archived versions stay on this Mac.",
 	ArtifactsIngested:             "The last round of the artifact sync is in the archive.",
@@ -2000,7 +2008,7 @@ var catalog = map[Msg]string{
 	HelpOnlineCapture:         "Internal: read-only calls before a switch (used by /paritydesk:switch)",
 	HelpOnlineNext:            "Internal: the next calls to make (used by /paritydesk:reconcile)",
 	HelpOnlineDecide:          "Internal: record an answer (used by /paritydesk:reconcile)",
-	HelpOnlineRetry:           "Internal: offer the changes that were not applied once more",
+	HelpOnlineRetry:           "Offer the changes that were not applied once more (then run /paritydesk:reconcile)",
 	HelpOnlineDone:            "Internal: finish applying changes (used by /paritydesk:reconcile)",
 	HelpArtifacts:             "Keep claude.ai artifacts the same on every profile (beta)",
 	HelpArtifactsStatus:       "Show the artifact archive",

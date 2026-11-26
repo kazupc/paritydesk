@@ -902,9 +902,10 @@ account_changed_hint = [
 # ---------------------------------------------------------------- other tools
 #
 # [[footprint]] entries identify other account-switching tools (D28,
-# exit 14). None has been confirmed for 6.x, so the list is empty and v0.1
-# detects no other tool. init lists parked Claude-* folders that hold an
-# account no profile registers and suggests profile adopt for them.
+# exit 14). None has been confirmed for 6.x or 7.x, so the list is empty
+# and paritydesk detects no other tool. init lists parked Claude-* folders
+# that hold an account no profile registers and suggests profile adopt for
+# them.
 
 # ---------------------------------------------------------------- online
 #
@@ -913,6 +914,11 @@ account_changed_hint = [
 # recorded by its PostToolUse hook. Values from the app code of
 # 7.37095.0; the armed read list, the untrusted reads and the guarded
 # servers are code, and this table may only add servers and floor tools.
+# Extras (guarded_servers_extra, guarded_tools_extra, always_deny) only
+# reach tools that the plugin's hooks/hooks.json matcher sends to the hook.
+# A server or tool outside that matcher needs a plugin release that adds it
+# there (spec-online 10.3). Until then its calls are neither guarded nor
+# recorded.
 [online]
 enabled = true
 # Sidebar writes wait this long after the launch, so the app's first

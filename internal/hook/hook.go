@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -216,8 +217,9 @@ func ParsePayload(b []byte) (SessionStartInput, bool) {
 // Skewed reports whether the plugin's version, when given, differs from
 // the binary's in major or minor version. An unparsable version counts as
 // skew, except a binary built from a branch head (Homebrew's
-// "HEAD-<commit>" from brew install --HEAD, or Go's "(devel)"), which has
-// no release version to compare.
+// "HEAD-<commit>" from brew install --HEAD, Go's "(devel)", or a Go
+// pseudo-version such as v0.0.0-20060102150405-0123456789ab from go
+// install in a clone), which has no release version to compare.
 func Skewed(plugin, binary string) bool {
 	if plugin == "" || headBuild(binary) {
 		return false
@@ -227,10 +229,16 @@ func Skewed(plugin, binary string) bool {
 	return !ok1 || !ok2 || pm != bm
 }
 
+// pseudoVersion matches a Go module pseudo-version (vX.0.0-<time>-<hash>,
+// vX.Y.Z-pre.0.<time>-<hash> or vX.Y.(Z+1)-0.<time>-<hash>, with a
+// 14-digit UTC time and a 12-digit commit hash), optionally marked +dirty
+// as go build stamps a modified checkout.
+var pseudoVersion = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+-(?:[0-9A-Za-z.-]*\.)?[0-9]{14}-[0-9a-f]{12}(?:\+dirty)?$`)
+
 // headBuild reports a version string of a build from a branch head.
 func headBuild(v string) bool {
 	v = strings.TrimSpace(v)
-	return strings.HasPrefix(v, "HEAD-") || v == "HEAD" || v == "(devel)"
+	return strings.HasPrefix(v, "HEAD-") || v == "HEAD" || v == "(devel)" || pseudoVersion.MatchString(v)
 }
 
 // majorMinor returns "<major>.<minor>" of a version such as v0.1.2-dev.

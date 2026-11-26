@@ -60,3 +60,13 @@ func FuzzProtoScan(f *testing.F) {
 		Touches(b, key, sp)
 	})
 }
+
+// FuzzIDBTable feeds arbitrary bytes to the table reader: it returns an
+// error or a result, never panics.
+func FuzzIDBTable(f *testing.F) {
+	f.Add(hostileTable())
+	f.Add([]byte{})
+	f.Fuzz(func(t *testing.T, b []byte) {
+		_ = readTableBytes(t, b)
+	})
+}

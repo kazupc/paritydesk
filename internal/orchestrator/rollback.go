@@ -116,7 +116,11 @@ func (o *Orchestrator) Rollback(ctx context.Context, n uint64, propagate bool) (
 	}
 	quit := root.Run.QuitByUs
 	root.Run = nil
-	o.dropOnline(cctx, root, "rollback")
+	if !quarantine {
+		// The epoch event makes any queue stale (spec-online 16.3); a
+		// quarantine restore records none, so the queue stays valid.
+		o.dropOnline(cctx, root, "rollback")
+	}
 	if err := o.commit(root); err != nil {
 		return nil, err
 	}

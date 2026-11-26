@@ -1,6 +1,6 @@
 使い方: paritydesk online retry [flags]
 
-内部用: 適用されなかった変更をもう一度提示します
+適用されなかった変更をもう一度提示します（その後 /paritydesk:reconcile を実行してください）
 
 フラグ:
   --session string             このコマンドを実行している Claude Code セッション

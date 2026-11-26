@@ -21,8 +21,11 @@ import (
 // Version, Commit and Date are set at build time with -ldflags, for
 // example "-X github.com/kazupc/paritydesk/internal/cli.Version=0.1.0"
 // (see .goreleaser.yaml). Commit and Date stay empty in a plain go build.
+// The default ends in "-dev" and carries the in-tree plugin's major and
+// minor version (a policy test checks it), so a plain build from a clone
+// is not reported as skewed by the SessionStart hook.
 var (
-	Version = "0.1.0-dev"
+	Version = "0.2.0-dev"
 	Commit  = ""
 	Date    = ""
 )
@@ -347,9 +350,17 @@ func printUsage(w io.Writer, c *command, fs *flag.FlagSet, path string) {
 		fmt.Fprintf(w, "\n%s\n", i18n.T(i18n.HelpCommands))
 		subs := append([]*command(nil), c.sub...)
 		sort.Slice(subs, func(i, j int) bool { return subs[i].name < subs[j].name })
+		// The name column fits the longest visible name (names are
+		// ASCII), and is at least 12 wide.
+		width := 12
+		for _, s := range subs {
+			if !s.hidden && len(s.name) > width {
+				width = len(s.name)
+			}
+		}
 		for _, s := range subs {
 			if !s.hidden {
-				fmt.Fprintf(w, "  %-12s %s\n", s.name, i18n.T(s.short))
+				fmt.Fprintf(w, "  %-*s %s\n", width, s.name, i18n.T(s.short))
 			}
 		}
 	}

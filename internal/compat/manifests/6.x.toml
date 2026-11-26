@@ -703,8 +703,8 @@ account_changed_hint = []
 # ---------------------------------------------------------------- other tools
 #
 # [[footprint]] entries identify other account-switching tools (D28,
-# exit 14). None has been confirmed for 6.x, so the list is empty and v0.1
-# detects no other tool. init lists parked Claude-* folders that hold an
+# exit 14). None has been confirmed for 6.x, so the list is empty and
+# paritydesk detects no other tool. init lists parked Claude-* folders that hold an
 # account no profile registers and suggests profile adopt for them.
 
 # The online layer is not confirmed on 6.x: no online steps.

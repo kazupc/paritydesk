@@ -12,3 +12,5 @@ coverage.*
 # (the private PII deny-list stays ignored by /testdata/private/ above).
 !internal/**/testdata/**/*.ldb
 !internal/**/testdata/**/*.log
+# rapid writes property-test failfiles here when a property fails; never commit them
+**/testdata/rapid/

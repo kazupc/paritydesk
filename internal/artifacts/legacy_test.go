@@ -3,10 +3,13 @@ package artifacts
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -241,4 +244,41 @@ func TestLegacyWrappedDetection(t *testing.T) {
 			t.Errorf("%s", p)
 		}
 	}
+}
+
+// A FIFO in the legacy folder or in the archive must be refused at once:
+// opening one for reading without O_NONBLOCK blocks until a writer
+// appears, which would hang the import (and hold the archive lock).
+func TestReadersRefuseFIFO(t *testing.T) {
+	within := func(name string, read func() ([]byte, error)) {
+		t.Helper()
+		done := make(chan error, 1)
+		go func() { _, err := read(); done <- err }()
+		select {
+		case err := <-done:
+			if !errors.Is(err, ErrSymlink) {
+				t.Errorf("%s: %v, want ErrSymlink", name, err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%s: read blocked on a FIFO", name)
+		}
+	}
+	dir := t.TempDir()
+	if err := syscall.Mkfifo(filepath.Join(dir, "manifest.json"), 0o600); err != nil {
+		t.Skipf("mkfifo: %v", err)
+	}
+	d, err := openLegacyDir(dir, filepath.Join(t.TempDir(), "support"), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	within("legacy", func() ([]byte, error) { return d.Read("manifest.json", MaxLegacyManifest) })
+
+	a, _ := newArchive(t)
+	if err := os.MkdirAll(a.Root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(filepath.Join(a.Root, "fifo"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	within("archive", func() ([]byte, error) { return a.read("fifo", 1<<20) })
 }

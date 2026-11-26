@@ -208,7 +208,9 @@ README).
 
 ## 12. Flag reference
 
-All flags are hidden: they are not listed in help or completion.
+The legacy flags are hidden: they are not listed in help or completion.
+`--managed` and `--unmanaged` are the ordinary visible flags of
+`profile adopt`.
 
 | Flag | Meaning |
 |---|---|

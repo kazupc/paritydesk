@@ -230,6 +230,17 @@ func TestSkewed(t *testing.T) {
 		// version, so they are never skewed.
 		{"0.1.0", "HEAD-1a2b3c4", false},
 		{"0.2.0", "(devel)", false},
+		// go install from a clone stamps a Go pseudo-version.
+		{"0.2.0", "v0.0.0-20060102150405-0123456789ab", false},
+		{"0.2.0", "v0.2.1-0.20060102150405-0123456789ab+dirty", false},
+		{"0.2.0", "v0.1.1-pre.0.20060102150405-0123456789ab", false},
+		{"0.2.0", "v0.0.0-20060102150405-0123456789ab+dirty", false},
+		{"0.2.0", "v0.2.0-rc.1.0.20060102150405-0123456789ab", false},
+		// Release versions and near misses still count.
+		{"0.2.0", "v0.1.0-20060102150405", true},
+		{"0.2.0", "v0.1.0", true},
+		{"0.2.0", "v0.0.0-2026-abc", true},
+		{"0.2.0", "x-20060102150405-0123456789ab", true},
 	}
 	for _, tc := range tests {
 		if got := Skewed(tc.plugin, tc.binary); got != tc.want {

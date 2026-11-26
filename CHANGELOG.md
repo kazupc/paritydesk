@@ -116,9 +116,11 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   approval cards still appear. Other tools, including the per-turn plan
   tools, are never touched. `online.guard = "always"` blocks the fixed
   floor in every session.
-- Added: `paritydesk online status` and `paritydesk online cancel`
-  (stops everything at once, also during a run); `online next`,
-  `decide`, `retry`, `done` and `capture` are used by the skills. `plan`,
+- Added: `paritydesk online status`, `paritydesk online retry` (offers
+  the changes that were not applied once more, before the next
+  `/paritydesk:reconcile`) and `paritydesk online cancel` (stops
+  everything at once, also during a run); `online next`, `decide`,
+  `done` and `capture` are used by the skills. `plan`,
   `switch` and `sync` gain an `online` member and a plan line; `status`
   shows waiting changes (`--short`: `online:<n>`); `doctor` gains the
   check `online`; `uninstall` removes the online folder.
@@ -136,7 +138,8 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   `${CLAUDE_SESSION_ID}` expands in skills, the question tool in every
   session kind, how soon a sidebar write survives the first reconcile and
   whether every launch logs the account and organization (release
-  checklist R-ON-1 to R-ON-9). 6.x gets no online steps.
+  checklist R-ON-1 to R-ON-4, R-ON-6 and R-ON-9). 6.x gets no online
+  steps.
 
 - Added: row `pins` carries which Code sessions are pinned. paritydesk
   reads the pin list read-only from Claude's IndexedDB (a private per-file
@@ -170,8 +173,9 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   paritydesk's archive (`<SupportDir>/artifacts`), newest change winning
   per artifact and the older version kept in history. Publishing to the
   other profiles is built (outbox file plus a folder grant, verified by
-  reading the page back) but ships turned off (`[artifacts] publish_via =
-  "off"`) until release step R-AR-4 has passed on a real Mac. ADR 0006.
+  reading the page back) but ships turned off (the compatibility
+  manifest's `[artifacts] publish_via = "off"`, not a config.toml key)
+  until release step R-AR-4 has passed on a real Mac. ADR 0006.
 - Added: `paritydesk artifacts status|plan|ingest|allow|skip|forget|import-legacy`.
   `allow`, `forget` and `import-legacy --apply` run only in Terminal.
   `import-legacy --from <dir>` imports the artifact archive of an earlier

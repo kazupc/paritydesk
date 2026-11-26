@@ -9,6 +9,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/config"
 	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
+	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/online"
 	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/state"
@@ -66,10 +67,20 @@ func (r *run) artifactsPreview() {
 // the entering profile and the new epoch. A busy archive lock skips it;
 // the run still succeeds.
 func (r *run) artifactsDue(ctx context.Context) {
-	if !r.o.artifactsActive(r.manifest) || r.d().ReadOnly || r.root == nil {
+	if r.root == nil {
 		return
 	}
-	_ = r.d().Artifacts.WriteDue(ctx, r.T.Profile.Alias, r.T.Replica, r.root.Epoch)
+	r.o.writeArtifactsDue(ctx, r.manifest, r.T.Profile.Alias, r.T.Replica, r.root.Epoch)
+}
+
+// writeArtifactsDue writes due.json for the entering profile alias at
+// epoch (P10, and recover when it completes a switch or sync). Best
+// effort: a busy archive lock skips it.
+func (o *Orchestrator) writeArtifactsDue(ctx context.Context, m *compat.Manifest, alias ids.Alias, rep model.Replica, epoch uint64) {
+	if !o.artifactsActive(m) || o.d.ReadOnly {
+		return
+	}
+	_ = o.d.Artifacts.WriteDue(ctx, alias, rep, epoch)
 }
 
 // artifactsRenamed moves a renamed profile's copies in the archive.

@@ -263,3 +263,45 @@ func TestBusyArtifactsDoneClosedByVerify(t *testing.T) {
 		t.Fatalf("verify did not close the artifacts record: %+v", rec)
 	}
 }
+
+// TestArtifactsDueAfterRecover: recover completing an interrupted switch
+// stands in for P10 and writes due.json for T at the new epoch.
+func TestArtifactsDueAfterRecover(t *testing.T) {
+	ctx := context.Background()
+	completed := 0
+	for k := 1; ; k++ {
+		if k > 40 {
+			t.Fatal("no end of crash points")
+		}
+		e, f := artifactsEnv(t)
+		e.markBases()
+		n := 0
+		e.crash = func(Phase) bool { n++; return n == k }
+		_, err := e.orch().Switch(ctx, yes("b"))
+		if !errors.Is(err, ErrCrashInjected) {
+			if err != nil {
+				t.Fatalf("switch without a crash: %v", err)
+			}
+			break
+		}
+		e.crash = nil
+		if _, err := e.orch().Recover(ctx, RecoverOptions{Yes: true}); err != nil {
+			t.Fatalf("crash %d: recover: %v", k, err)
+		}
+		root := e.st.root(t)
+		if root.Active != "b" {
+			continue
+		}
+		completed++
+		wrote := false
+		for _, w := range f.writes {
+			wrote = wrote || w == "b"
+		}
+		if !wrote || f.committedEpoch != root.Epoch {
+			t.Errorf("crash %d: writes %v at epoch %d (root %d)", k, f.writes, f.committedEpoch, root.Epoch)
+		}
+	}
+	if completed == 0 {
+		t.Fatal("no crash point where recover completed the switch")
+	}
+}

@@ -1,0 +1,1 @@
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"paritydesk: this call is listed but not ready yet. Run paritydesk artifacts next first."}}

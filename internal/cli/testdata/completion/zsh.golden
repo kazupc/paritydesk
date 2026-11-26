@@ -11,7 +11,7 @@ _paritydesk_subs() {
     ('backups') reply=('prune:Apply the retention policy' 'purge:Remove every generation') ;;
     ('config') reply=('path:Print the config file path' 'show:Print the effective config' 'validate:Validate the config file') ;;
     ('generations') reply=('list:List generations' 'show:Show one generation') ;;
-    ('online') reply=('cancel:Drop the waiting changes; nothing in Claude changes' 'status:Show the changes waiting to be applied in Claude') ;;
+    ('online') reply=('cancel:Drop the waiting changes; nothing in Claude changes' 'retry:Offer the changes that were not applied once more (then run /paritydesk:reconcile)' 'status:Show the changes waiting to be applied in Claude') ;;
     ('profile') reply=('add:Add an account without signing out of any other' 'adopt:Register a parked folder after checking its identity' 'list:List profiles' 'remove:Unregister a profile; its folder is kept' 'rename:Rename a profile') ;;
     (*) reply=() ;;
   esac
@@ -29,6 +29,7 @@ _paritydesk_flags() {
     ('doctor') reply=('--bundle:write a redacted support archive (tar.gz) to this new file' '--bundle-logs:newest run logs to put in the archive' '--grant-automation:ask macOS for Automation permission now') ;;
     ('init') reply=('--alias:alias for the account in Claude now (asked when missing)' '--label:display label for the profile' '--managed:the account is managed by an employer or client' '--unmanaged:the account is not managed by an employer or client') ;;
     ('log') reply=('--run:run id (default: the last run)') ;;
+    ('online retry') reply=('--session:the Claude Code session running this command' '--token:the token of the first online next answer') ;;
     ('plan') reply=('--invoking-session:the Claude Code session running this command, left out of the busy list' '--only:categories to carry, comma-separated: sessions,environments,order,sidebar,pins,prefs,worktrees,scratch,window,mcp' '--skip:categories to leave alone, comma-separated') ;;
     ('profile add') reply=('--managed:the account is managed by an employer or client' '--unmanaged:the account is not managed by an employer or client') ;;
     ('profile adopt') reply=('--managed:the account is managed by an employer or client' '--unmanaged:the account is not managed by an employer or client') ;;
@@ -53,6 +54,7 @@ _paritydesk_value_flags() {
     ('doctor') reply=(--bundle --bundle-logs) ;;
     ('init') reply=(--alias --label) ;;
     ('log') reply=(--run) ;;
+    ('online retry') reply=(--session --token) ;;
     ('plan') reply=(--invoking-session --only --skip) ;;
     ('switch') reply=(--allow-deletions --confirmed-plan --only --reopen-session --skip) ;;
     ('sync') reply=(--allow-deletions) ;;

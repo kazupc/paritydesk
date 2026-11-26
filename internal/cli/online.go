@@ -47,13 +47,14 @@ type onlineEnv struct {
 	dataRoot   string
 }
 
-// onlineGroup is the `online` command group: status and cancel are
-// visible; capture, next, decide, retry and done are used by the
-// plugin's skills.
+// onlineGroup is the `online` command group: status, retry and cancel
+// are visible; capture, next, decide and done are used by the plugin's
+// skills.
 func onlineGroup() *command {
 	hidden := func(c *command) *command { c.hidden = true; return c }
-	return group("online", "<status|cancel>", i18n.HelpOnline, false,
+	return group("online", "<status|retry|cancel>", i18n.HelpOnline, false,
 		leaf("status", "", i18n.HelpOnlineStatus, 0, 0, nil, runOnlineStatus),
+		leaf("retry", "", i18n.HelpOnlineRetry, 0, 0, callerFlags, runOnlineRetry),
 		leaf("cancel", "", i18n.HelpOnlineCancel, 0, 0, nil, runOnlineCancel),
 		hidden(leaf("capture", "", i18n.HelpOnlineCapture, 0, 0, func(fs *flag.FlagSet) {
 			sessionFlag(fs)
@@ -69,7 +70,6 @@ func onlineGroup() *command {
 			fs.String("question", "", usage(i18n.FlagQuestion))
 			fs.String("answer", "", usage(i18n.FlagAnswer))
 		}, runOnlineDecide)),
-		hidden(leaf("retry", "", i18n.HelpOnlineRetry, 0, 0, callerFlags, runOnlineRetry)),
 		hidden(leaf("done", "", i18n.HelpOnlineDone, 0, 0, callerFlags, runOnlineDone)),
 	)
 }

@@ -1,6 +1,6 @@
 usage: paritydesk online retry [flags]
 
-Internal: offer the changes that were not applied once more
+Offer the changes that were not applied once more (then run /paritydesk:reconcile)
 
 flags:
   --session string             the Claude Code session running this command

@@ -456,9 +456,10 @@ macOS user account without Claude data where the step says so.
     (without `-dev`) in `plugin/.claude-plugin/plugin.json`, both entries
     of `.claude-plugin/marketplace.json`, `PLUGIN_VERSION` in
     `plugin/bin/paritydesk-hook` and the default of `Version` in
-    `internal/cli/cli.go`, and commit. The policy test keeps the plugin
-    and the shim equal; check the other two by hand. The SessionStart
-    hook compares the plugin's and the binary's major and minor version
+    `internal/cli/cli.go`, and commit. The policy tests keep the plugin,
+    both marketplace entries and the shim equal, and check that the
+    default in `internal/cli/cli.go` agrees in major and minor version.
+    The SessionStart hook compares the plugin's and the binary's major and minor version
     and stays silent when they differ.
     **Tag and build.** Push a `v<version>` tag. Expected: the release
     workflow passes its tests and govulncheck, and GoReleaser creates a

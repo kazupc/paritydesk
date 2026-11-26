@@ -30,10 +30,11 @@ const (
 const maxOverrideBytes = 1 << 20
 
 // versionString returns this binary's version: Version, or the module
-// version of a go install build.
+// version of a go install build when Version is still the "-dev" default
+// (not set with -ldflags).
 func versionString() string {
 	v := Version
-	if bi, ok := debug.ReadBuildInfo(); ok && Version == "0.1.0-dev" && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+	if bi, ok := debug.ReadBuildInfo(); ok && strings.HasSuffix(Version, "-dev") && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
 		v = bi.Main.Version
 	}
 	return v

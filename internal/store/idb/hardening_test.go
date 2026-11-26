@@ -2,6 +2,7 @@ package idb
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -11,7 +12,10 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/syndtr/goleveldb/leveldb/util"
+
 	"github.com/kazupc/paritydesk/internal/store/idb/idbtest"
+	"github.com/kazupc/paritydesk/internal/store/kv/leveldb"
 )
 
 // A log larger than the byte-copy budget is refused before it is read
@@ -78,5 +82,64 @@ func TestClonerErrorsHoldNoPaths(t *testing.T) {
 				t.Fatalf("reason = %s", ReasonOf(err))
 			}
 		})
+	}
+}
+
+// blockTrailer is an uncompressed block's trailer with a valid CRC.
+func blockTrailer(block []byte) []byte {
+	crc := util.NewCRC(block).Update([]byte{0}).Value()
+	return binary.LittleEndian.AppendUint32([]byte{0}, crc)
+}
+
+// hostileTable builds a well-formed table whose one data entry claims a key
+// length of 2^64-1. Every block checksum is valid.
+func hostileTable() []byte {
+	entry := []byte{0x00}
+	entry = binary.AppendUvarint(entry, ^uint64(0))
+	entry = append(entry, 0x0a)
+	for len(entry) < 32 {
+		entry = append(entry, 'a')
+	}
+	data := append(entry, 0, 0, 0, 0, 1, 0, 0, 0)
+	file := append(append([]byte(nil), data...), blockTrailer(data)...)
+	idxOff := len(file)
+	h := binary.AppendUvarint(binary.AppendUvarint(nil, 0), uint64(len(data)))
+	idx := append([]byte{0x00, 0x01, byte(len(h)), 'z'}, h...)
+	idx = append(idx, 0, 0, 0, 0, 1, 0, 0, 0)
+	file = append(append(file, idx...), blockTrailer(idx)...)
+	metaOff := len(file)
+	meta := []byte{0, 0, 0, 0, 1, 0, 0, 0}
+	file = append(append(file, meta...), blockTrailer(meta)...)
+	footer := binary.AppendUvarint(nil, uint64(metaOff))
+	footer = binary.AppendUvarint(footer, uint64(len(meta)))
+	footer = binary.AppendUvarint(footer, uint64(idxOff))
+	footer = binary.AppendUvarint(footer, uint64(len(idx)))
+	for len(footer) < 40 {
+		footer = append(footer, 0)
+	}
+	footer = binary.LittleEndian.AppendUint64(footer, 0xdb4775248b80fb57)
+	return append(file, footer...)
+}
+
+// readTableBytes writes b as table 000005.ldb and reads it.
+func readTableBytes(t testing.TB, b []byte) error {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "000005.ldb"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	open := func(name string) (*os.File, error) { return os.Open(filepath.Join(dir, name)) }
+	return readTable(context.Background(), open, "000005.ldb",
+		leveldb.TableFile{Num: 5, Size: int64(len(b))}, newCollector(testSpec()))
+}
+
+// A crafted table that makes goleveldb's block decoder panic is reported
+// as damage, never a crash (spec-pins 4.3 step 3, 6.4).
+func TestHostileTableIsUnclean(t *testing.T) {
+	err := readTableBytes(t, hostileTable())
+	if !errors.Is(err, ErrUnclean) {
+		t.Fatalf("err = %v, want ErrUnclean", err)
+	}
+	if ReasonOf(err) != ReasonUnclean {
+		t.Fatalf("reason = %v, want %v", ReasonOf(err), ReasonUnclean)
 	}
 }

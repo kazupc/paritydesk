@@ -58,6 +58,14 @@ settings and artifact tools while this runs, and records the results.
      `paritydesk online next --json --session "${CLAUDE_SESSION_ID}" --token <token>`
      (with `--unavailable <names>` when you collected any). Never run
      paritydesk in the same message as the calls.
+   - If a `paritydesk online` command exits non-zero or prints a document
+     with `error` instead of `state`: stop the loop. Tell the user, in
+     their language, what `error.title` and `error.message` (when present)
+     say, and give `error.next` with any command in it exactly as printed
+     (for example `paritydesk recover`). Do not run `paritydesk online
+     done` or any other `paritydesk online` command. Do not make any call
+     from an earlier answer. The changes stay queued, and the next session
+     start offers them again.
 3. Run `paritydesk online done --json --session "${CLAUDE_SESSION_ID}" --token <token>`
    and show its `display_lines` when present, otherwise its `lines`,
    exactly.

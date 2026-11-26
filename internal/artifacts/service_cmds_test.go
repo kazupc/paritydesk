@@ -293,3 +293,27 @@ func TestDueWithPublishOff(t *testing.T) {
 		t.Fatalf("due.json %+v", d)
 	}
 }
+
+// With publish_via off (capture only, 5.8) a publish decision is recorded
+// but says it waits for publishing; other decisions keep the plain line.
+func TestAllowWithPublishOff(t *testing.T) {
+	h, id := synced(t)
+	ctx := context.Background()
+	h.svc.Spec.PublishVia = compat.ArtifactsPublishOff
+	out, err := h.svc.Allow(ctx, AllowInput{Ref: string(id), What: "restore", Profile: "home"}, yes)
+	if err != nil || !slices.Contains(h.manifest().Pairs[id].Flags.Restore, "home") {
+		t.Fatalf("restore: %v", err)
+	}
+	if len(out.Lines) != 1 || out.Lines[0].English() != i18n.En(i18n.ArtifactsAllowedPublishOff) {
+		t.Fatalf("restore lines %q", i18n.Strings(i18n.English, out.Lines))
+	}
+	out, err = h.svc.Allow(ctx, AllowInput{Ref: string(id), What: "shared"}, yes)
+	if err != nil || len(out.Lines) != 1 || out.Lines[0].English() != i18n.En(i18n.ArtifactsAllowed) {
+		t.Fatalf("shared lines %q %v", i18n.Strings(i18n.English, out.Lines), err)
+	}
+	h.svc.Spec.PublishVia = compat.ArtifactsPublishFiles
+	out, err = h.svc.Allow(ctx, AllowInput{Ref: string(id), What: "create", Profile: "home"}, yes)
+	if err != nil || len(out.Lines) != 1 || out.Lines[0].English() != i18n.En(i18n.ArtifactsAllowed) {
+		t.Fatalf("create with publishing on %q %v", i18n.Strings(i18n.English, out.Lines), err)
+	}
+}

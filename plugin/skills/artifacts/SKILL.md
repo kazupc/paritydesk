@@ -1,7 +1,7 @@
 ---
 name: artifacts
 argument-hint: ""
-description: Keep claude.ai artifacts the same on every paritydesk profile (beta). Saves what changed on this account into paritydesk's archive and publishes what changed elsewhere. Use when the user runs /paritydesk:artifacts, asks to sync artifacts, or a paritydesk SessionStart line offers it.
+description: Keep claude.ai artifacts the same on every paritydesk profile (beta). Saves what changed on this account into paritydesk's archive and (once publishing is on) publishes what changed elsewhere. Use when the user runs /paritydesk:artifacts, asks to sync artifacts, or a paritydesk SessionStart line offers it.
 ---
 
 # Sync artifacts with paritydesk (beta)
@@ -13,14 +13,16 @@ do not translate or reword them. Hook lines from paritydesk are English;
 say what they mean in the user's language.
 
 paritydesk reads this account's artifacts, keeps a copy of each in its
-archive on this Mac, and publishes the versions changed on another profile.
+archive on this Mac, and (once publishing is on) publishes the versions
+changed on another profile.
 paritydesk lists the exact calls; you make them. A hook of the paritydesk
 plugin checks every artifact call while this runs and records the results.
 
 1. Tell the user in one sentence: this reads the account's artifacts and
-   may publish copies; Claude will ask for access to paritydesk's outbox
-   folder and to approve each publish, and may open pages; declining a card skips
-   that artifact this time.
+   saves them in paritydesk's archive; when the sync has publish steps,
+   Claude will ask for access to paritydesk's outbox folder and to approve
+   each publish; it may open pages; declining a card skips that artifact
+   this time.
 2. Run `paritydesk artifacts next --json --session "${CLAUDE_SESSION_ID}"`.
    Remember `token` from the first answer that has one, and pass
    `--token <token>` on every later `paritydesk artifacts` command of this
@@ -70,7 +72,10 @@ plugin checks every artifact call while this runs and records the results.
      message as the calls.
    - If the user asks to stop, or a command fails unexpectedly, run
      `paritydesk artifacts pause --json --session "${CLAUDE_SESSION_ID}" --token <token>`
-     before answering.
+     before answering. If the failing command printed a document with
+     `error`, also give `error.next` with any command in it exactly as
+     printed (for example `paritydesk recover`); if `pause` fails the same
+     way, do not retry it.
 4. Run `paritydesk artifacts done --json --session "${CLAUDE_SESSION_ID}" --token <token>`
    and show its `display_lines` when present, otherwise its `lines`,
    exactly.

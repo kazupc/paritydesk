@@ -1,9 +1,10 @@
-usage: paritydesk online <status|cancel>
+usage: paritydesk online <status|retry|cancel>
 
 Show or drop changes waiting to be applied in Claude
 
 commands:
   cancel       Drop the waiting changes; nothing in Claude changes
+  retry        Offer the changes that were not applied once more (then run /paritydesk:reconcile)
   status       Show the changes waiting to be applied in Claude
 
 global flags:

@@ -161,6 +161,30 @@ type GuardDecision struct {
 
 func deny(m i18n.Msg) GuardDecision { return GuardDecision{Deny: true, Reason: m} }
 
+// QueueKindArtifacts is Queue.Kind of an artifacts round queue (the
+// artifacts package's KindArtifacts; online cannot import it).
+const QueueKindArtifacts = "artifacts"
+
+// DenyReasonFor is the deny reason m as worded for queue q: an
+// artifacts round answers to paritydesk artifacts next, not online
+// next, so the reasons that name the next command get that wording.
+func DenyReasonFor(q *Queue, m i18n.Msg) i18n.Msg {
+	if q == nil || q.Kind != QueueKindArtifacts {
+		return m
+	}
+	switch m {
+	case i18n.GuardDenyUnplanned:
+		return i18n.GuardDenyUnplannedArtifacts
+	case i18n.GuardDenyNotYet:
+		return i18n.GuardDenyNotYetArtifacts
+	case i18n.GuardDenyDuplicate:
+		return i18n.GuardDenyDuplicateArtifacts
+	}
+	return m
+}
+
+func denyFor(q *Queue, m i18n.Msg) GuardDecision { return deny(DenyReasonFor(q, m)) }
+
 // Decide is the PreToolUse decision (8.2; the first matching rule wins).
 // It never answers "allow": a call that passes gets no decision, so the
 // app's own approval cards still appear.
@@ -225,13 +249,13 @@ func Decide(in GuardInput) GuardDecision {
 			probe = probe || s.ID == ProbeStepID
 		}
 		if !probe {
-			return deny(i18n.GuardDenyNotYet)
+			return denyFor(in.Queue, i18n.GuardDenyNotYet)
 		}
 		matches = []*Step{in.Queue.Step(ProbeStepID)}
 	}
 	if len(matches) == 0 {
 		// Rule 9: an unplanned call on a guarded server.
-		return deny(i18n.GuardDenyUnplanned)
+		return denyFor(in.Queue, i18n.GuardDenyUnplanned)
 	}
 	// Rule 7: an offered, ready step with attempts left.
 	for _, s := range matches {
@@ -244,10 +268,10 @@ func Decide(in GuardInput) GuardDecision {
 	// parallel (the gate of 8.3).
 	for _, s := range matches {
 		if s.Status == StatusOffered && in.Inflight[s.ID] >= s.MaxAttempts() && !in.Recorded[s.ID] {
-			return deny(i18n.GuardDenyDuplicate)
+			return denyFor(in.Queue, i18n.GuardDenyDuplicate)
 		}
 	}
-	return deny(i18n.GuardDenyNotYet)
+	return denyFor(in.Queue, i18n.GuardDenyNotYet)
 }
 
 // DecideLeaseUnknown is the decision while the shim's armed marker says

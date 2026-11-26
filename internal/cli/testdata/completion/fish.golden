@@ -15,7 +15,7 @@ function __paritydesk_subs
         case 'generations'
             printf '%s\n' list show
         case 'online'
-            printf '%s\n' cancel status
+            printf '%s\n' cancel retry status
         case 'profile'
             printf '%s\n' add adopt list remove rename
     end
@@ -39,6 +39,8 @@ function __paritydesk_value_flags
             printf '%s\n' --alias --label
         case 'log'
             printf '%s\n' --run
+        case 'online retry'
+            printf '%s\n' --session --token
         case 'plan'
             printf '%s\n' --invoking-session --only --skip
         case 'switch'
@@ -136,6 +138,7 @@ complete -c paritydesk -n '__paritydesk_at \'config\'' -a validate -d 'Validate 
 complete -c paritydesk -n '__paritydesk_at \'generations\'' -a list -d 'List generations'
 complete -c paritydesk -n '__paritydesk_at \'generations\'' -a show -d 'Show one generation'
 complete -c paritydesk -n '__paritydesk_at \'online\'' -a cancel -d 'Drop the waiting changes; nothing in Claude changes'
+complete -c paritydesk -n '__paritydesk_at \'online\'' -a retry -d 'Offer the changes that were not applied once more (then run /paritydesk:reconcile)'
 complete -c paritydesk -n '__paritydesk_at \'online\'' -a status -d 'Show the changes waiting to be applied in Claude'
 complete -c paritydesk -n '__paritydesk_at \'profile\'' -a add -d 'Add an account without signing out of any other'
 complete -c paritydesk -n '__paritydesk_at \'profile\'' -a adopt -d 'Register a parked folder after checking its identity'
@@ -175,6 +178,8 @@ complete -c paritydesk -n '__paritydesk_at \'init\'' -l label -x -d 'display lab
 complete -c paritydesk -n '__paritydesk_at \'init\'' -l managed -d 'the account is managed by an employer or client'
 complete -c paritydesk -n '__paritydesk_at \'init\'' -l unmanaged -d 'the account is not managed by an employer or client'
 complete -c paritydesk -n '__paritydesk_at \'log\'' -l run -x -d 'run id (default: the last run)'
+complete -c paritydesk -n '__paritydesk_at \'online retry\'' -l session -x -d 'the Claude Code session running this command'
+complete -c paritydesk -n '__paritydesk_at \'online retry\'' -l token -x -d 'the token of the first online next answer'
 complete -c paritydesk -n '__paritydesk_at \'plan\'' -l invoking-session -x -d 'the Claude Code session running this command, left out of the busy list'
 complete -c paritydesk -n '__paritydesk_at \'plan\'' -l only -x -a '(__paritydesk_categories)' -d 'categories to carry, comma-separated: sessions,environments,order,sidebar,pins,prefs,worktrees,scratch,window,mcp'
 complete -c paritydesk -n '__paritydesk_at \'plan\'' -l skip -x -a '(__paritydesk_categories)' -d 'categories to leave alone, comma-separated'

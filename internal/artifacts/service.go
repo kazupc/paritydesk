@@ -27,7 +27,7 @@ import (
 )
 
 // KindArtifacts is state.OnlineRecord.Kind of an artifacts round queue.
-const KindArtifacts = "artifacts"
+const KindArtifacts = online.QueueKindArtifacts
 
 // Lock waits.
 const (

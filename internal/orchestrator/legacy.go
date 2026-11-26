@@ -829,7 +829,16 @@ func (o *Orchestrator) legacySeed(ctx context.Context, root *state.Root, lp *leg
 		}
 		snaps := make([]*model.RowSnapshot, 0, len(parts))
 		for i, p := range parts {
-			s, err := o.readRowLS(ctx, m, p.folder.Path, p.rep, r, readers[i], nil, false)
+			var s *model.RowSnapshot
+			var err error
+			if r == model.RowPins {
+				// Pins need side facts, as at the P10 re-read: an absent
+				// store with no isStarred evidence reads as no pins.
+				pr := &pinsReread{Facts: sources.SideFacts{ProbeSince: root.PinsProbes[p.alias]}}
+				s, err = o.rereadPinsRow(ctx, m, p.folder.Path, p.rep, readers[i], nil, pr)
+			} else {
+				s, err = o.readRowLS(ctx, m, p.folder.Path, p.rep, r, readers[i], nil, false)
+			}
 			if err != nil || s == nil {
 				row.Reason = SeedUnreadable
 				if err == nil {
