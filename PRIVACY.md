@@ -93,8 +93,6 @@ every other entry the compatibility manifest marks as never touched.
 - The Claude app bundle wherever it is installed: its `Info.plist` and
   the executable's size and modification time, to notice updates, and the
   updater's staged-update state.
-- The process table and open files (`lsof` with fixed arguments), to make
-  sure Claude has fully quit before anything is written.
 - `git status --porcelain` in worktree directories that a session uses,
   read-only, to warn before a worktree with uncommitted changes loses its
   registration. Hooks, fsmonitor and attribute filters are switched off
@@ -104,6 +102,12 @@ every other entry the compatibility manifest marks as never touched.
 <!-- v0.2 anchor: busy -->
 
 <!-- v0.2 anchor: fdscan -->
+- The process table and the files processes hold open (read through
+  macOS's process information interface; `lsof` with fixed arguments as
+  the fallback), to make sure Claude has fully quit before anything is
+  written. Only paths inside Claude's data folders are kept, and only
+  while the check runs. `paritydesk doctor` runs the same check once
+  with nothing kept and reports counts only.
 
 <!-- v0.2 anchor: sidebar-offline -->
 

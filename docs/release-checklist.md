@@ -202,6 +202,20 @@ release:
 <!-- v0.2 anchor: busy -->
 
 <!-- v0.2 anchor: fdscan -->
+## Open-file scan (v0.2)
+
+1. **CI.** The macOS jobs (`macos-latest`, `macos-15-intel`) pass
+   `internal/fdscan` and `internal/app` with the native scan
+   (`TestScanChild`, `TestSelfCheckUnderSandbox`, `TestNativeMatchesLsof`,
+   `TestScanAllFindsChild`); the `pd_nofdscan` step passes; the job log
+   shows the full-scan counts (`unreadable`, `partial`) and the
+   native-versus-`lsof` timing (not gating). The e2e subtest "leftover
+   write holder stops the switch" passed.
+2. **Layout.** `clang -arch arm64 -fsyntax-only scripts/dev/libproc-layout.c`
+   and the same with `-arch x86_64` pass with the release SDK.
+3. **On this Mac.** `paritydesk doctor`: `open-file-scan` is `ok` (native).
+   A `warn` with counts means some processes were unreadable and `lsof`
+   is used for them; record the counts in the release notes.
 
 <!-- v0.2 anchor: sidebar-offline -->
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/kazupc/paritydesk/internal/clock"
 	"github.com/kazupc/paritydesk/internal/compat"
+	"github.com/kazupc/paritydesk/internal/fdscan"
 	"github.com/kazupc/paritydesk/internal/ids"
 )
 
@@ -68,12 +69,40 @@ type Holder struct {
 	PID     int
 	Command string
 	Path    string
-	Access  string // "r", "w", "u" (read-write), "cwd", "txt"
+	Access  string    // "r", "w", "u" (read-write), "cwd", "txt"
+	Started time.Time // the holder's start time from the native scan; zero from lsof
 }
 
 // FileHolders finds processes holding paths under prefixes.
 type FileHolders interface {
 	Holders(ctx context.Context, prefixes []string) ([]Holder, error)
+}
+
+// ScanMode is config app.open_file_scan.
+type ScanMode string
+
+// Open-file scan modes.
+const (
+	ScanAuto   ScanMode = "auto"   // native, lsof when the native scan is unavailable or fails
+	ScanNative ScanMode = "native" // native only; a failure is an error
+	ScanLsof   ScanMode = "lsof"   // the v0.1 path
+)
+
+// HolderScanInfo describes the open-file scan in use, as doctor sees it.
+type HolderScanInfo struct {
+	Mode ScanMode
+	// Backend is "native", "lsof" or "none" (native mode whose native
+	// scan cannot be used, or a blind scan).
+	Backend string
+	// Reason says why not native: "", "config", "test", "unsupported",
+	// "self-check", "partial", "blind", "scan-error".
+	Reason       string
+	RegionFlavor int  // 22 or 8 when the self-check ran and passed; 0 otherwise
+	SocketCheck  bool // the self-check verified the socket flavor
+	LsofOK       bool // /usr/sbin/lsof exists and is executable
+	// Counts from doctor's probe scan (0 when it did not run). Counts
+	// only: no pid, name or path.
+	Unreadable, Partial int
 }
 
 // LockProbe reports whether another process holds an fcntl lock on path.
@@ -193,6 +222,12 @@ type DarwinConfig struct {
 	// means /Applications then Home/Applications (under `go test`, only
 	// Home/Applications).
 	AppDirs []string
+	// OpenFileScan is config app.open_file_scan; "" means auto.
+	OpenFileScan ScanMode
+	// FDScan is the native scanner; nil means fdscan.System() outside
+	// tests. Under go test a nil FDScan disables the native path (lsof
+	// through Exec only), so no test reads the real process table.
+	FDScan fdscan.Scanner
 }
 
 // QuiescenceInput describes one quiescence check (D15).

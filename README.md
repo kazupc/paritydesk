@@ -30,6 +30,12 @@ A staged Claude update installs when Claude quits (finding 4 of ADR 0003), so a 
 <!-- v0.2 anchor: busy -->
 
 <!-- v0.2 anchor: fdscan -->
+Before anything is written, paritydesk checks that no process still
+holds a file in Claude's data folders. It reads macOS's process
+information directly (no external command); `lsof` with fixed arguments
+is the fallback, and `app.open_file_scan = "lsof"` keeps the v0.1 check.
+If paritydesk cannot read other processes' open files (for example
+inside a sandbox), the switch stops before writing anything.
 
 <!-- v0.2 anchor: sidebar-offline -->
 

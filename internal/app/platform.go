@@ -49,7 +49,10 @@ func (p *Platform) Running(ctx context.Context, bundlePath string) ([]Process, e
 // bundle path, or by --user-data-dir into one of the folders), the
 // updater, held LOCK files, write holders versus read-only holders under
 // the folders, and app, updater or write-holder processes started after
-// in.After. This process's own descriptors are ignored.
+// in.After. This process's own descriptors are ignored. A write holder
+// whose start time (native scan only) differs from its process list entry
+// is a reused pid: it is reported in StartedAfter when it started after
+// in.After.
 func (p *Platform) CheckQuiescence(ctx context.Context, in QuiescenceInput) (QuiescenceReport, error) {
 	var rep QuiescenceReport
 	procs, err := p.Procs.Processes(ctx)
@@ -58,6 +61,7 @@ func (p *Platform) CheckQuiescence(ctx context.Context, in QuiescenceInput) (Qui
 	}
 	byPID := make(map[int]Process, len(procs))
 	late := map[int]bool{}
+	var extra []Process // write holders newer than their process list entry
 	for _, pr := range procs {
 		byPID[pr.PID] = pr
 		isApp := IsAppProcess(pr, in.BundlePath) || usesDataFolder(pr, in.Folders)
@@ -94,8 +98,17 @@ func (p *Platform) CheckQuiescence(ctx context.Context, in QuiescenceInput) (Qui
 				continue
 			}
 			rep.WriteHolders = append(rep.WriteHolders, h)
-			if pr, ok := byPID[h.PID]; ok && startedAfter(pr, in.After) {
-				late[pr.PID] = true
+			pr, ok := byPID[h.PID]
+			switch {
+			case ok && (h.Started.IsZero() || h.Started.Equal(pr.Started)):
+				if startedAfter(pr, in.After) {
+					late[pr.PID] = true
+				}
+			case !h.Started.IsZero() && !in.After.IsZero() && h.Started.After(in.After):
+				// The holder is a newer process than the list entry (pid
+				// reused) or started after the list was taken: report it
+				// too.
+				extra = append(extra, Process{PID: h.PID, Started: h.Started})
 			}
 		}
 	}
@@ -104,9 +117,26 @@ func (p *Platform) CheckQuiescence(ctx context.Context, in QuiescenceInput) (Qui
 			rep.StartedAfter = append(rep.StartedAfter, pr)
 		}
 	}
+	for _, pr := range extra {
+		dup := slices.ContainsFunc(rep.StartedAfter, func(q Process) bool { return q.PID == pr.PID && q.Started.Equal(pr.Started) })
+		if !dup {
+			rep.StartedAfter = append(rep.StartedAfter, pr)
+		}
+	}
 	rep.Quiet = len(rep.AppPIDs) == 0 && !rep.UpdaterRunning && len(rep.LocksHeld) == 0 &&
 		len(rep.WriteHolders) == 0 && len(rep.StartedAfter) == 0
 	return rep, nil
+}
+
+// HolderScan describes the open-file scan in use (doctor only): the
+// holders' Info when they have one, else a plain lsof backend (fakes).
+func (p *Platform) HolderScan(ctx context.Context) HolderScanInfo {
+	if i, ok := p.Holders.(interface {
+		Info(context.Context) HolderScanInfo
+	}); ok {
+		return i.Info(ctx)
+	}
+	return HolderScanInfo{Backend: "lsof"}
 }
 
 // startedAfter reports whether pr started after t (never for a zero t).

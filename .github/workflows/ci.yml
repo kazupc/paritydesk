@@ -42,8 +42,11 @@ jobs:
         run: scripts/ci/check-no-network.sh
 
       - name: go vet (darwin and linux)
+        # The native open-file scan has one trampoline file per darwin
+        # architecture (internal/fdscan); vet both.
         run: |
           GOOS=darwin go vet ./...
+          GOOS=darwin GOARCH=arm64 go vet ./internal/fdscan/...
           GOOS=linux go vet ./...
 
   linux:
@@ -109,6 +112,17 @@ jobs:
       - name: go test -race
         # Tests never touch the real app: PARITYDESK_E2E stays unset.
         run: go test -race -count=1 ./...
+
+      - name: go test -tags pd_nofdscan (open-file scan stub)
+        # The escape hatch for a toolchain that refuses the linkname of
+        # the native open-file scan: the stub builds, and auto mode uses
+        # lsof.
+        run: go test -count=1 -tags pd_nofdscan ./internal/fdscan/... ./internal/app/
+
+      - name: open-file scan benchmark (not gating)
+        # Logs the native scan's time for the holder child and, on the
+        # runner only, for every process (BenchmarkScanAll).
+        run: go test -run '^$' -bench . -benchtime 3x ./internal/fdscan/
 
       - name: go test under a network-deny sandbox
         # Every test binary runs under sandbox-exec with all network

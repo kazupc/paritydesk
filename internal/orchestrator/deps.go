@@ -76,6 +76,9 @@ type AppControl interface {
 	LogEvents(ctx context.Context, from int64, sig compat.Signals, session ids.SessionID) ([]app.LogEvent, int64, error)
 	GitDirty(ctx context.Context, dir string) (bool, error)
 	LockHeld(path string) (bool, error)
+	// HolderScan describes the open-file scan in use; only doctor calls
+	// it (it may run one probe scan that keeps no path).
+	HolderScan(ctx context.Context) app.HolderScanInfo
 }
 
 // CompatGate selects manifests, runs probes and decides the mode

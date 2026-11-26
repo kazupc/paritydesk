@@ -7,8 +7,9 @@
 //     bundle but are not the app (Chrome's native messaging host, which is
 //     a child of Chrome; the updater; the crash handler) are excluded from
 //     the app's process set.
-//   - Open files under a folder are found with a fixed-argv lsof (a native
-//     libproc scan is a later optimization).
+//   - Open files under a folder are found with a native libproc scan
+//     (internal/fdscan), with a fixed-argv lsof as the fallback; both
+//     filter with the same matcher.
 //   - The LevelDB LOCK is probed with fcntl F_GETLK.
 //   - The app is quit only with the quit Apple Event to its bundle id. A
 //     veto ("Claude is still working") is waited on up to the timeout; a

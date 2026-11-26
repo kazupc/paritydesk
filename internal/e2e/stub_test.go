@@ -102,6 +102,7 @@ func TestStubApp(t *testing.T) {
 	t.Run("kill inside P7, then recover", h.testKillInP7)
 	t.Run("quit veto wait", h.testVetoWait)
 	t.Run("quit veto timeout writes nothing", h.testVetoTimeout)
+	t.Run("leftover write holder stops the switch", h.testLeftoverHolder)
 }
 
 // newHarness checks every guard, registers the stub and proves that the

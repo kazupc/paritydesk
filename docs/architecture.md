@@ -45,7 +45,7 @@ the folder swap (P8), parking the leaving folder (P9), one state commit
 | D10 | Account-bound fields of a session record keep the target's own values for sessions the target already knows. |
 | D13 | Writes are gated by shape probes of the files, not by the app version; a failed probe drops its row, a failed critical probe means swap-only or refusal. |
 | D14 | Claude is quit only by Apple Event; a timeout never escalates to a signal. |
-| D15 | Quiescence needs every signal clear: no app process, free LevelDB locks, no open files in the data folders, no updater activity. |
+| D15 | Quiescence needs every signal clear: no app process, free LevelDB locks, no open files in the data folders (libproc scan, lsof fallback), no updater activity. |
 | D16 | Backups are numbered generations with per-item previous values and a full LevelDB clone only in the most recent ones. |
 | D17 | The Local Storage size bookkeeping key is left untouched. |
 | D18 | The preview plan and the final plan are compared; new destructive changes need a new confirmation or abort a detached run. |
@@ -124,6 +124,28 @@ the folder swap (P8), parking the leaving folder (P9), one state commit
 <!-- v0.2 anchor: busy -->
 
 <!-- v0.2 anchor: fdscan -->
+**Open-file scan (v0.2, `internal/fdscan`).** The quiescence check (D15)
+finds holders of the data folders with a cgo-free reader of libproc
+(`proc_listallpids`, `proc_pidinfo`, `proc_pidfdinfo`,
+`proc_pidfileportinfo` through assembly trampolines, `kern.proc.pid`
+through sysctl): numbered descriptors, bound Unix sockets, fileports, the
+working and root directory, per-thread working directories and mapped
+files (the Claude Code CLI runs from inside the data folder, so its
+executable mapping matters most). A self-check against paritydesk's own
+process runs before the first scan: a changed layout is `ErrLayout`
+(`auto` uses `lsof`), a denied interface is `ErrBlind` (an error in every
+mode, since `lsof` would be blind too). A same-user process that could
+not be read completely is never reported as holding nothing
+(`ErrPartial`; `auto` asks `lsof` for that call). Both backends filter
+with one matcher (prefix, resolved prefix, case and NFC fold). Native
+records carry the holder's start time, so a reused pid is reported in
+`StartedAfter`.
+
+| `app.open_file_scan` | Backend | On a native failure |
+|---|---|---|
+| `auto` (default) | native, `lsof` fallback | `lsof` for that call; blind: exit 70 |
+| `native` | native only | exit 70 before writing |
+| `lsof` | the v0.1 `lsof` check, no native code | — |
 
 <!-- v0.2 anchor: sidebar-offline -->
 

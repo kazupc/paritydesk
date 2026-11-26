@@ -49,6 +49,7 @@ type stubApp struct {
 	launches int
 	quits    int
 	dirty    map[string]bool // worktree paths git status reports dirty
+	scan     *app.HolderScanInfo
 }
 
 var _ AppControl = (*stubApp)(nil)
@@ -100,6 +101,12 @@ func (a *stubApp) LogEvents(context.Context, int64, compat.Signals, ids.SessionI
 }
 func (a *stubApp) GitDirty(_ context.Context, p string) (bool, error) { return a.dirty[p], nil }
 func (a *stubApp) LockHeld(string) (bool, error)                      { return false, nil }
+func (a *stubApp) HolderScan(context.Context) app.HolderScanInfo {
+	if a.scan != nil {
+		return *a.scan
+	}
+	return defaultHolderScan
+}
 
 // realWorld is a data root with two profiles and the real dependencies.
 type realWorld struct {
