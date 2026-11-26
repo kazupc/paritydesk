@@ -170,6 +170,13 @@ mirror_paths = [["preferences", "epitaxyPrefs", "dframe-code-sections", "{acct}/
 # dframe-store.backup.v1, which paritydesk never writes.
 persist_version = 1
 probes = ["sections-mirror", "sections-ls", "sidebar-store-key", "sidebar-store-version"]
+[row.fields]
+# Section members the app edits one at a time merge on their own, so
+# concurrent edits of different members on the two sides all survive.
+# collapsed is device-local (reset before upload, kept from local on pull).
+per_field = ["collapsed", "name", "shown", "show", "groupBy", "order", "members"]
+# The app resets ascending when the sort kind changes: the pair moves as one.
+group = ["sortBy", "ascending"]
 
 [[row]]
 row = "pinned-order"
@@ -220,6 +227,48 @@ worktree_path = ["path"]
 # v0.2 anchor: rows scratch
 
 # v0.2 anchor: rows sidebar-offline
+
+[[row]]
+row = "sidebar-collapse"
+write_path = "off-verify"
+# The app may rebuild the store after an unclean exit, and the person may
+# fold groups right after launch: a difference after launch is "replaced",
+# never drift.
+contested = true
+# dframe-store holds which groups and fork families are collapsed: Local
+# Storage only, never sent to the server, kept by the app itself when an
+# account's session ends (ADR 0003 second S1 round; ADR 0009). From ADR 0003 (6.28899.6
+# code); openedGroups, the preset prefix and the project/family key forms
+# were read from 7.37095.0 only.
+# openedGroups is deliberately not listed: the app drops it when an
+# account's session ends, so it is account-level; each folder keeps its own.
+ls_keys = ["dframe-store"]
+persist_version = 1
+probes = ["collapse-groups-shape", "collapse-families-shape", "collapse-store-version"]
+[row.limits]
+# More members, or a longer member, keeps the target's own set.
+max_members = 4096
+max_member_bytes = 2048
+[row.fields]
+# Members of dframe-store.state merged as sets (one item each).
+sets = ["collapsedGroups", "collapsedFamilies"]
+# Members starting with one of these prefixes end in an environment id,
+# rewritten through the environments remap (rows 7, 8).
+env_ref_prefix = ["project-preset::"]
+# Members naming a project: matched against sync.exclude globs.
+project_prefix = ["project-"]
+# Members naming a fork family: they end in a session id, matched against
+# sync.exclude ids.
+family_prefix = ["code:", "open:code:"]
+# Project members that never name a project (always carried).
+project_fixed = ["project-default::", "project-__scratch__", "project-__no_project__"]
+project_fixed_prefix = ["project-preset::", "project-kind::"]
+
+[[row]]
+row = "sidebar-seed"
+# Key names and readers not verified on 6.x (no 6.x code examined for this
+# item): not carried in this version.
+write_path = "none"
 
 # v0.2 anchor: rows pins
 
@@ -459,6 +508,29 @@ type = "object"
 # v0.2 anchor: probes scratch
 
 # v0.2 anchor: probes sidebar-offline
+
+[[probe]]
+id = "collapse-groups-shape"
+row = "sidebar-collapse"
+kind = "ls-shape"
+target = "dframe-store"
+path = ["state", "collapsedGroups"]
+type = "array"
+
+[[probe]]
+id = "collapse-families-shape"
+row = "sidebar-collapse"
+kind = "ls-shape"
+target = "dframe-store"
+path = ["state", "collapsedFamilies"]
+type = "array"
+
+[[probe]]
+id = "collapse-store-version"
+row = "sidebar-collapse"
+kind = "persist-version"
+target = "dframe-store"
+version = 1
 
 # ---------------------------------------------------------------- classification
 #

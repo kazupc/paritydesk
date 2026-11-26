@@ -1032,6 +1032,9 @@ type env struct {
 	scans    int
 	// basesBefore are the bases when markBases was last called.
 	basesBefore map[string]state.Ref
+	// customize, when set, adjusts every Deps built by deps (extra rows,
+	// adapters and modules of a test).
+	customize func(*Deps)
 }
 
 // markBases records the current bases for the I5 check.
@@ -1193,6 +1196,9 @@ func (e *env) deps() Deps {
 	if e.readOnly {
 		d.FS = fsx.ReadOnly(e.fs)
 		d.KV = kv.ReadOnly(e.kv)
+	}
+	if e.customize != nil {
+		e.customize(&d)
 	}
 	return d
 }

@@ -158,6 +158,7 @@ const (
 	// v0.2 anchor: fdscan
 
 	// v0.2 anchor: sidebar-offline
+	VerifyUnverified Msg = "verify.unverified"
 
 	// v0.2 anchor: scratch
 
@@ -324,6 +325,7 @@ var catalog = map[Msg]string{
 	// v0.2 anchor: fdscan
 
 	// v0.2 anchor: sidebar-offline
+	VerifyUnverified: "Verify: these could not be read back while Claude runs; they are checked at the next switch: %s",
 
 	// v0.2 anchor: scratch
 

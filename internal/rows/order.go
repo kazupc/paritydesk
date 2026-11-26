@@ -15,6 +15,11 @@ const orderKey = "order"
 // sectionPrefix marks sidebar-view section items.
 const sectionPrefix = "section:"
 
+// RoleGroup lists fields that move together as one unit: whole from the
+// side that changed any of them (sidebar-view: the sort pair, since the
+// app resets ascending when the sort kind changes).
+const RoleGroup = "group"
+
 // CarriesOrder reports whether the row's merge output carries
 // RowSnapshot.Order. Only group-order, pinned-order and sidebar-view do.
 // Other adapters may fill Order on Read, but their merges drop it, so a
@@ -57,7 +62,9 @@ func (o orderModule) Merge(in Input) (Output, error) {
 }
 
 // sidebarModule merges sidebar-view: Scalar per "field:" item, sections
-// keyed by "section:<id>", and the section order (RowSnapshot.Order) as an
+// keyed by "section:<id>" (merged member by member over
+// Fields[per_field], each Fields[group] list moving whole from the side
+// that changed it), and the section order (RowSnapshot.Order) as an
 // OrderedList.
 type sidebarModule struct{}
 
@@ -72,7 +79,7 @@ func (sidebarModule) Merge(in Input) (Output, error) {
 	if err != nil {
 		return Output{}, err
 	}
-	sections := recordMerger(in.Policy.Fields[RolePerField], in.Policy.Fields[RoleMaxTime])
+	sections := recordMerger(in.Policy.Fields[RolePerField], in.Policy.Fields[RoleMaxTime], in.Policy.Fields[RoleGroup])
 	spec := keyedSpec{row: model.RowSidebarView, fieldMerge: func(p pair) (model.Item, bool, bool, error) {
 		switch {
 		case p.key == orderKey:

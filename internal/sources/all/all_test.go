@@ -74,7 +74,7 @@ func TestReadHashesAndIdempotentOps(t *testing.T) {
 	for _, a := range all.Registry() {
 		rc := e.rc(t, folder, r, a.Row())
 		s := read(t, a, rc)
-		if len(s.Items) == 0 {
+		if len(s.Items) == 0 && carried(e.m, a.Row()) {
 			t.Errorf("%s: rich folder gave no items", a.Row())
 		}
 		for k, it := range s.Items {
@@ -124,9 +124,12 @@ func TestRoundTripPerRow(t *testing.T) {
 	for _, a := range all.Registry() {
 		t.Run(string(a.Row()), func(t *testing.T) {
 			e := newEnv(t)
+			if !carried(e.m, a.Row()) {
+				t.Skip("not carried by this manifest")
+			}
 			rs, rd := testkit.Replica(1), testkit.Replica(2)
-			src := e.root.AddFolder(t, testkit.Rich("Claude-s", 1))
-			dst := e.root.AddFolder(t, testkit.Rich("Claude", 2))
+			src := e.root.AddFolder(t, richV02("Claude-s", 1))
+			dst := e.root.AddFolder(t, richV02("Claude", 2))
 			desired, res := syncRow(t, e, a, src, dst, rs, rd)
 			if len(res.Edits) == 0 {
 				t.Fatal("no edits between different folders")

@@ -2,6 +2,7 @@ package merge
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"pgregory.net/rapid"
@@ -171,6 +172,70 @@ func TestPropSetInvalidNeverRemoves(t *testing.T) {
 		for _, x := range base {
 			if !got[x] && !((lv && !inL[x]) || (ev && !inE[x])) {
 				t.Fatalf("base member %q removed by an invalid side", x)
+			}
+		}
+	})
+}
+
+// sortedUnique returns the sorted distinct members of xs (never nil).
+func sortedUnique(xs ...[]string) []string {
+	set := map[string]bool{}
+	for _, l := range xs {
+		for _, x := range l {
+			set[x] = true
+		}
+	}
+	out := []string{}
+	for x := range set {
+		out = append(out, x)
+	}
+	slices.Sort(out)
+	return out
+}
+
+func TestPropSetBases(t *testing.T) {
+	alpha := []string{"a", "b", "c", "d", "e"}
+	rapid.Check(t, func(t *rapid.T) {
+		gen := rapid.SliceOfN(rapid.SampledFrom(alpha), 0, 5)
+		lb, eb, l, e := gen.Draw(t, "lb"), gen.Draw(t, "eb"), gen.Draw(t, "l"), gen.Draw(t, "e")
+		lv, ev := rapid.Bool().Draw(t, "lv"), rapid.Bool().Draw(t, "ev")
+		got := SetBases(lb, eb, l, e, lv, ev)
+		if !slices.IsSorted(got) || !slices.Equal(got, sortedUnique(got)) {
+			t.Fatalf("result not sorted and unique: %v", got)
+		}
+		// Symmetric in sides.
+		if sw := SetBases(eb, lb, e, l, ev, lv); !slices.Equal(got, sw) {
+			t.Fatalf("not symmetric: %v vs %v", got, sw)
+		}
+		// result ⊆ l ∪ e; a member both sides hold is always kept.
+		union := toSet(append(append([]string(nil), l...), e...))
+		for _, x := range got {
+			if !union[x] {
+				t.Fatalf("%q is in neither side", x)
+			}
+		}
+		inL, inE, res := toSet(l), toSet(e), toSet(got)
+		for x := range inL {
+			if inE[x] && !res[x] {
+				t.Fatalf("%q held by both sides was dropped", x)
+			}
+		}
+		// Idempotent: equal sides give the sorted side.
+		if same := SetBases(lb, eb, l, l, lv, ev); !slices.Equal(same, sortedUnique(l)) {
+			t.Fatalf("l == e gave %v, want %v", same, sortedUnique(l))
+		}
+		// Both bases valid and equal to l: the one-sided change of e wins.
+		if one := SetBases(l, l, l, e, true, true); !slices.Equal(one, sortedUnique(e)) {
+			t.Fatalf("one-sided change gave %v, want %v", one, sortedUnique(e))
+		}
+		// No valid base: the union.
+		if u := SetBases(lb, eb, l, e, false, false); !slices.Equal(u, sortedUnique(l, e)) {
+			t.Fatalf("invalid bases gave %v, want the union", u)
+		}
+		// Same base on both sides and a valid one, or no base at all: Set.
+		if lv || ev {
+			if s := SetBases(lb, lb, l, e, lv, ev); !slices.Equal(s, sortedUnique(Set(lb, l, e, lv, ev))) {
+				t.Fatalf("same bases: SetBases %v, Set %v", s, Set(lb, l, e, lv, ev))
 			}
 		}
 	})

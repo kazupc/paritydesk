@@ -74,6 +74,9 @@ func TestCrashRecoverSwitch(t *testing.T) {
 	cases := []crashCase{
 		{name: "switch", run: sw},
 		{name: "switch with fallback", setup: func(_ *testing.T, e *env) { e.fs.NoSwap = true }, run: sw},
+		{name: "switch with sidebar-offline rows", setup: func(_ *testing.T, e *env) {
+			withSidebarRows(e, fileAdapter{model.RowSidebarCollapse}, nil)
+		}, run: sw},
 		{name: "switch with swap back", setup: func(_ *testing.T, e *env) { e.app.intruder = true }, run: func(o *Orchestrator) error {
 			_, err := o.Switch(context.Background(), yes("b"))
 			if pderr.CodeOf(err) == pderr.ApplyRolledBack {

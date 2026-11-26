@@ -19,6 +19,22 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 <!-- v0.2 anchor: fdscan -->
 
 <!-- v0.2 anchor: sidebar-offline -->
+- Added: collapsed sidebar groups and fork families carry between accounts
+  (`sync.collapsed_groups`, on by default), written to Local Storage and
+  checked after launch; groups of sessions or projects kept back by
+  `sync.exclude` stay on their account (row `sidebar-collapse`, ADR 0009).
+- Added: the "show empty projects" setting carries between accounts; a
+  folder Claude has not yet set up gets the carried Sessions sort direction
+  and empty-group setting as its seed (row `sidebar-seed`, 7.x only).
+- Added: `verify --json` gains `unverified`, the rows that could not be read
+  back from Local Storage while Claude runs; they are checked at the next
+  switch (exit 0).
+- Changed: the sidebar view merges each section member on its own (sort
+  field and direction together), so different edits on two accounts both
+  survive.
+- Not yet confirmed on a real Mac: that a written collapsed-group list
+  survives launch on 7.x (release checklist SO-1). If it does not, the
+  release ships `sync.collapsed_groups = false` and says so here.
 
 <!-- v0.2 anchor: scratch -->
 

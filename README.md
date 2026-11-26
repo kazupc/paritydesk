@@ -32,6 +32,7 @@ A staged Claude update installs when Claude quits (finding 4 of ADR 0003), so a 
 <!-- v0.2 anchor: fdscan -->
 
 <!-- v0.2 anchor: sidebar-offline -->
+Under `sync.exclude`: collapsed project groups follow the same rule; while any glob is set, collapsed fork families and project groups that are not plain paths stay on their account.
 
 <!-- v0.2 anchor: scratch -->
 
