@@ -103,7 +103,7 @@ func probeOK() string { return `{"id":"` + tLocal + `"}` }
 // false).
 func pinQueue(t testing.TB, n int, card bool, question bool) *nh {
 	t.Helper()
-	s := testService(t, append(Registry(), testPins{question: question})...)
+	s := testService(t, append(baseRegistry(), testPins{question: question})...)
 	steps := []Step{ProbeStep()}
 	for i := 0; i < n; i++ {
 		in := fmt.Sprintf(`{"pinned":true,"session_id":"local_00000000-0000-4000-8000-%012d"}`, i+1)
@@ -416,7 +416,7 @@ func TestNextReplica(t *testing.T) {
 		t.Fatalf("replica changed %+v", b)
 	}
 	// Unknown: server-synced steps wait, then are skipped; pins proceed.
-	s := testService(t, append(Registry(), testPins{})...)
+	s := testService(t, append(baseRegistry(), testPins{})...)
 	d := Build(sidebarInput(t,
 		sectionsSnap(t, `{"id":"sessions","kind":"sessions","groupBy":"status"}`),
 		sectionsSnap(t, `{"id":"sessions","kind":"sessions","groupBy":"date"}`)), Registry())
@@ -597,7 +597,7 @@ func TestNextIdempotent(t *testing.T) {
 		MonoDeadlineNS: 1e12, ExpiresAt: t0.Add(time.Hour), Since: t0.Add(-time.Minute)}
 	in := NextInput{Queue: q, Record: rec, RootEpoch: 4, RootActive: "home", Now: t0, Mono: MonoNow{BootID: tBoot, NS: 1, OK: true},
 		Lease: lease, Caller: Caller{Session: tSession, Token: "tok"},
-		Providers: append(Registry(), testPins{}), Settings: NewSettings(spec7(t), testService(t).Config), NewToken: "t",
+		Providers: append(baseRegistry(), testPins{}), Settings: NewSettings(spec7(t), testService(t).Config), NewToken: "t",
 		Results: map[StepID]Result{ProbeStepID: result(tQueue, q.Steps[0], tSession, probeOK())},
 		Replica: ReplicaObs{Known: true, Replica: tReplica}}
 	a, err := Next(in)

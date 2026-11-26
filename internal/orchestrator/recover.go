@@ -419,7 +419,8 @@ func (rc *recovery) finishP10(ctx context.Context) error {
 	var reread map[model.RowID]*model.RowSnapshot
 	if ok && rc.manifest != nil {
 		var err error
-		if reread, err = rc.o.rereadRows(ctx, rc.manifest, claude, ps.Replica, rows, refs); err != nil {
+		pr := rc.o.pinsRereadFacts(root, t, ps.Replica)
+		if reread, err = rc.o.rereadRowsPins(ctx, rc.manifest, claude, ps.Replica, rows, refs, pr); err != nil {
 			ok = false
 		}
 	}

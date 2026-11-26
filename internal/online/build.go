@@ -53,6 +53,9 @@ type BuildInput struct {
 	// ids predicted hidden (spec-pins 8.1, 8.3); nil when unknown.
 	PinsRaw []string
 	Hidden  map[string]bool
+	// PinsUnion: either side's pins base was invalid at P5, so this run
+	// combines both lists (the pins question says so, spec-pins 8.7).
+	PinsUnion bool
 	// Extensions: provider name -> its CaptureResults output, or the
 	// artifacts round plan.
 	Extensions map[string]json.RawMessage
@@ -147,11 +150,10 @@ type Draft struct {
 // Empty reports a draft without steps.
 func (d Draft) Empty() bool { return len(d.Steps) == 0 }
 
-// Registry returns the built-in providers in order: probe, sidebar (the
-// pins unit adds the pins provider here). Extension providers
-// (artifacts) are appended by the wiring.
+// Registry returns the built-in providers in order: probe, sidebar,
+// pins. Extension providers (artifacts) are appended by the wiring.
 func Registry() []Provider {
-	return []Provider{ProbeProvider(), SidebarProvider()}
+	return []Provider{ProbeProvider(), SidebarProvider(), PinsProvider()}
 }
 
 // Policies returns the tool policies of ps.

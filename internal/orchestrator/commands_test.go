@@ -214,7 +214,7 @@ func TestDoctor(t *testing.T) {
 			byID[c.ID] = c
 		}
 	}
-	for _, id := range []string{"state", "version", "probes", "identity", "foreign-tools", "unclassified", "automation", "update", "open-file-scan", "chrome-bridge", "busy-detection", "busy-now", "account-change", "chrome-pairing-org", "managed", "runner", "scratch", "scratch-orphans", "scratch-kept", "online"} {
+	for _, id := range []string{"state", "version", "probes", "identity", "foreign-tools", "unclassified", "automation", "update", "open-file-scan", "chrome-bridge", "busy-detection", "busy-now", "account-change", "chrome-pairing-org", "managed", "runner", "scratch", "scratch-orphans", "scratch-kept", "pins", "online"} {
 		if _, ok := byID[id]; !ok {
 			t.Errorf("missing check %s", id)
 		}

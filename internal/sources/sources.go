@@ -96,6 +96,9 @@ type ReadReport struct {
 	TailDropped   bool
 	Copied        bool
 	ProbePassed   bool // ProbeSince > 0 and the read was fresh
+	// PinsReason is why the main list was not used when PinsSource is
+	// "mirror" (an idb.Reason value).
+	PinsReason string
 }
 
 // RefReader is implemented by adapters that read only what another row

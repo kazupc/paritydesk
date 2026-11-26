@@ -166,7 +166,7 @@ func Registry() map[model.RowID]Module {
 		collapseModule{}, seedModule{},
 
 		// v0.2 anchor: rows pins
-
+		keyedModule{row: model.RowPins, noFieldMerge: true},
 	}
 	m := make(map[model.RowID]Module, len(mods))
 	for _, mod := range mods {
@@ -181,4 +181,31 @@ func checkRow(in Input, row model.RowID) error {
 		return fmt.Errorf("rows: input for row %q given to module %q", in.Row, row)
 	}
 	return nil
+}
+
+// ExcludedSessionIDs returns the session ids that sync.exclude keeps
+// private, judged by the sessions row's own rule (sessionExcluder: ids
+// named in policy.Exclude, and records whose project path matches a glob,
+// failing closed). policy is the sessions row's policy (its Exclude and
+// Fields). Rows keyed by session id (pins) remove these keys from every
+// merge input, so they never travel.
+func ExcludedSessionIDs(snaps []*model.RowSnapshot, policy Policy) map[string]bool {
+	excl := sessionExcluder(policy.Exclude, first(policy.Fields[RoleProjectPath]))
+	out := map[string]bool{}
+	for _, pat := range policy.Exclude {
+		if excl(pat, nil) {
+			out[pat] = true
+		}
+	}
+	for _, s := range snaps {
+		if s == nil {
+			continue
+		}
+		for k, it := range s.Items {
+			if excl(k, &it) {
+				out[k] = true
+			}
+		}
+	}
+	return out
 }

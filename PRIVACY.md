@@ -139,6 +139,16 @@ every other entry the compatibility manifest marks as never touched.
 <!-- v0.2 anchor: online -->
 
 <!-- v0.2 anchor: pins -->
+- **Pins** (row `pins`): which of your local Code sessions are pinned is
+  read from Claude's IndexedDB (one key of the claude.ai origin's
+  database) through a private copy of its files in paritydesk's temporary
+  folder, which is removed after the read; the info logs (`LOG`) and the
+  lock file are never copied, and the database is never opened or
+  written. Claude's own backup of the list (in
+  `claude_desktop_config.json` and Local Storage) is read, never written.
+  Only session ids that match the local id pattern are kept, as bases in
+  the state folder; the list's text is never stored or logged, and
+  doctor and plan lines print counts, never ids.
 
 <!-- v0.2 anchor: artifacts -->
 

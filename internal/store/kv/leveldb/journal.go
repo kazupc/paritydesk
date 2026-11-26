@@ -96,9 +96,13 @@ type manifestState struct {
 	comparator                              string
 	hasComparator                           bool
 	// tables are the live tables: those the records add and do not
-	// delete later, as both libraries build their version.
-	tables map[tableID]struct{}
+	// delete later, as both libraries build their version, with the file
+	// size the record gives.
+	tables map[tableID]tableInfo
 }
+
+// tableInfo is what the manifest says about a live table.
+type tableInfo struct{ size int64 }
 
 // tableID is a table file in a level of the manifest's version.
 type tableID struct {
@@ -371,17 +375,39 @@ func parseFileName(name string) (num int64, kind string, ok bool) {
 // readManifest reads the manifest CURRENT names. Records that end inside
 // a field are skipped unless strict, keeping the fields read before, as
 // goleveldb does; any other record this package cannot read is an error.
+// It also refuses a comparator other than the bytewise one (Local
+// Storage).
 func readManifest(dir string, strict bool) (manifestState, error) {
-	var m manifestState
 	name, err := currentManifestName(dir)
 	if err != nil {
-		return m, err
+		return manifestState{}, err
 	}
 	f, err := os.Open(filepath.Join(dir, name))
 	if err != nil {
-		return m, fmt.Errorf("leveldb: open manifest: %w", err)
+		return manifestState{}, fmt.Errorf("leveldb: open manifest: %w", err)
 	}
 	defer f.Close()
+	m, err := decodeManifestNamed(f, name, strict)
+	if err != nil {
+		return m, err
+	}
+	if !m.hasComparator || m.comparator != bytewiseComparator {
+		return m, fmt.Errorf("leveldb: manifest %s: %w: comparator is not %s", name, errManifest, bytewiseComparator)
+	}
+	return m, nil
+}
+
+// decodeManifest replays the records of a manifest read from r. It makes
+// no decision about the comparator (callers do); see readManifest for
+// strict.
+func decodeManifest(r io.Reader, strict bool) (manifestState, error) {
+	return decodeManifestNamed(r, "MANIFEST", strict)
+}
+
+// decodeManifestNamed is decodeManifest with the manifest's base name
+// for error messages.
+func decodeManifestNamed(f io.Reader, name string, strict bool) (manifestState, error) {
+	var m manifestState
 	jr := journal.NewReader(f, nil, strict, true)
 	for {
 		r, err := jr.Next()
@@ -410,9 +436,6 @@ func readManifest(dir string, strict bool) (manifestState, error) {
 	// here keeps OpenWritable from writing anything first.
 	if !m.hasNextFileNum {
 		return m, fmt.Errorf("leveldb: manifest %s: %w: no next file number", name, errManifest)
-	}
-	if !m.hasComparator || m.comparator != bytewiseComparator {
-		return m, fmt.Errorf("leveldb: manifest %s: %w: comparator is not %s", name, errManifest, bytewiseComparator)
 	}
 	return m, nil
 }
@@ -499,25 +522,32 @@ func manifestName(n int64) string { return fmt.Sprintf("MANIFEST-%06d", n) }
 // when the whole record decodes (goleveldb commits a record's tables to
 // its version only then), deletions before additions.
 func (m *manifestState) decode(rec []byte) error {
-	var added, deleted []tableID
+	var added []addedTable
+	var deleted []tableID
 	if err := m.decodeFields(rec, &added, &deleted); err != nil {
 		return err
 	}
 	if m.tables == nil {
-		m.tables = map[tableID]struct{}{}
+		m.tables = map[tableID]tableInfo{}
 	}
 	for _, id := range deleted {
 		delete(m.tables, id)
 	}
-	for _, id := range added {
-		m.tables[id] = struct{}{}
+	for _, a := range added {
+		m.tables[a.id] = tableInfo{size: a.size}
 	}
 	return nil
 }
 
+// addedTable is one new-file field of a manifest record.
+type addedTable struct {
+	id   tableID
+	size int64
+}
+
 // decodeFields applies one record's scalar fields and collects its table
 // changes.
-func (m *manifestState) decodeFields(rec []byte, added, deleted *[]tableID) error {
+func (m *manifestState) decodeFields(rec []byte, added *[]addedTable, deleted *[]tableID) error {
 	uvarint := func() (uint64, error) {
 		x, n := binary.Uvarint(rec)
 		switch {
@@ -595,12 +625,13 @@ func (m *manifestState) decodeFields(rec []byte, added, deleted *[]tableID) erro
 			}
 		case tagNewFile:
 			var id tableID
+			var size int64
 			if id.level, err = uvarint(); err == nil {
 				if id.num, err = varint(); err == nil {
-					if _, err = varint(); err == nil {
+					if size, err = varint(); err == nil {
 						if err = skipBytes(); err == nil {
 							if err = skipBytes(); err == nil {
-								*added = append(*added, id)
+								*added = append(*added, addedTable{id: id, size: size})
 							}
 						}
 					}

@@ -271,6 +271,10 @@ row = "sidebar-seed"
 write_path = "none"
 
 # v0.2 anchor: rows pins
+[[row]]
+row = "pins"
+# Where 6.x keeps pins is not verified: not carried in this version.
+write_path = "none"
 
 # ---------------------------------------------------------------- probes
 #
@@ -637,6 +641,7 @@ ls_never_touched = [
   "persisted.ccd-session-presets.*.*",
   "ccd-session-store",
   "ccd-sync-*",
+  "*starred-local-code-sessions",
 ]
 
 # ---------------------------------------------------------------- app preferences

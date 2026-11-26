@@ -97,6 +97,9 @@ type run struct {
 	launched          bool
 	// draft is the P5 online draft (empty when the layer is off).
 	draft online.Draft
+	// previewWarns are the online warnings P2 added to Result.Warnings;
+	// P5 replaces them with the final draft's.
+	previewWarns []string
 }
 
 func (o *Orchestrator) newRun(kind state.RunKind, opts SwitchOptions) *run {

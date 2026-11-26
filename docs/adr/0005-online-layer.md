@@ -170,3 +170,94 @@ work item.
 Reading the per-mode group-by members, `environment` group-by, status and
 last-activity filters, section order, `move_sessions`, renames and deletes,
 unread dots, and any online step on 6.x.
+
+## Pins
+
+Row `pins` (which Code sessions are pinned) is written only through this
+layer. Facts were read in the read-only copy of app 7.37095.0 and in a
+copy of one data folder (shapes and counts only; no value of it is in
+the repository); minified names are evidence only.
+
+### Facts
+
+- P4. The pin list is the renderer's zustand store `dframe-starred-code`
+  in idb-keyval (key `store:pin-state:dframe-starred-code`). It is
+  server-synced, but local session ids never leave the device: the upload
+  drops them, the download keeps the device's own.
+- P7. An unpin is refused when the session's own sidebar section is
+  hidden (its custom-group assignment names a group whose section has
+  `shown == false`).
+- P8. Unpinning a pinned session first unpins every pinned local session
+  whose family root it is (lineage, hand-off, display parent, side
+  session, fork), archived children included, unless a flag turns that
+  off; the family map is empty outside the nested sidebar layout.
+- P13. The renderer mirrors the local ids into
+  `preferences.epitaxyPrefs["starred-local-code-sessions"]` and into Local
+  Storage (`LSS-persisted.starred-local-code-sessions`); an empty store is
+  seeded from it at launch, and every change rewrites it.
+- P14. The family fields: `displayParentSessionId`, `lineage.sessionId`
+  (kinds side_session, hand_off, suggested_task, fork),
+  `spawnedFrom.sessionId`, `forkedFromSessionId`.
+- P15. `set_pinned` waits 8 s for the window; on timeout it answers "The
+  app window didn't answer." after the command was dispatched, so the
+  renderer may still apply it, cascade included.
+- D3-D7. The IndexedDB is LevelDB with comparator `idb_cmp1`; data
+  blocks are snappy-compressed; `DatabaseName` and `ObjectStoreNames`
+  metadata keys give the database (`keyval-store`) and object store
+  (`keyval`) ids; the value is a record version, the Blink envelope (21,
+  with a zero 12-byte trailer), V8 16 and a one-byte string holding
+  `{"state":{"starredIds":[...]},"version":0,"updatedAt":<ms>}`; larger
+  values are wrapped (`ff 11 02` raw snappy, decoded; `ff 11 01` a blob
+  reference, never read); LevelDB-scopes bookkeeping lives under
+  `00 00 00 00 32`.
+
+### Decision
+
+1. **Read, never write.** `internal/store/idb` clones the directory file
+   by file (`clonefile`, byte copy only within a budget) without `LOCK`
+   and `LOG*`, checks the listing before and after, replays the manifest,
+   walks every live table in full (block types checked first) and scans
+   the logs with its own record scanner (a torn last record of the newest
+   log is dropped as the C++ library does). The newest entry of the key
+   wins; an unfinished scopes transaction that names the key blocks the
+   read. Neither IndexedDB nor the backup list is ever written: a wrong
+   IndexedDB write reads as corruption, and the backup list seeds an
+   empty store outside the per-change approval.
+2. **Unreadable means "no information".** Every unknown format, damage
+   or concurrent write maps to a stable reason. Absence reads as "no
+   pins" only when the side has no valid non-empty base and no
+   `isStarred` evidence; an unknown format falls back to the backup list.
+   An unreadable side removes only the pins row from the plan: canonical,
+   overlays and every base stay as they were.
+3. **Merge.** A set with per-profile bases; between conflicting changes
+   the side that was live later wins (no per-pin time exists; `updatedAt`
+   is used only by the freshness probe). Sessions that `sync.exclude`
+   keeps private leave every input.
+4. **Steps.** Unpins first; pins and keep steps stay dormant until every
+   unpin settled. For each unpin, pinned family members that must stay
+   pinned (a superset of the app's family: every family field, plus the
+   chain start) get a keep step; when one of them cannot be pinned again
+   (archived, a scheduled run) or the section is predicted hidden, the
+   unpin waits with a warning. An unpin whose answer is unknown (no
+   result, timeout) still activates its keeps; `online retry` never
+   retries an unpin once a pin or keep left dormant.
+5. **Bases.** T's pins base moves to what is known to be true: applied
+   pins and unpins, minus the desired ids an unpin may have cascaded over
+   (always for an unknown answer, unless pinned again for a definite
+   one). A confirmation with changes starts a freshness probe: the next
+   read of that profile must show a store written after the queue was
+   created, or a fresh backup list; otherwise pins stop with doctor
+   `fail` until paritydesk is updated or `rebase` clears it.
+6. **Not destructive offline.** Unpins are not in the DESTRUCTIVE line,
+   its digest or the deletion breaker; the pins question and the approval
+   cards are the confirmation, and the pins breaker offers "Pin only".
+
+### Residual risks
+
+- If calls ran but their results were never recorded and the user undid
+  one of them before the next switch, that undo is not carried once.
+- The hidden-section prediction assumes the row key `code:<id>`; a wrong
+  prediction only defers an unpin or meets the app's own refusal.
+- Only the fields of the app's family are followed; a later app build
+  with another link would cascade over pins paritydesk did not keep (the
+  next switch offers them again).

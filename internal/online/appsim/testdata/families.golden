@@ -1,0 +1,22 @@
+# lineage kinds
+0002 -> 0001
+0003 -> 0001
+0004 -> 0001
+0005 -> 0001
+# flat layout keeps side sessions only
+0003 -> 0001
+# display parent with and without dS
+0002 -> 0001
+0003 -> 0009
+0004 -> 0009
+0005 -> 0001
+# lineage detached and side sessions
+0003 -> 0001
+0004 -> 0001
+0005 -> 0001
+# archived parents and children
+0002 -> 0001
+0004 -> 0001
+# project threads and filed apart
+0005 -> 0004
+# cycles

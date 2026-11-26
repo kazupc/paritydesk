@@ -18,6 +18,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/plan"
 	"github.com/kazupc/paritydesk/internal/sources"
 	"github.com/kazupc/paritydesk/internal/sources/all"
+	"github.com/kazupc/paritydesk/internal/store/idb"
 	"github.com/kazupc/paritydesk/internal/testkit"
 )
 
@@ -69,7 +70,9 @@ func readRows() []model.RowID {
 	var out []model.RowID
 	reg := all.Registry()
 	for _, r := range implementedRows() {
-		if _, refOnly := reg[r].(sources.RefReader); !refOnly {
+		// Row pins needs [row.idb], which the test manifest (6.x) does not
+		// have; its adapter has its own tests in sources/pins.
+		if _, refOnly := reg[r].(sources.RefReader); !refOnly && r != model.RowPins {
 			out = append(out, r)
 		}
 	}
@@ -406,5 +409,27 @@ func TestOtherAccountsUntouched(t *testing.T) {
 		if !equalTrees(before, after) {
 			t.Errorf("decoy directory %s changed", filepath.Base(dir))
 		}
+	}
+}
+
+func TestRegistryWithPassesTheIDBReader(t *testing.T) {
+	called := false
+	reg := all.RegistryWith(all.Options{IDB: func(context.Context, string, idb.Spec) (idb.Value, error) {
+		called = true
+		return idb.Value{}, idb.ErrKeyAbsent
+	}})
+	m := testkit.Manifest7(t)
+	spec, ok := m.Row(model.RowPins)
+	if !ok || spec.IDB == nil {
+		t.Fatal("7.x has no pins row")
+	}
+	rc := sources.ReadContext{Folder: t.TempDir(), Spec: spec, Manifest: m, Side: &sources.SideFacts{}}
+	s, err := reg[model.RowPins].Read(context.Background(), rc)
+	if err != nil || !called || len(s.Items) != 0 {
+		t.Fatalf("read %v %v (called %v)", s, err, called)
+	}
+	res, err := reg[model.RowPins].Ops(context.Background(), sources.OpsContext{ReadContext: rc}, s, s)
+	if err != nil || len(res.Edits) != 0 {
+		t.Fatal("pins Ops produced edits")
 	}
 }

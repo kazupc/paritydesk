@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/gen"
@@ -12,7 +13,9 @@ import (
 	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/rows"
 	"github.com/kazupc/paritydesk/internal/sources"
+	"github.com/kazupc/paritydesk/internal/sources/pins"
 	"github.com/kazupc/paritydesk/internal/state"
+	"github.com/kazupc/paritydesk/internal/store/idb"
 	"github.com/kazupc/paritydesk/internal/store/kv"
 )
 
@@ -22,8 +25,25 @@ import (
 // ReadRefs(refs[r]) when refs has an entry for it, else it is left out of
 // the result (never Read). A row whose source is unavailable
 // (sources.ErrSourceUnavailable) is left out and the others are read; any
-// other error fails the call.
+// other error fails the call. Row pins is read without side facts (the
+// strictest rules); rereadRowsPins gives it the facts of a run.
 func (o *Orchestrator) rereadRows(ctx context.Context, m *compat.Manifest, folder string, rep model.Replica, rs []model.RowID, refs map[model.RowID][]string) (map[model.RowID]*model.RowSnapshot, error) {
+	return o.rereadRowsPins(ctx, m, folder, rep, rs, refs, nil)
+}
+
+// pinsReread gives the pins read of a re-read the side facts a run's read
+// had (spec-pins 6.4 items 5 to 7, 9.3: the probe is checked at P10 and
+// at recover too). When Facts.StarredIDs is nil it is filled from the
+// sessions snapshot of the same re-read, or from a read of the sessions
+// adapter when that row is not re-read. Report, when not nil, receives
+// the read's report (ProbePassed decides whether the probe is cleared).
+type pinsReread struct {
+	Facts  sources.SideFacts
+	Report *sources.ReadReport
+}
+
+// rereadRowsPins is rereadRows with side facts for row pins (nil: none).
+func (o *Orchestrator) rereadRowsPins(ctx context.Context, m *compat.Manifest, folder string, rep model.Replica, rs []model.RowID, refs map[model.RowID][]string, pr *pinsReread) (map[model.RowID]*model.RowSnapshot, error) {
 	out := map[model.RowID]*model.RowSnapshot{}
 	if m == nil || len(rs) == 0 {
 		return out, nil
@@ -38,7 +58,13 @@ func (o *Orchestrator) rereadRows(ctx context.Context, m *compat.Manifest, folde
 	}
 	for _, r := range rs {
 		rowRefs, have := refs[r]
-		snap, err := o.readRowLS(ctx, m, folder, rep, r, ls, rowRefs, have)
+		var snap *model.RowSnapshot
+		var err error
+		if r == model.RowPins && pr != nil {
+			snap, err = o.rereadPinsRow(ctx, m, folder, rep, ls, out[model.RowSessions], pr)
+		} else {
+			snap, err = o.readRowLS(ctx, m, folder, rep, r, ls, rowRefs, have)
+		}
 		switch {
 		case errors.Is(err, sources.ErrSourceUnavailable):
 			continue
@@ -50,6 +76,33 @@ func (o *Orchestrator) rereadRows(ctx context.Context, m *compat.Manifest, folde
 		out[r] = snap
 	}
 	return out, nil
+}
+
+// rereadPinsRow reads row pins of folder with the side facts of pr.
+// sessions is the sessions snapshot of the same re-read (nil: the sessions
+// adapter is read here, read only). When no sessions snapshot can be had
+// and the facts carry no isStarred evidence, the row is unavailable (left
+// out), as a sessions read error is fatal to a run's pins read.
+func (o *Orchestrator) rereadPinsRow(ctx context.Context, m *compat.Manifest, folder string, rep model.Replica, ls kv.Reader, sessions *model.RowSnapshot, pr *pinsReread) (*model.RowSnapshot, error) {
+	ad := o.d.Adapters[model.RowPins]
+	spec, ok := o.rowSpec(m, model.RowPins)
+	if ad == nil || !ok {
+		return nil, nil
+	}
+	facts := pr.Facts
+	facts.StarredIDs = maps.Clone(facts.StarredIDs)
+	if facts.StarredIDs == nil {
+		if sessions == nil {
+			s, err := o.readRowLS(ctx, m, folder, rep, model.RowSessions, ls, nil, false)
+			if err != nil || s == nil {
+				return nil, &pins.Unavailable{Reason: idb.ReasonOther, Cause: err}
+			}
+			sessions = s
+		}
+		facts.StarredIDs = starredIDs(sessions)
+	}
+	rc := sources.ReadContext{Folder: folder, Replica: rep, LS: ls, Spec: spec.Expand(rep), Manifest: m, Side: &facts, Report: pr.Report}
+	return ad.Read(ctx, rc)
 }
 
 // readRowLS reads row r of folder over ls. A sources.RefReader row is read
@@ -76,7 +129,14 @@ func (r *run) commitP10(ctx context.Context) error {
 	defer r.phase(P10Commit, "recording")()
 	d := r.d()
 	root := r.root
-	reread, err := r.o.rereadRows(ctx, r.manifest, r.tPath, r.T.Replica, r.p5.Rows, r.scratchRereadRefs())
+	// T's pins re-read gets the side facts of its P5 read: the probe is
+	// checked at P10 too (spec-pins 9.3), and only a read that passed it
+	// clears it.
+	var pr *pinsReread
+	if r.p5.Pins != nil && r.p5.Pins.TFacts != nil {
+		pr = &pinsReread{Facts: *r.p5.Pins.TFacts, Report: &sources.ReadReport{}}
+	}
+	reread, err := r.o.rereadRowsPins(ctx, r.manifest, r.tPath, r.T.Replica, r.p5.Rows, r.scratchRereadRefs(), pr)
 	if err != nil {
 		r.warn(P10Commit, "the entering folder could not be re-read; its bases are invalid until the next run")
 		reread = nil
@@ -89,12 +149,17 @@ func (r *run) commitP10(ctx context.Context) error {
 		if row == model.RowScratch {
 			want = r.scratchExpected(w)
 		}
+		probePassed := false
 		if onRow(r.manifest, row) {
 			// Nothing was applied offline: the base is T's re-read (or its
 			// P5 read when the re-read left the row out); the online
-			// changes move it once they are confirmed.
+			// changes move it once they are confirmed. The probe goes only
+			// with the read that becomes the base and passed it.
 			if !ok {
 				snap = w.T
+				probePassed = r.p5.Pins != nil && r.p5.Pins.TProbePassed
+			} else if pr != nil && row == model.RowPins {
+				probePassed = pr.Report.ProbePassed
 			}
 			if snap == nil {
 				dropBase(root, tk)
@@ -112,6 +177,9 @@ func (r *run) commitP10(ctx context.Context) error {
 			return pderr.Wrap(pderr.Internal, "state", err)
 		}
 		root.Bases[tk] = ref
+		if row == model.RowPins && probePassed {
+			clearPinsProbe(root, r.T.Profile.Alias)
+		}
 		if row == model.RowSessions {
 			r.tSess = snap
 		}
@@ -136,7 +204,9 @@ func (r *run) commitP10(ctx context.Context) error {
 	prevOnline := root.Online
 	published := publishOnline(ctx, r.o, root, r.manifest, r.draft, r.res.RunID, r.T.Profile.Alias, r.S.Profile.Alias, r.T.Replica)
 	if published {
+		prev := r.res.Online
 		r.res.Online = onlineSummary(r.draft, true)
+		keepPinsSummary(r.res.Online, prev)
 	}
 	if r.bundle.Version != "" {
 		root.LastAppVersion = r.bundle.Version

@@ -21,6 +21,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/online"
 	"github.com/kazupc/paritydesk/internal/orchestrator"
+	"github.com/kazupc/paritydesk/internal/plan"
 	"github.com/kazupc/paritydesk/internal/rows"
 	"github.com/kazupc/paritydesk/internal/state"
 )
@@ -48,57 +49,6 @@ func (r *countReader) Read(p []byte) (int, error) {
 		p[i] = r.n
 	}
 	return len(p), nil
-}
-
-// pinsLike is a test provider that asks the pins question (the pins unit
-// owns the real one): kind pin, set_pinned, needs decision:pins.
-type pinsLike struct{ breaker bool }
-
-func (pinsLike) Name() string         { return "pins-test" }
-func (pinsLike) Kinds() []online.Kind { return []online.Kind{online.KindPin} }
-func (pinsLike) Build(online.BuildInput) ([]online.Step, []online.Warning, error) {
-	return nil, nil, nil
-}
-func (pinsLike) CountSteps(steps []online.Step, c *online.Counts) {
-	for _, s := range steps {
-		if s.Kind == online.KindPin {
-			c.PinsAdd++
-		}
-	}
-}
-func (pinsLike) Advance(*online.Queue, map[online.StepID]online.Result, time.Time) error { return nil }
-func (pinsLike) Interpret(s online.Step, r online.Result) (online.StepStatus, string) {
-	return online.InterpretBuiltin(s, r)
-}
-func (pinsLike) Tools() online.ToolPolicy {
-	return online.ToolPolicy{Kinds: []online.Kind{online.KindPin}, Exact: []string{"mcp__ccd_sidebar__set_pinned"}}
-}
-func (p pinsLike) Questions(q *online.Queue) []online.Question {
-	if q.Decisions["pins"] != "" {
-		return nil
-	}
-	n := 0
-	for _, s := range q.Steps {
-		if s.Kind == online.KindPin && s.Status == online.StatusPending {
-			n++
-		}
-	}
-	if n == 0 {
-		return nil
-	}
-	opts := []online.Option{
-		{ID: "apply", Label: i18n.T(i18n.OnlineQPinsApply), Description: i18n.T(i18n.OnlineQPinsApplyDesc)},
-		{ID: "skip", Label: i18n.T(i18n.OnlineQPinsSkip), Description: i18n.T(i18n.OnlineQPinsSkipDesc)},
-	}
-	if p.breaker {
-		opts = []online.Option{
-			{ID: "add_only", Label: i18n.T(i18n.OnlineQPinsAddOnly), Description: i18n.T(i18n.OnlineQPinsAddOnlyDesc)},
-			{ID: "apply", Label: i18n.T(i18n.OnlineQPinsApplyAll), Description: i18n.T(i18n.OnlineQPinsApplyDesc)},
-			opts[1],
-		}
-	}
-	return []online.Question{{ID: "pins", Header: i18n.T(i18n.OnlineQPinsHeader),
-		Text: i18n.T(i18n.OnlineQPinsText, string(q.From), n, 0, n), Options: opts}}
 }
 
 // manifest7 returns the embedded 7.x manifest.
@@ -132,7 +82,7 @@ func (h *harness) onlineEnv() *onlineEnv {
 	var mu sync.Mutex
 	store.Lock = func(context.Context, time.Duration) (func(), error) { mu.Lock(); return mu.Unlock, nil }
 	svc := &online.Service{Store: store, Config: cfg.Online, Clock: clock.NewFake(fixedTime),
-		Mono: online.NewFakeMono("boot-1", 1_000_000_000_000), Providers: append(online.Registry(), pinsLike{}),
+		Mono: online.NewFakeMono("boot-1", 1_000_000_000_000), Providers: online.Registry(),
 		Settings: online.NewSettings(m.Online, cfg.Online), Rand: rnd}
 	h.ol = &onlineEnv{svc: svc, root: func() (*state.Root, error) { return h.root, nil }, defaultDir: true,
 		spec: m.Online, cfg: cfg,
@@ -170,16 +120,36 @@ func sidebarDraft(t testing.TB, m *compat.Manifest) online.Draft {
 	return d
 }
 
-// pinDraft is a probe and two pin steps of the test provider.
-func pinDraft() online.Draft {
-	pin := func(id online.StepID, n int) online.Step {
-		return online.Step{ID: id, Kind: online.KindPin, Tool: "mcp__ccd_sidebar__set_pinned",
-			Input:  json.RawMessage(fmt.Sprintf(`{"pinned":true,"session_id":"local_00000000-0000-4000-8000-00000000000%d"}`, n)),
-			Status: online.StatusPending, Needs: []string{"read:r000", "decision:pins"}, After: []online.StepID{}, Card: true,
-			Expect: online.Expect{Format: online.FormatText, OK: []string{"Session pinned.", "The session was already pinned."}}}
+// pinDraft is a real pins draft: two sessions to pin (both with an
+// approval card); with breaker, three unpins as well, above the deletion
+// limits, so the question offers "Pin only".
+func pinDraft(t testing.TB, breaker bool) online.Draft {
+	t.Helper()
+	snap := func(row model.RowID, value string, ns ...int) *model.RowSnapshot {
+		s := &model.RowSnapshot{Row: row, Schema: 1, Items: map[string]model.Item{}}
+		for _, n := range ns {
+			it, err := model.NewItem(fmt.Sprintf("local_00000000-0000-4000-8000-%012d", n), json.RawMessage(value), nil, model.Stamp{}, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.Items[it.Key] = it
+		}
+		return s
 	}
-	steps := []online.Step{online.ProbeStep(), pin("p000", 1), pin("p001", 2)}
-	return online.Draft{Steps: steps, Counts: online.Counts{PinsAdd: 2}}
+	current := []int{}
+	if breaker {
+		current = []int{3, 4, 5}
+	}
+	in := online.BuildInput{Spec: manifest7(t).Online, Config: config.Default().Online, From: "work", To: "home", Replica: olReplica,
+		Outputs: map[model.RowID]*rows.Output{model.RowPins: {Desired: snap(model.RowPins, "true", 1, 2)}},
+		Current: map[model.RowID]*model.RowSnapshot{model.RowPins: snap(model.RowPins, "true", current...),
+			model.RowSessions: snap(model.RowSessions, "{}", 1, 2, 3, 4, 5)},
+		PinsSource: online.PinsIDB, Phase: online.PhaseReconcile, Limits: plan.Limits{MaxDeleteFraction: 0.1, MaxDeleteMin: 2}}
+	d := online.Build(in, online.Registry())
+	if d.Empty() {
+		t.Fatalf("empty pins draft: %+v", d.Warnings)
+	}
+	return d
 }
 
 // publish publishes d as the harness's queue and records it in h.root.
@@ -236,13 +206,12 @@ var onlineCases = []struct {
 		h.publish(sidebarDraft(h.t, manifest7(h.t)))
 	}},
 	{name: "online_next_question", args: []string{"online", "next", "--session", olSession}, setup: func(h *harness) {
-		h.publish(pinDraft())
+		h.publish(pinDraft(h.t, false))
 		h.nextJSON("--session", olSession)
 		h.recordProbe()
 	}},
 	{name: "online_next_question_breaker", args: []string{"online", "next", "--session", olSession}, setup: func(h *harness) {
-		h.publish(pinDraft())
-		h.onlineEnv().svc.Providers = append(online.Registry(), pinsLike{breaker: true})
+		h.publish(pinDraft(h.t, true))
 		h.nextJSON("--session", olSession)
 		h.recordProbe()
 	}},
@@ -280,6 +249,38 @@ var onlineCases = []struct {
 		r := h.svc.runResult(fakePlan())
 		r.Online = &online.Summary{PinsAdd: 2, PinsRemove: 1, Sidebar: 1, PinsSource: "idb"}
 		h.svc.result = r
+	}},
+	{name: "plan_only_pins", args: []string{"plan", "--only", "pins", "home"}, setup: func(h *harness) {
+		r := h.svc.runResult(fakePlan())
+		r.Online = &online.Summary{PinsAdd: 1, PinsRemove: 1, PinsKeep: 1, PinsBlocked: 1, PinsSource: "idb"}
+		r.Warnings = []string{i18n.T(i18n.OnlineWarnPinsFamilyBlocked, 1)}
+		h.svc.result = r
+	}},
+	{name: "plan_pins_unreadable", args: []string{"plan", "home"}, setup: func(h *harness) {
+		r := h.svc.runResult(fakePlan())
+		r.Online = &online.Summary{Sidebar: 1, PinsSource: "none", PinsReason: "unsupported"}
+		r.Warnings = []string{i18n.T(i18n.OnlineWarnPinsUnreadable, "home"), i18n.T(i18n.OnlineWarnPinsReason, i18n.T(i18n.PinsReasonUnsupported))}
+		h.svc.result = r
+	}},
+	{name: "plan_pins_preview", args: []string{"plan", "home"}, setup: func(h *harness) {
+		r := h.svc.runResult(fakePlan())
+		r.Online = &online.Summary{PinsSource: "none", PinsReason: "torn"}
+		h.svc.result = r
+	}},
+	{name: "switch_pins", args: []string{"switch", "home", "--yes"}, setup: func(h *harness) {
+		r := h.svc.runResult(fakePlan())
+		r.Online = &online.Summary{PinsAdd: 2, PinsRemove: 1, PinsKeep: 1, PinsSource: "mirror", Queued: true}
+		h.svc.result = r
+	}},
+	{name: "doctor_pins", args: []string{"doctor"}, setup: func(h *harness) {
+		h.svc.doctorChecks = []orchestrator.Check{
+			{ID: "pins", Status: "ok", Detail: i18n.T(i18n.DoctorOnlinePinsIDBCount, 3)},
+			{ID: "pins-mirror", Status: "warn", Detail: i18n.T(i18n.DoctorOnlinePinsMirrorDiffers)},
+			{ID: "pins", Status: "ok", Detail: i18n.T(i18n.DoctorOnlinePinsOff)},
+			{ID: "pins", Status: "warn", Detail: i18n.T(i18n.DoctorOnlinePinsMirrorCount, i18n.T(i18n.PinsReasonBlobWrapped), 3)},
+			{ID: "pins", Status: "warn", Detail: i18n.T(i18n.DoctorOnlinePinsUnavailableReason, i18n.T(i18n.PinsReasonUnsupported))},
+			{ID: "pins", Status: "fail", Detail: i18n.T(i18n.DoctorOnlinePinsStale)},
+		}
 	}},
 	{name: "status_online", args: []string{"status"}, setup: func(h *harness) {
 		h.svc.status.Online = &orchestrator.OnlineStatus{State: "pending", Profile: "work",

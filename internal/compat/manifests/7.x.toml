@@ -327,6 +327,42 @@ seed_section = ["sessions"]
 seed_from = ["ascending", "show.emptyGroups"]
 
 # v0.2 anchor: rows pins
+[[row]]
+row = "pins"
+write_path = "on"
+per_org = false
+probes = []
+[row.idb]
+# Which Code sessions are pinned: the renderer's zustand store
+# "dframe-starred-code" in idb-keyval (spike S14; facts on 7.37095.0).
+# Local ids never reach the server (the sync drops local_ ids on upload and
+# keeps the device's own on download), so only this folder holds them.
+dir = "IndexedDB/https_claude.ai_0.indexeddb.leveldb"
+backend_prefix = "IndexedDB/https_claude.ai_0.indexeddb."
+database = "keyval-store"
+object_store = "keyval"
+key = "store:pin-state:dframe-starred-code"
+ids_path = ["state", "starredIds"]
+version_path = ["version"]
+updated_path = ["updatedAt"]
+# The store sets no persist version, so zustand writes 0.
+versions = [0]
+id_pattern = '^local_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+blink_versions = [19, 21]     # inclusive range; observed 21
+v8_versions = [13, 16]        # inclusive range; observed 16
+max_value_bytes = 1048576
+max_copy_bytes = 67108864
+max_clone_bytes = 2147483648
+max_files = 512
+max_read_ms = 10000
+max_items = 5000
+# The app's own mirror of the local pin list. It seeds an empty store at
+# launch (bucket first, then Local Storage). paritydesk reads it, never
+# writes it.
+mirror_pref_path = ["preferences", "epitaxyPrefs", "starred-local-code-sessions"]
+mirror_ls_key = "LSS-persisted.starred-local-code-sessions"
+mirror_ls_ids_path = ["value"]
+mirror_ls_time_path = ["timestamp"]
 
 # ---------------------------------------------------------------- probes
 #
@@ -746,6 +782,7 @@ ls_never_touched = [
   "persisted.ccd-session-presets.*.*",
   "ccd-session-store",
   "ccd-sync-*",
+  "*starred-local-code-sessions",
 ]
 
 # ---------------------------------------------------------------- app preferences
@@ -946,6 +983,29 @@ manual = ["date", "state", "none"]
 tools_off = ["Sidebar tools are turned off right now."]
 
 # v0.2 anchor: tables pins
+[online.pins]
+max_steps = 200
+skip_if_true = ["isArchived"]
+skip_if_present = ["scheduledTaskId"]
+ok_pinned = ["Session pinned.", "The session was already pinned."]
+ok_unpinned = ["Session unpinned.", "The session was already unpinned."]
+# Unpin refused because the session's own section is hidden (not writable).
+refusals_unpin = ["This session's section is hidden"]
+# The window did not answer within the app's timeout; the command was
+# already sent, so the app may still apply it (with the cascade).
+unknown_outcome = ["The app window didn't answer."]
+# Unpinning a session also unpins the pinned sessions of its family.
+cascade_unpin = true
+# Record fields that link a session to its parent in the app's family map
+# (displayParentSessionId, lineage, side sessions, forks) plus the chain
+# start, which only widens the family.
+family_fields = ["displayParentSessionId", "lineage.sessionId", "spawnedFrom.sessionId", "forkedFromSessionId", "startChain.firstSessionId"]
+family_max_depth = 64
+# Hidden-section prediction: the scope object of dframe-store that holds
+# the custom-group assignments, and the row key prefix of Code sessions.
+assign_store_key = "dframe-store"
+assign_path = ["state", "customGroupsByScope", "{acct}/{org}"]
+row_key_prefix = "code:"
 
 # v0.2 anchor: tables artifacts
 

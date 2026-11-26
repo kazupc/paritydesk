@@ -349,6 +349,29 @@ On a Mac with app 7.x, the plugin 0.2.0 installed and two profiles A and B.
   then nothing is armed; nothing in Claude changed.
 
 <!-- v0.2 anchor: pins -->
+## Pins (v0.2)
+
+On a Mac with app 7.x, the plugin 0.2.0 installed and two profiles A and
+B. These steps are run by the maintainer, never by an agent.
+
+- R-PIN-1. Quit Claude, then run `paritydesk doctor --json` on the real
+  active folder. Expected: `pins` is ok and there is no `pins-mirror`
+  warning. A debug build logs `DBFromMetadata = OSFromMetadata = true`,
+  `Wrapped = ""`, Blink 21, V8 16.
+- R-PIN-2. On A, pin a session, its fork and a hand-off child; switch so
+  that the parent must be unpinned and the children kept. Expected: the
+  keep steps run and both children stay pinned on both profiles after a
+  switch back. Repeat with an archived pinned child: the unpin is held
+  back with the "were not unpinned" warning.
+- R-PIN-3. Hide a section that holds a pinned session that a switch must
+  unpin. Expected: the unpin is deferred with the "section is hidden"
+  warning (or, when not predicted, the step ends `not_writable`), and
+  `paritydesk online status` shows it.
+- R-PIN-4. Quit Claude and run `paritydesk doctor` at once. Expected: pins
+  readable (no `pending`, no `unclean`).
+- R-PIN-5. After an online pin change, quit and run `paritydesk doctor`.
+  Expected: no `stale_store`; the Local Storage backup list's `timestamp`
+  is not older than the change.
 
 <!-- v0.2 anchor: artifacts -->
 

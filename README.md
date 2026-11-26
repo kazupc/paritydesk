@@ -55,6 +55,7 @@ real Mac, release checklist R-ON). `paritydesk online cancel` drops the
 waiting changes at any time.
 
 <!-- v0.2 anchor: pins -->
+**Pins** (Claude 7.x): which Code sessions are pinned is carried too. paritydesk reads the pin list read-only and asks inside Claude before it pins or unpins anything (`/paritydesk:reconcile`, one approval card per other session); when unpinning a session would also unpin sessions under it, those are pinned again, or the unpin waits with a warning. A pin list that cannot be read only skips pins for that switch ([ADR 0005](docs/adr/0005-online-layer.md); not yet confirmed on a real Mac, release checklist R-PIN). `sync.pins = false` turns it off.
 
 <!-- v0.2 anchor: artifacts -->
 
