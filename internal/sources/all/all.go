@@ -23,6 +23,7 @@ func Registry() sources.Registry {
 		// v0.2 anchor: adapters scratch
 
 		// v0.2 anchor: adapters sidebar-offline
+		sidebar.NewCollapse(), sidebar.NewSeed(),
 
 		// v0.2 anchor: adapters pins
 

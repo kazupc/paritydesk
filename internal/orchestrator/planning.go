@@ -98,6 +98,8 @@ func (o *Orchestrator) selectRows(m *compat.Manifest, dec compat.Decision, only,
 			skipped[r] = "not carried in this version"
 		case o.d.Adapters[r] == nil || o.d.Rows[r] == nil:
 			skipped[r] = "no adapter"
+		case r == model.RowSidebarSeed && !slices.Contains(out, model.RowSidebarView):
+			skipped[r] = reasonNeedsSidebarView
 		default:
 			out = append(out, r)
 			continue
@@ -230,6 +232,9 @@ func (o *Orchestrator) mergeRow(ctx context.Context, in planInput, r model.RowID
 	if r != model.RowSessions && r != model.RowSidebarCollapse {
 		mi.Policy.EnvRemap = nil
 	}
+	if err := o.sidebarPolicy(ctx, r, ad, tRC, spec, prior, &mi.Policy); err != nil {
+		return nil, err
+	}
 	out, err := o.d.Rows[r].Merge(mi)
 	if err != nil {
 		return nil, pderr.Wrap(pderr.Internal, fmt.Sprintf("merge %s", r), err)
@@ -314,6 +319,7 @@ func (o *Orchestrator) policy(in planInput, cat model.Category, spec compat.RowS
 		PermissionAcks:  acks,
 		EnvRemap:        envRemap,
 		Fields:          spec.Fields,
+		Limits:          spec.Limits,
 	}
 	p.SecretsMayCross, p.SecretsAllow = o.secrets(in.S.Managed, in.T.Managed)
 	return p

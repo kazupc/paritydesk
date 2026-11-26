@@ -128,6 +128,10 @@ var jsonCases = []struct {
 	{name: "verify_drift", args: []string{"verify"}, code: 50, setup: func(h *harness) {
 		h.svc.verify.Drift = []model.RowID{model.RowGroupOrder}
 	}},
+	// A Local Storage row that could not be read back: listed, exit 0.
+	{name: "verify_unverified", args: []string{"verify"}, setup: func(h *harness) {
+		h.svc.verify.Unverified = []model.RowID{model.RowSidebarCollapse}
+	}},
 	{name: "recover", args: []string{"recover", "--yes"}},
 	{name: "rollback", args: []string{"rollback", "3", "--propagate", "--yes"}},
 	{name: "rebase", args: []string{"rebase"}},

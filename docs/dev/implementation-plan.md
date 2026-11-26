@@ -58,7 +58,7 @@ fact is applied.
 | Fact | Applied in |
 |---|---|
 | A value written to Local Storage only is replaced by the config mirror within seconds of launch; values written to both stay. | `sources/sidebar`: every key mirrored under `preferences.epitaxyPrefs` is edited in Local Storage **and** `claude_desktop_config.json` in the same plan. Rows group-order, pinned-order and sidebar-view are `off-verify` in the manifest; P12 marks drift as contested. |
-| The config mirror is written at once by the app; Local Storage later. After an unclean exit the app rebuilds Local Storage from the mirror. | The mirror is authoritative: adapters harvest mirrored values from the mirror; a differing LS copy is reported stale and never harvested (section 5). P12 reads only the JSON mirror. |
+| The config mirror is written at once by the app; Local Storage later. After an unclean exit the app rebuilds Local Storage from the mirror. | The mirror is authoritative: adapters harvest mirrored values from the mirror; a differing LS copy is reported stale and never harvested (section 5). P12 reads the JSON mirror, and Local Storage only through a snapshot copy for Local-Storage-only rows (v0.2: sidebar-collapse). |
 | The mirror holds the bare value; Local Storage holds an envelope `{"value", "tabId", "timestamp"}` for `LSS-persisted.*` keys, and `{"state", "version"}` for persisted stores. | `localstorage` envelope helpers (implemented). Item hashes cover the bare value only (section 5). |
 | Several rows share one target: `claude_desktop_config.json` holds the mirror of three rows and `mcpServers`; the `dframe-store` value holds both the sidebar view and the pin order. | Adapters return literal-path edits; `plan.Compose` applies them in row order and emits one op per target. |
 | Quit is vetoed while any session is working; a queued message restarts work; a vetoed quit can still happen later if the user picks "Wait for Claude". | P0 lists busy sessions (session records plus main.log turn start, end, clear and keep-awake lines of the app's current run, rotation-safe; ADR 0007); the detached job waits at P3 instead of exiting at P0; P3 waits up to `quit_timeout` until nothing is busy before sending the quit; after a vetoed timeout the run keeps watching (`late_quit_watch`) and relaunches the leaving profile if the app quits late. In-app switches first wait for the invoking session's turn to end, from a log cursor (offset and inode) recorded before the hand-off. |
@@ -231,8 +231,11 @@ P10 re-read T (adapters over a snapshot of T, app still stopped); T bases
 P11 launch (only if I4 holds); reopen the session link only if the
     session id is in T's sessions snapshot (else warn and skip)
 P12 detached: wait for LOCK and a stable config mirror; read JSON;
-    compare items via sources.MirrorReader hashes; drift -> contested +
-    base := observed; T identity check; main.log signals; result file
+    compare items via sources.MirrorReader hashes, and (v0.2) Local
+    Storage through a snapshot copy for Local-Storage-only rows
+    (sources.LSVerifier; unreadable -> unverified, exit 0); drift ->
+    contested + base := observed; T identity check; main.log signals;
+    result file
 ```
 
 `sync` runs P0, P2–P7 and P10–P12 on the active folder without a swap; it
@@ -388,13 +391,20 @@ Rules every side relies on:
   by `state.BaseKey{alias, replica, row}`. A replica change (for example a
   new active org) is a base miss: union and confirmation, never edits.
   T's bases at P10 are the re-read snapshots, never `Desired`, so a second
-  switch without edits produces an empty plan.
+  switch without edits produces an empty plan. (v0.2) Set rows
+  (sidebar-collapse) and rows that never delete (sidebar-seed): a base
+  miss merges as a union, which cannot delete; nothing needs confirming.
 - **Overlays.** `rows.Input` carries both overlays and `rows.Output`
   returns both. A profile's edits in a category it does not export stay in
   its overlay and never reach canonical; an overlay never loses an item
   unless its own side removed it against a valid base.
 - **Field lists** (`per_field`, `account_bound`, `run_state`, `max_time`,
   `parent`) come only from the manifest, through `rows.Policy.Fields`.
+  (v0.2) `rows.Policy` also carries the row's manifest `Limits` and, for
+  the sidebar-offline rows, `EnteringStoreMissing`, `EnteringSeeded` and
+  `SeedFrom`; adapters may implement `sources.LSVerifier` (verified from a
+  Local Storage snapshot) and `sources.TargetStater` (facts about the
+  entering folder that decide what a merge may write there).
 - **Destructive ops.** Every op that is `Destructive`, `OpQuarantine` or
   `OpLSDelete` maps to a `ChangeDeleted` of the same row and item, or
   carries a reason from `plan.NonUserDataReasons` (app `.json.tmp`

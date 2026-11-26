@@ -65,6 +65,8 @@ func checkEmbedded(t *testing.T, m *compat.Manifest) {
 					t.Errorf("%s: mirror path %v", r, p)
 				}
 			}
+		case model.RowSidebarCollapse, model.RowSidebarSeed:
+			checkSidebarOffline(t, m, s)
 		default:
 			if s.WritePath != compat.PathOff {
 				t.Errorf("%s: write path %s", r, s.WritePath)

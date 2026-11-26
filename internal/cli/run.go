@@ -210,6 +210,7 @@ func runSync(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 type verifyView struct {
 	Drift          []model.RowID `json:"drift"`
 	Replaced       []model.RowID `json:"replaced"`
+	Unverified     []model.RowID `json:"unverified,omitempty"`
 	SignInNeeded   bool          `json:"sign_in_needed"`
 	SessionFocused bool          `json:"session_focused"`
 	PairingOK      bool          `json:"pairing_ok"`
@@ -239,8 +240,8 @@ func runVerify(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error 
 	if res == nil {
 		return orInternal(err, "verify")
 	}
-	v := verifyView{Drift: res.Drift, Replaced: res.Replaced, SignInNeeded: res.SignInNeeded, SessionFocused: res.SessionFocused,
-		PairingOK: res.PairingOK, BridgeSeen: res.BridgeSeen}
+	v := verifyView{Drift: res.Drift, Replaced: res.Replaced, Unverified: res.Unverified, SignInNeeded: res.SignInNeeded,
+		SessionFocused: res.SessionFocused, PairingOK: res.PairingOK, BridgeSeen: res.BridgeSeen}
 	if v.Drift == nil {
 		v.Drift = []model.RowID{}
 	}
@@ -259,6 +260,9 @@ func runVerify(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error 
 	return e.emit(v, func(p *render.Printer) {
 		if len(v.Replaced) > 0 {
 			p.Line(i18n.T(i18n.VerifyReplaced, "%s"), joinRows(v.Replaced))
+		}
+		if len(v.Unverified) > 0 {
+			p.Line(i18n.T(i18n.VerifyUnverified, "%s"), joinRows(v.Unverified))
 		}
 		switch {
 		case len(v.Drift) > 0:

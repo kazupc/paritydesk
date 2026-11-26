@@ -162,6 +162,7 @@ func Registry() map[model.RowID]Module {
 		// v0.2 anchor: rows scratch
 
 		// v0.2 anchor: rows sidebar-offline
+		collapseModule{}, seedModule{},
 
 		// v0.2 anchor: rows pins
 

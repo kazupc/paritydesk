@@ -162,6 +162,16 @@ records carry the holder's start time, so a reused pid is reported in
 | `lsof` | the v0.1 `lsof` check, no native code | — |
 
 <!-- v0.2 anchor: sidebar-offline -->
+### Collapsed groups and seed keys (v0.2)
+
+| Row | Carries | Path |
+|---|---|---|
+| `sidebar-collapse` | design row 11 remainder: the collapsed groups and fork families of the sidebar store, merged member by member (a union while a base is invalid), `sync.exclude` members kept private | OFF + verify, Local Storage only |
+| `sidebar-seed` | design row 13: the per-account sort and empty-group keys the app reads when it sets up a sidebar scope; the sort key only for a scope not set up yet | OFF + verify, mirror and Local Storage (7.x) |
+
+Local Storage-only rows are verified from a snapshot copy after launch
+(`sources.LSVerifier`); a copy that cannot be read lists the row as
+unverified (exit 0). Facts and decisions: [ADR 0009](adr/0009-sidebar-collapse-and-seed.md).
 
 <!-- v0.2 anchor: scratch -->
 

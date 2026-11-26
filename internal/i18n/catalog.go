@@ -173,6 +173,7 @@ const (
 	DoctorFDScanPartial      Msg = "doctor.fdscan_partial"
 
 	// v0.2 anchor: sidebar-offline
+	VerifyUnverified Msg = "verify.unverified"
 
 	// v0.2 anchor: scratch
 
@@ -354,6 +355,7 @@ var catalog = map[Msg]string{
 	DoctorFDScanPartial:      "Open files: %d process(es) could not be read and %d only in part, so lsof is used for those checks. Switches still work.",
 
 	// v0.2 anchor: sidebar-offline
+	VerifyUnverified: "Verify: these could not be read back while Claude runs; they are checked at the next switch: %s",
 
 	// v0.2 anchor: scratch
 

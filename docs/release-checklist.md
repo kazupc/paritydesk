@@ -265,6 +265,24 @@ release:
    is used for them; record the counts in the release notes.
 
 <!-- v0.2 anchor: sidebar-offline -->
+## Collapsed groups and seed keys (v0.2)
+
+Record every result in ADR 0009.
+
+- SO-1. Collapse a project group, the Pinned group and one fork family on
+  A; switch. Expected: on B they are collapsed at launch and again after
+  ten minutes; `paritydesk verify` exits 0. If this fails, ship
+  `sync.collapsed_groups = false`.
+- SO-2. Collapse on A a group that B had expanded although it folds by
+  default; switch. Expected: it is folded on B.
+- SO-3. Only if a folder whose Sessions section was never set up by
+  Claude is at hand: switch into it. Expected: the Sessions sort direction
+  and the empty-group setting equal A's; the Sessions and Pinned fold may
+  differ (documented in ADR 0009).
+- SO-4. Toggle "show empty projects" on A; switch. Expected: B shows the
+  same setting.
+- SO-5. On two folders Claude has already set up, `paritydesk plan
+  --json`. Expected: no change of `code-sessions-sort-ascending`.
 
 <!-- v0.2 anchor: scratch -->
 

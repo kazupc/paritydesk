@@ -29,6 +29,32 @@ func Set(base, leaving, entering []string, leavingBaseValid, enteringBaseValid b
 	return out
 }
 
+// SetBases merges two sets against each side's own base. A member is in
+// the result when either side has it, unless a side whose base is valid
+// removed it (it is in that side's base and not on that side). A side with
+// an invalid base never removes. Members only a base holds are not brought
+// back. The result is sorted, without duplicates.
+func SetBases(leavingBase, enteringBase, leaving, entering []string, leavingBaseValid, enteringBaseValid bool) []string {
+	inL, inE := toSet(leaving), toSet(entering)
+	lBase, eBase := toSet(leavingBase), toSet(enteringBase)
+	removed := func(x string) bool {
+		return (leavingBaseValid && lBase[x] && !inL[x]) || (enteringBaseValid && eBase[x] && !inE[x])
+	}
+	seen := map[string]bool{}
+	out := []string{}
+	for _, list := range [][]string{leaving, entering} {
+		for _, x := range list {
+			if seen[x] || removed(x) {
+				continue
+			}
+			seen[x] = true
+			out = append(out, x)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // OrderedList keeps the winner's order, inserts items only the loser has
 // next to their nearest surviving neighbour, and drops items removed
 // relative to the base (only when that side's base is valid).

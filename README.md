@@ -39,6 +39,7 @@ If paritydesk cannot read other processes' open files (for example
 inside a sandbox), the switch stops before writing anything.
 
 <!-- v0.2 anchor: sidebar-offline -->
+Under `sync.exclude`: collapsed project groups follow the same rule; while any glob is set, collapsed fork families and project groups that are not plain paths stay on their account.
 
 <!-- v0.2 anchor: scratch -->
 

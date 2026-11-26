@@ -206,7 +206,11 @@ type VerifyResult struct {
 	// Replaced lists contested rows (values the app may keep per account
 	// or device) that changed after paritydesk wrote them. They are
 	// recorded like drift right after a launch but are not an error.
-	Replaced       []model.RowID `json:"replaced,omitempty"`
+	Replaced []model.RowID `json:"replaced,omitempty"`
+	// Unverified lists rows that could not be read back after the launch
+	// (for example a Local Storage snapshot that could not be opened). They
+	// are checked again at the next switch's harvest.
+	Unverified     []model.RowID `json:"unverified,omitempty"`
 	SignInNeeded   bool          `json:"sign_in_needed"`
 	SessionFocused bool          `json:"session_focused"`
 	PairingOK      bool          `json:"pairing_ok"`

@@ -9,8 +9,6 @@ import "github.com/kazupc/paritydesk/internal/model"
 var pendingV02 = map[model.RowID]bool{
 	model.RowScratch: true, // scratch unit
 
-	model.RowSidebarCollapse: true, model.RowSidebarSeed: true, // sidebar-offline unit
-
 	model.RowPins: true, // pins unit
 }
 

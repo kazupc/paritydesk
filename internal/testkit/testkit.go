@@ -87,6 +87,19 @@ type FolderSpec struct {
 	// SidebarView is the scope object of dframe-code-sections for the
 	// replica (mirror, LSS envelope and dframe-store).
 	SidebarView map[string]any
+	// Store members of dframe-store.state; nil leaves the default ([]), a
+	// member listed in OmitStore is left out entirely. Setting any of them
+	// makes mirror() write dframe-store (and its backup copy).
+	CollapsedGroups   []string
+	CollapsedFamilies []string
+	OpenedGroups      []string
+	OmitStore         []string
+	// StoreShared is dframe-store's top-level "shared"; 0 keeps the current
+	// default 1 (so existing tree hashes do not change), 2 is what 7.x writes.
+	StoreShared int
+	// SeedPrefs are the legacy keys by base name ("code-sessions-sort-ascending"),
+	// written as "<name>.<acct>" to the mirror and as an LSS envelope.
+	SeedPrefs map[string]any
 	// Backlog and ScheduledTasks fill backlog/tasks.json and
 	// scheduled-tasks.json when non-nil.
 	Backlog        []map[string]any
@@ -353,7 +366,8 @@ const StoreBackupKey = "dframe-store.backup.v1"
 // mirror writes claude_desktop_config.json and the LS copies of every
 // mirrored key, including dframe-store and its backup copy.
 func (w *writer) mirror(spec FolderSpec, ls map[string]string) {
-	if spec.AppPrefs == nil && spec.GroupOrder == nil && spec.PinnedOrder == nil && spec.SidebarView == nil && spec.MCPServers == nil {
+	if spec.AppPrefs == nil && spec.GroupOrder == nil && spec.PinnedOrder == nil && spec.SidebarView == nil && spec.MCPServers == nil &&
+		!spec.sidebarOffline() {
 		return
 	}
 	acct := string(spec.Replica.Account)
@@ -382,8 +396,10 @@ func (w *writer) mirror(spec FolderSpec, ls map[string]string) {
 		ls["LSS-persisted.dframe-code-sections"] = envelope(w.t, secs)
 		store["codeSidebarByScope"] = secs
 	}
-	if spec.PinnedOrder != nil || spec.SidebarView != nil {
-		doc := string(mustJSON(w.t, map[string]any{"version": StoreVersion, "shared": 1, "state": store}, false))
+	w.seedPrefs(spec, ep, ls)
+	if spec.PinnedOrder != nil || spec.SidebarView != nil || spec.storeMembers() {
+		collapseStore(spec, store)
+		doc := string(mustJSON(w.t, map[string]any{"version": StoreVersion, "shared": storeShared(spec), "state": store}, false))
 		ls["dframe-store"] = doc
 		ls[StoreBackupKey] = doc
 	}

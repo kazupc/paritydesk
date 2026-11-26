@@ -41,7 +41,8 @@ type verifyIn struct {
 }
 
 // Verify runs P12 for the last run: waits for LOCK and a stable config
-// mirror, compares verify rows (reading JSON only, never LevelDB), marks
+// mirror, compares verify rows (reading the config mirror, and Local
+// Storage only through a snapshot copy for rows kept nowhere else), marks
 // drifted rows contested, and checks main.log signals.
 func (o *Orchestrator) Verify(ctx context.Context) (*VerifyResult, error) {
 	d := o.d
@@ -116,6 +117,9 @@ func (o *Orchestrator) verifyCore(ctx context.Context, in verifyIn) (*VerifyResu
 	}
 	res := &VerifyResult{PairingOK: true}
 	if err := o.compareMirror(in, mirror, res); err != nil {
+		return nil, err
+	}
+	if err := o.compareLS(ctx, in, res); err != nil {
 		return nil, err
 	}
 	o.readSignals(ctx, in, res)
