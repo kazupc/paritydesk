@@ -2,6 +2,11 @@ usage: paritydesk backups prune [flags]
 
 Apply the retention policy
 
+flags:
+  --older-than int             with --scratch: only sets older than this many days
+  --scratch                    remove the kept sets of scratch files removed by earlier switches (asks first)
+  --yes                        do not ask
+
 global flags:
   --app-support-dir string     paritydesk support directory
   --ascii                      ASCII only

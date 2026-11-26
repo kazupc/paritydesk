@@ -119,7 +119,7 @@ cmd/paritydesk ─► cli ─► orchestrator (Service) ─► (interfaces only)
 | `online` | (v0.2, planned) Online reconcile after a launch: queue, captures, PreToolUse guard, PostToolUse interpretation, providers (sidebar; pins) | mostly |
 | `store/idb` | (v0.2, planned) Read-only IndexedDB-on-LevelDB reader for one string key, over a private clone | no |
 | `sources/pins` | (v0.2, planned) Adapter for row pins (which Code sessions are pinned) and the reader of the app's own mirror of that list | no |
-| `sources/scratch` | (v0.2, planned) Adapter for row scratch: the scratch workspaces that session records reference, carried at the same path | no |
+| `sources/scratch` | (v0.2) Adapter for row scratch: the scratch workspaces that session records reference, carried at the same path (`ReadRefs` only; stat cache `<state>/cache/scratch-stat.json`) | no |
 | `artifacts` | (v0.2, planned) Artifact sync: archive, rounds, judge, ingest, the online provider, legacy archive import | mostly |
 | `legacy` | (v0.2, planned) Importer for folders left by an earlier folder-swap script (`profile adopt --from-legacy`); every input untrusted, writes nothing | mostly |
 | `fdscan` | (v0.2, planned) Native open-file scan through libproc without cgo; `lsof` stays the fallback | no |
@@ -207,6 +207,9 @@ P5  bundle identity unchanged? read S and T originals (reads still use
         context is context.WithoutCancel(ctx) with CommitTimeout ===
     -> commit: objects, canonical, both overlays, S bases (harvested rows
        only), run.PostHashes, intent planned
+       (v0.2 row scratch: its post-hashes go to a state object,
+       run.PostHashesRef; the intent records the carry set as
+       scratch_refs; post-hash keys are path:, dir:, link:, ls:)
 P6  gen.Begin -> SaveFile / SaveLSValue / SaveConflict / CloneLevelDB
     -> Finish -> intent backed_up                (skipped for an empty plan)
 P7  apply.Apply on T (parked) -> marker on T -> intent applied

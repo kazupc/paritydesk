@@ -16,6 +16,10 @@ type PlanView struct {
 	// (plan.Plan.NeedsConfirmation).
 	FirstSync bool
 	Summary   plan.Summary
+	// Scratch and ScratchNotes describe row scratch (render/scratch.go,
+	// WithScratch).
+	Scratch      *ScratchSummary
+	ScratchNotes []string
 }
 
 // PlanLines returns the human summary of a plan: a header, one line per
@@ -43,6 +47,7 @@ func PlanLines(v PlanView) []string {
 	// v0.2 anchor: plan busy
 
 	// v0.2 anchor: plan scratch
+	lines = append(lines, scratchLines(v)...)
 
 	// v0.2 anchor: plan online
 

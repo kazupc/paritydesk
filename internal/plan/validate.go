@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -60,6 +61,9 @@ func Validate(in ValidateInput) error {
 	if err := checkLimits(in); err != nil {
 		return err
 	}
+	if err := checkCopyBytes(in); err != nil {
+		return err
+	}
 	deleted := deletedChanges(in.Plan.Changes)
 	for i, op := range in.Plan.Ops {
 		if err := checkOp(in, deleted, i, op); err != nil {
@@ -74,7 +78,7 @@ func Validate(in ValidateInput) error {
 
 // checkOp runs every per-op check.
 func checkOp(in ValidateInput, deleted map[string]bool, i int, op Op) error {
-	checks := []func(ValidateInput, int, Op) error{checkTarget, checkHashes, checkSecret}
+	checks := []func(ValidateInput, int, Op) error{checkTarget, checkScratch, checkHashes, checkSecret}
 	for _, c := range checks {
 		if err := c(in, i, op); err != nil {
 			return err
@@ -101,7 +105,7 @@ func checkLimits(in ValidateInput) error {
 // checkTarget checks the op's kind, path or key, and content form.
 func checkTarget(in ValidateInput, i int, op Op) error {
 	switch op.Kind {
-	case OpWriteFile, OpQuarantine:
+	case OpWriteFile, OpQuarantine, OpCopyFile, OpMkdir, OpSymlink:
 		if op.Key != "" {
 			return invalid("op %d (%s): a file op may not name a Local Storage key", i, op.Kind)
 		}
@@ -149,8 +153,17 @@ func checkPath(in ValidateInput, i int, op Op) error {
 	if op.Kind == OpWriteFile && (matchAnyNameOrPath(in.TmpRecoveryGlobs, p) || matchAnyNameOrPath(tempNamePatterns, p)) {
 		return invalid("op %d (%s): path %s has a temporary-file name", i, op.Kind, p)
 	}
+	// Row scratch writes user files that may be named like temp files
+	// (notes.tmp); only paritydesk's own temp names and the app's tmp
+	// recovery globs are refused.
+	if isScratchKind(op.Kind) && (matchAnyNameOrPath(in.TmpRecoveryGlobs, p) || matchAnyNameOrPath(scratchTempNames, p)) {
+		return invalid("op %d (%s): path %s has a reserved temporary-file name", i, op.Kind, p)
+	}
 	return nil
 }
+
+// scratchTempNames are the temp-file names refused for row scratch.
+var scratchTempNames = []string{".paritydesk-tmp*"}
 
 // matchAny reports whether rel matches any glob (denylist.MatchGlob).
 func matchAny(globs []string, rel string) bool {
@@ -221,6 +234,18 @@ func checkHashes(_ ValidateInput, i int, op Op) error {
 	case OpWriteFile, OpLSPut:
 		if !isHash(op.PostHash) || op.PostHash != model.HashBytes(op.Content) {
 			return invalid("op %d (%s): post-hash does not match the content", i, op.Kind)
+		}
+	case OpCopyFile:
+		if op.Copy == nil || !isHash(op.Copy.Hash) || op.PostHash != op.Copy.Hash || len(op.Content) > 0 {
+			return invalid("op %d (%s): a copy needs a source whose hash is its post-hash and no content", i, op.Kind)
+		}
+	case OpMkdir:
+		if op.PreHash != "" || op.Mode.Perm() == 0 || op.PostHash != DirHash(op.Mode) || len(op.Content) > 0 {
+			return invalid("op %d (%s): a mkdir creates a new directory with a mode and its directory hash", i, op.Kind)
+		}
+	case OpSymlink:
+		if op.PreHash != "" || op.Link == "" || op.PostHash != LinkHash(op.Link) || len(op.Content) > 0 {
+			return invalid("op %d (%s): a symlink creates a new link with its link hash", i, op.Kind)
 		}
 	case OpQuarantine, OpLSDelete:
 		if op.PreHash == "" {
@@ -297,6 +322,9 @@ func checkBreaker(in ValidateInput) error {
 	for _, c := range in.Plan.Changes {
 		switch c.Kind {
 		case model.ChangeDeleted:
+			if in.BreakerExempt != nil && in.BreakerExempt(c) {
+				continue
+			}
 			deletions[model.CategoryOf(c.Row)]++
 		case model.ChangeAdded, model.ChangeRevived, model.ChangeRestored:
 			additions[model.CategoryOf(c.Row)]++
@@ -307,7 +335,11 @@ func checkBreaker(in ValidateInput) error {
 		if in.Limits.AllowDeletions >= deleted {
 			continue
 		}
-		limit := max(in.Limits.MaxDeleteMin, int(math.Ceil(in.Limits.MaxDeleteFraction*float64(before))))
+		frac, minDel := in.Limits.MaxDeleteFraction, in.Limits.MaxDeleteMin
+		if cl, ok := in.Limits.PerCategory[cat]; ok {
+			frac, minDel = cl.MaxDeleteFraction, cl.MaxDeleteMin
+		}
+		limit := max(minDel, int(math.Ceil(frac*float64(before))))
 		switch {
 		case deleted > limit:
 			return pderr.New(pderr.DeletionBreaker, validateOp,
@@ -356,4 +388,117 @@ func checkWorktrees(in ValidateInput) error {
 			fmt.Sprintf("%d worktrees with uncommitted changes would lose their registration", n))
 	}
 	return nil
+}
+
+// checkCopyBytes bounds the sum of every copy's size (MaxCopyBytes; zero
+// means no limit). Copies come only from hashed files of the two reads,
+// each capped, so exceeding it is a bug.
+func checkCopyBytes(in ValidateInput) error {
+	if in.MaxCopyBytes <= 0 {
+		return nil
+	}
+	var total int64
+	for _, op := range in.Plan.Ops {
+		if op.Copy != nil {
+			total += op.Copy.Size
+		}
+	}
+	if total > in.MaxCopyBytes {
+		return invalid("plan copies %d bytes, more than the limit of %d", total, in.MaxCopyBytes)
+	}
+	return nil
+}
+
+// checkScratch applies row scratch's rules (spec-scratch 6.4): its own
+// kinds only on row scratch and row scratch only with them and
+// OpQuarantine; every scratch path (and copy source) under the scratch
+// root with "<uuid>/<uuid>/<leaf>"; depth 1 to 3 only for mkdir; no other
+// row under the root; copies with a known side; links relative and inside
+// their workspace.
+func checkScratch(in ValidateInput, i int, op Op) error {
+	scratchRow := op.Row == model.RowScratch
+	if isScratchKind(op.Kind) && !scratchRow {
+		return invalid("op %d (%s, row %s): only row scratch uses this kind", i, op.Kind, op.Row)
+	}
+	if scratchRow && !isScratchKind(op.Kind) && op.Kind != OpQuarantine {
+		return invalid("op %d (%s): row scratch may not use this kind", i, op.Kind)
+	}
+	if !scratchRow {
+		if in.ScratchRoot != "" && underRoot(in.ScratchRoot, op.Path) {
+			return invalid("op %d (%s, row %s): path %s is under the scratch root", i, op.Kind, op.Row, op.Path)
+		}
+		return nil
+	}
+	if len(op.Rows) > 0 {
+		return invalid("op %d (%s): a scratch op belongs to row scratch alone", i, op.Kind)
+	}
+	if in.ScratchRoot == "" || in.ScratchLeaf == nil {
+		return invalid("op %d (%s): the manifest has no scratch row", i, op.Kind)
+	}
+	depth, err := scratchPathDepth(in, op.Path)
+	if err != "" {
+		return invalid("op %d (%s): path %s %s", i, op.Kind, op.Path, err)
+	}
+	if depth < scratchWorkspaceDepth && op.Kind != OpMkdir {
+		return invalid("op %d (%s): path %s is not inside a workspace", i, op.Kind, op.Path)
+	}
+	switch op.Kind {
+	case OpCopyFile:
+		if op.Copy == nil || (op.Copy.Side != SideLeaving && op.Copy.Side != SideEntering) {
+			return invalid("op %d (%s): copy source side is unknown", i, op.Kind)
+		}
+		d, err := scratchPathDepth(in, op.Copy.Path)
+		if err != "" || d <= scratchWorkspaceDepth {
+			return invalid("op %d (%s): copy source is not a file inside a workspace", i, op.Kind)
+		}
+	case OpSymlink:
+		if err := checkLink(op); err != "" {
+			return invalid("op %d (%s): path %s: link %s", i, op.Kind, op.Path, err)
+		}
+	}
+	return nil
+}
+
+// underRoot reports whether p is root or lies below it.
+func underRoot(root, p string) bool { return p == root || strings.HasPrefix(p, root+"/") }
+
+// scratchPathDepth checks a scratch path's shape and returns its number
+// of segments (1 = the root itself), or a constant reason.
+func scratchPathDepth(in ValidateInput, p string) (int, string) {
+	if !cleanRel(p) || !underRoot(in.ScratchRoot, p) {
+		return 0, "is not under the scratch root"
+	}
+	segs := strings.Split(p, "/")
+	for n, s := range segs {
+		switch {
+		case n == 1 || n == 2:
+			if !uuidRE.MatchString(s) {
+				return 0, "does not name an account and organization"
+			}
+		case n == 3:
+			if !in.ScratchLeaf.MatchString(s) {
+				return 0, "does not name a scratch workspace"
+			}
+		}
+	}
+	return len(segs), ""
+}
+
+// uuidRE matches a lowercase UUID (as ids.IsUUID).
+var uuidRE = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// checkLink checks a symlink target: non-empty, relative, no NUL, and
+// resolving inside the op's workspace.
+func checkLink(op Op) string {
+	l := op.Link
+	if l == "" || strings.ContainsRune(l, 0) || strings.HasPrefix(l, "/") {
+		return "target must be a relative path"
+	}
+	segs := strings.Split(op.Path, "/")
+	ws := strings.Join(segs[:scratchWorkspaceDepth], "/")
+	got := path.Clean(path.Dir(op.Path) + "/" + l)
+	if got != ws && !strings.HasPrefix(got, ws+"/") {
+		return "target leaves its workspace"
+	}
+	return ""
 }

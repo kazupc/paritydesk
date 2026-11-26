@@ -211,8 +211,10 @@ func TestEmbeddedManifestsLoadWithV02Anchors(t *testing.T) {
 		text := string(b)
 		for _, a := range []string{"rows scratch", "rows sidebar-offline", "rows pins", "probes scratch", "probes sidebar-offline",
 			"tables online", "tables pins", "tables artifacts", "tables legacy"} {
-			if strings.Count(text, "\n# v0.2 anchor: "+a+"\n\n") != 1 && !strings.HasSuffix(text, "\n# v0.2 anchor: "+a+"\n") {
-				t.Errorf("%s: anchor %q missing or not followed by a blank line", m.Name, a)
+			// A unit inserts its lines directly below its anchor, so the
+			// anchor is followed by a blank line or by that unit's block.
+			if strings.Count(text, "\n# v0.2 anchor: "+a+"\n") != 1 {
+				t.Errorf("%s: anchor %q missing or repeated", m.Name, a)
 			}
 		}
 		// Until their units land, the v0.2 tables are absent: online and

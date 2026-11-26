@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/orchestrator"
@@ -66,6 +67,12 @@ func categoryOptions(fs *flag.FlagSet) (only, skip []model.Category, err error) 
 	for _, c := range only {
 		if slices.Contains(skip, c) {
 			return nil, nil, usageErrorf("category %q is in both --only and --skip", string(c))
+		}
+	}
+	// Scratch workspaces follow the sessions that name them.
+	for _, c := range only {
+		if imp := model.ImpliedBy(c); imp != "" && !slices.Contains(only, imp) {
+			return nil, nil, usageErrorf("%s", i18n.T(i18n.CliOnlyScratch))
 		}
 	}
 	return only, skip, nil

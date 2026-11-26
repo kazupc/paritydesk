@@ -5,6 +5,7 @@
 # Differences from 6.x: session records gained titleSetAtMs and
 # writtenRepositories, and eight new top-level entries are listed under
 # never_until_classified.
+# v0.2: row scratch (ADR "scratch workspaces", docs/adr/0008).
 #
 # Values are key names, file names and log text as they appear on disk on a
 # tested Mac (ADR 0003); never byte offsets or identifiers from the app
@@ -106,6 +107,12 @@ project_path = ["cwd"]
 # ms. Empty: the number is the time, else the file's mtime. Members listed
 # here would be read from an object form instead.
 tombstone_time = []
+# Top-level record members that may hold scratch workspace paths (A10).
+# Every JSON string at any depth inside a listed member is examined; only
+# the scratch row reads this role, and nothing rewrites these members.
+scratch_ref = ["cwd", "originCwd", "gitAnchorsFolderRealpath", "gitAnchors",
+  "folderPlace", "scratchFilesLeftIn", "scratchCarried", "shellFolders",
+  "pendingFirstStart"]
 
 [[row]]
 row = "tasks"
@@ -227,6 +234,30 @@ run_state = ["leasedBy", "leaseCleared"]
 worktree_path = ["path"]
 
 # v0.2 anchor: rows scratch
+[[row]]
+row = "scratch"
+write_path = "off"
+# Scratch workspaces are mirrored at the same path in every folder (ADR
+# "scratch workspaces"): a session record names
+# <data folder>/scratch-workspaces/<acct>/<org>/<leaf>, and that directory
+# is carried to the entering folder at the same path.
+files = ["scratch-workspaces"]
+probes = ["scratch-root"]
+[row.scratch]
+root = "scratch-workspaces"
+# Workspace folder names the app mints (index.chunk-NrmvVoru.js Tt).
+leaf = '^scratch-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9a-f]{6}$'
+# Never read, written or removed. The app holds back settings.local.json
+# and .cc-writes when it carries a workspace (heavyWorkWorker.js zM);
+# worktrees are registered per data folder; lock files are transient.
+exclude = [".DS_Store", "**/.DS_Store",
+  ".claude/settings.local.json", ".claude/.cc-writes/**", ".claude/worktrees/**",
+  "**/.git/*.lock", "**/.git/**/*.lock"]
+# Folders held back wherever they occur (the app's own carry: jM, MM).
+dependency_dirs = ["node_modules", ".venv", "vendor"]
+vcs_dirs = [".sl", ".jj", ".bzr", "_darcs", ".svn"]
+# Informational, for doctor's text.
+sweep_untouched_days = 7
 
 # v0.2 anchor: rows sidebar-offline
 
@@ -466,6 +497,11 @@ path = []
 type = "object"
 
 # v0.2 anchor: probes scratch
+[[probe]]
+id = "scratch-root"
+row = "scratch"
+kind = "dir-optional"
+target = "scratch-workspaces"
 
 # v0.2 anchor: probes sidebar-offline
 
@@ -514,6 +550,8 @@ never_touched = [
   "WebStorage/**",
   "ca-bundle.pem",
   "extensions-blocklist.json",
+  # The app's owed-removal notes for scratch workspaces (A8).
+  "claude-code-sessions/*/*/scratchowed_*",
 ]
 never_until_classified = [
   "ssh-remote-server-state.json",
@@ -525,7 +563,6 @@ never_until_classified = [
   "git-shadow/**",
   "last-good-load.json",
   "remote-file-download-parts.json",
-  "scratch-workspaces/**",
   "side-session-notes/**",
   "terminal-shell-integration/**",
   "vm-support-probe.json",
@@ -569,6 +606,10 @@ synced = [
   "ccd-session-presets.json",
   "git-worktrees.json",
   "window-state.json",
+  # Scratch workspaces of every scope: mirrors are written at the path the
+  # session record names. Plan validation limits these paths to row
+  # scratch and to <uuid>/<uuid>/<leaf> below the root.
+  "scratch-workspaces/**",
 ]
 other = [
   "local-agent-mode-sessions/**",

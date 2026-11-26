@@ -14,6 +14,7 @@ _paritydesk_subs() {
 
 _paritydesk_flags() {
     case "$1" in
+        'backups prune') echo '--older-than --scratch --yes' ;;
         'backups purge') echo '--yes' ;;
         'doctor') echo '--bundle --bundle-logs --grant-automation' ;;
         'init') echo '--alias --label --managed --unmanaged' ;;
@@ -33,6 +34,7 @@ _paritydesk_flags() {
 
 _paritydesk_value_flags() {
     case "$1" in
+        'backups prune') echo '--older-than' ;;
         'doctor') echo '--bundle --bundle-logs' ;;
         'init') echo '--alias --label' ;;
         'log') echo '--run' ;;

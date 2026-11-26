@@ -733,7 +733,7 @@ func (r *run) preview(ctx context.Context) error {
 		r.p2 = &planned{Plan: r.o.emptyPlan(r.res.RunID, r.sideS(), r.sideT(), r.skipped), Work: map[model.RowID]*rowWork{}}
 	} else {
 		pl, err := r.o.buildPlan(ctx, planInput{S: r.sideS(), T: r.sideT(), Manifest: r.manifest, Root: r.root,
-			Rows: r.rows, Skipped: r.skipped, RunID: r.res.RunID, Approximate: true})
+			Rows: r.rows, Skipped: r.skipped, RunID: r.res.RunID, Approximate: true, Preview: r.confirmedPreview()})
 		if err != nil {
 			return err
 		}

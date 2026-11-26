@@ -196,15 +196,34 @@ type backupsView struct {
 	Max    int64 `json:"max_bytes,omitempty"`
 }
 
-func runBackupsPrune(ctx context.Context, e *env, _ *flag.FlagSet, _ []string) error {
+// Flags of backups prune.
+const (
+	flagScratch   = "scratch"
+	flagOlderThan = "older-than"
+)
+
+func backupsPruneFlags(fs *flag.FlagSet) {
+	fs.Bool(flagScratch, false, "remove the kept sets of scratch files removed by earlier switches (asks first)")
+	fs.Int(flagOlderThan, 0, "with --scratch: only sets older than this many days")
+	yesFlag(fs)
+}
+
+func runBackupsPrune(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 	if err := e.refuseReadOnly("backups prune"); err != nil {
 		return err
+	}
+	scratchOnly, days := getBool(fs, flagScratch), getInt(fs, flagOlderThan)
+	if days < 0 || (days > 0 && !scratchOnly) {
+		return usageErrorf("--%s takes a number of days and needs --%s", flagOlderThan, flagScratch)
 	}
 	release, err := e.sys.quiet(ctx, e)
 	if err != nil {
 		return err
 	}
 	defer release()
+	if scratchOnly {
+		return pruneScratchKept(ctx, e, fs, days)
+	}
 	paths, _, err := e.paths()
 	if err != nil {
 		return err
@@ -351,4 +370,80 @@ func checkRemovable(p string) error {
 		return err
 	}
 	return fsx.CheckTestPath(p)
+}
+
+// scratchKeptStore is the part of gen.Store that keeps quarantined
+// scratch files of pruned generations (spec-scratch 9.4).
+type scratchKeptStore interface {
+	ScratchKept() ([]gen.KeptInfo, error)
+	RemoveScratchKept(cutoff time.Time) (int, int64, error)
+}
+
+var _ scratchKeptStore = (*gen.Store)(nil)
+
+// scratchPruneView is the --json document of backups prune --scratch.
+type scratchPruneView struct {
+	Removed int   `json:"scratch_kept_removed"`
+	Bytes   int64 `json:"bytes"`
+}
+
+// pruneScratchKept removes kept sets of scratch files (all, or those
+// older than days) after a confirmation (--yes skips it; declined is
+// exit 3).
+func pruneScratchKept(ctx context.Context, e *env, fs *flag.FlagSet, days int) error {
+	gs, err := e.sys.gens(ctx, e)
+	if err != nil {
+		return err
+	}
+	ks, ok := gs.(scratchKeptStore)
+	if !ok {
+		return pderr.New(pderr.Internal, "backups prune", "the generation store keeps no scratch files")
+	}
+	var cutoff time.Time
+	if days > 0 {
+		cutoff = e.sys.now().Add(-time.Duration(days) * 24 * time.Hour)
+	}
+	sets, err := ks.ScratchKept()
+	if err != nil {
+		return err
+	}
+	n, total := 0, int64(0)
+	for _, k := range sets {
+		if cutoff.IsZero() || k.Created.Before(cutoff) {
+			n++
+			total += k.Bytes
+		}
+	}
+	if n > 0 {
+		if err := e.confirmText(ctx, getBool(fs, "yes"), i18n.T(i18n.BackupsScratchConfirm, n, render.Bytes(total))); err != nil {
+			return err
+		}
+	}
+	removed, bytes, err := ks.RemoveScratchKept(cutoff)
+	if err != nil {
+		return err
+	}
+	return e.emit(scratchPruneView{Removed: removed, Bytes: bytes}, func(p *render.Printer) {
+		p.Line("%s", i18n.T(i18n.BackupsScratchRemoved, removed, render.Bytes(bytes)))
+	}, nil)
+}
+
+// confirmText asks a question whose text is already formatted, like
+// confirmLocal: --yes answers it; a declined question is exit 3.
+func (e *env) confirmText(ctx context.Context, yes bool, question string) error {
+	if yes {
+		return nil
+	}
+	u := e.newUI(false, false)
+	if !u.interactive {
+		return errNoTerminal()
+	}
+	ok, err := u.ask(ctx, question)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return pderr.New(pderr.Declined, "confirm", i18n.T(i18n.Declined))
+	}
+	return nil
 }

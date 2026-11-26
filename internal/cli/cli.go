@@ -376,7 +376,7 @@ func root() *command {
 			leaf("show", "<n>", "Show one generation", 1, 1, nil, runGenerationsShow),
 		),
 		group("backups", "<prune|purge>", "Prune or purge backup generations", false,
-			leaf("prune", "", "Apply the retention policy", 0, 0, nil, runBackupsPrune),
+			leaf("prune", "", "Apply the retention policy", 0, 0, backupsPruneFlags, runBackupsPrune),
 			leaf("purge", "", "Remove every generation", 0, 0, yesFlag, runBackupsPurge),
 		),
 		leaf("doctor", "", "Check the installation, folders and app compatibility", 0, 0, func(fs *flag.FlagSet) {

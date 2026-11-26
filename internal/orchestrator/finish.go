@@ -33,6 +33,9 @@ func (o *Orchestrator) rereadRows(ctx context.Context, m *compat.Manifest, folde
 		return nil, err
 	}
 	defer closeReader(ls)
+	if _, ok := refs[model.RowScratch]; ok {
+		o.scratchAdapter() // the same limits and excludes as the run's read
+	}
 	for _, r := range rs {
 		rowRefs, have := refs[r]
 		snap, err := o.readRowLS(ctx, m, folder, rep, r, ls, rowRefs, have)
@@ -73,7 +76,7 @@ func (r *run) commitP10(ctx context.Context) error {
 	defer r.phase(P10Commit, "recording")()
 	d := r.d()
 	root := r.root
-	reread, err := r.o.rereadRows(ctx, r.manifest, r.tPath, r.T.Replica, r.p5.Rows, nil)
+	reread, err := r.o.rereadRows(ctx, r.manifest, r.tPath, r.T.Replica, r.p5.Rows, r.scratchRereadRefs())
 	if err != nil {
 		r.warn(P10Commit, "the entering folder could not be re-read; its bases are invalid until the next run")
 		reread = nil
@@ -82,7 +85,11 @@ func (r *run) commitP10(ctx context.Context) error {
 		w := r.p5.Work[row]
 		tk := w.TKey.String()
 		snap, ok := reread[row]
-		if !ok || !sameRead(snap, w.Out.Desired, rows.CarriesOrder(row)) {
+		want := w.Out.Desired
+		if row == model.RowScratch {
+			want = r.scratchExpected(w)
+		}
+		if !ok || !sameRead(snap, want, rows.CarriesOrder(row)) {
 			dropBase(root, tk)
 			if reread != nil {
 				r.warn(P10Commit, fmt.Sprintf("%s: the entering folder does not read back as planned; its base is invalid", row))
@@ -129,6 +136,7 @@ func (r *run) commitP10(ctx context.Context) error {
 	if err := d.State.GC(root); err != nil {
 		r.warn(P10Commit, "unreferenced state objects could not be removed")
 	}
+	r.saveScratchCache()
 	if err := d.Gens.Prune(r.o.prunePolicy()); err != nil {
 		r.warn(P10Commit, "old backup generations could not be pruned")
 	}

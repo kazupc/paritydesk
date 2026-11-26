@@ -374,9 +374,16 @@ func itemsOf(s *model.RowSnapshot) map[string]model.Item {
 	return s.Items
 }
 
-// postHashKey names a plan target the way apply.Result.PostHashes does.
+// postHashKey names a plan target the way apply.Result.PostHashes does:
+// "dir:" for a directory row scratch creates, "link:" for a symlink,
+// "path:" for every other file op and "ls:" for Local Storage.
 func postHashKey(op plan.Op) string {
-	if op.Path != "" {
+	switch {
+	case op.Kind == plan.OpMkdir:
+		return "dir:" + op.Path
+	case op.Kind == plan.OpSymlink:
+		return "link:" + op.Path
+	case op.Path != "":
 		return "path:" + op.Path
 	}
 	return "ls:" + op.Key
@@ -412,6 +419,10 @@ func planFromPostHashes(ph map[string]string, target plan.Target) *plan.Plan {
 				kind = plan.OpQuarantine
 			}
 			p.Ops = append(p.Ops, plan.Op{Kind: kind, Path: strings.TrimPrefix(k, "path:"), PostHash: h})
+		case strings.HasPrefix(k, "dir:"):
+			p.Ops = append(p.Ops, plan.Op{Kind: plan.OpMkdir, Path: strings.TrimPrefix(k, "dir:"), PostHash: h})
+		case strings.HasPrefix(k, "link:"):
+			p.Ops = append(p.Ops, plan.Op{Kind: plan.OpSymlink, Path: strings.TrimPrefix(k, "link:"), PostHash: h})
 		case strings.HasPrefix(k, "ls:"):
 			kind := plan.OpLSPut
 			if h == "" {

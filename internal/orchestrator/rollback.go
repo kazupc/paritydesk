@@ -226,7 +226,7 @@ func (o *Orchestrator) finishRollback(ctx context.Context, root *state.Root, m *
 		return gen.RestoreReport{}, pderr.Wrap(pderr.Internal, "rollback", err)
 	}
 	folder := o.rollbackFolder(root, a)
-	in := gen.RestoreInput{N: n, Folder: folder, TmpDir: o.tmpDir(runID)}
+	in := gen.RestoreInput{N: n, Folder: folder, TmpDir: o.tmpDir(runID), ScratchRoot: scratchRootOf(m)}
 	if hasLSEntries(man) {
 		w, err := d.KV.OpenWritable(ctx, sources.LevelDBPath(folder))
 		if err != nil {

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/kazupc/paritydesk/internal/fsx"
 	"github.com/kazupc/paritydesk/internal/localstorage"
@@ -55,6 +56,10 @@ type Input struct {
 	TmpDir string
 	// QuarantineDir is the generation's quarantine directory.
 	QuarantineDir string
+	// LeavingFolder is the leaving folder at apply time: the source of
+	// row scratch's copies from the leaving side. A plan with such a copy
+	// and no LeavingFolder fails before the first write.
+	LeavingFolder string
 }
 
 // Result reports what was applied.
@@ -68,16 +73,45 @@ type Result struct {
 	// LSOpened reports whether Local Storage was opened writable (opening
 	// alone may rewrite LevelDB's log and manifest).
 	LSOpened bool `json:"ls_opened"`
-	// PostHashes maps "path:<p>" and "ls:<key>" to the hashes read back.
+	// PostHashes maps "path:<p>", "dir:<p>", "link:<p>" and "ls:<key>" to
+	// the hashes read back.
 	PostHashes map[string]string `json:"post_hashes"`
+	// SoftSkipped lists the data-folder-relative paths of soft copies
+	// (plan.SoftCopy) whose source changed after the plan: the target was
+	// left as it was (spec-scratch 3.3).
+	SoftSkipped []string `json:"soft_skipped,omitempty"`
 }
 
-// pathKey and lsKey are the Result.PostHashes and Check keys.
+// pathKey and lsKey are the Result.PostHashes and Check keys; dirKey and
+// linkKey name the targets of OpMkdir and OpSymlink.
 func pathKey(p string) string  { return "path:" + p }
 func lsKey(name string) string { return "ls:" + name }
+func dirKey(p string) string   { return "dir:" + p }
+func linkKey(p string) string  { return "link:" + p }
 
-// isFileOp reports whether op targets a file (as opposed to Local Storage).
-func isFileOp(op plan.Op) bool { return op.Kind == plan.OpWriteFile || op.Kind == plan.OpQuarantine }
+// PostHashKey names an op's target the way Result.PostHashes does.
+func PostHashKey(op plan.Op) string {
+	switch op.Kind {
+	case plan.OpMkdir:
+		return dirKey(op.Path)
+	case plan.OpSymlink:
+		return linkKey(op.Path)
+	case plan.OpLSPut, plan.OpLSDelete:
+		return lsKey(op.Key)
+	}
+	return pathKey(op.Path)
+}
+
+// isFileOp reports whether op targets a path in the folder (as opposed
+// to Local Storage): files, quarantines and row scratch's copies,
+// directories and symlinks.
+func isFileOp(op plan.Op) bool {
+	switch op.Kind {
+	case plan.OpWriteFile, plan.OpQuarantine, plan.OpCopyFile, plan.OpMkdir, plan.OpSymlink:
+		return true
+	}
+	return false
+}
 
 // run is the state of one Apply call.
 type run struct {
@@ -87,6 +121,8 @@ type run struct {
 	res     Result
 	written []string // file paths written or quarantined, in order
 	hooked  bool     // AfterFirstWrite was called
+	// soft marks soft copies whose source already failed the preflight.
+	soft map[string]bool
 }
 
 // firstWrite calls the AfterFirstWrite hook once.
@@ -128,13 +164,19 @@ func (a *Applier) Apply(ctx context.Context, in Input) (Result, error) {
 	return r.res, nil
 }
 
-// preflight refuses read-only mode, a missing plan, and a held folder.
+// preflight refuses read-only mode, a missing plan, a leaving copy
+// without the leaving folder, and a held folder.
 func (r *run) preflight(ctx context.Context) error {
 	if r.a.ReadOnly {
 		return pderr.Wrap(pderr.Internal, opApply, fsx.ErrReadOnly)
 	}
 	if r.in.Plan == nil || r.in.Folder == "" || r.a.FS == nil {
 		return pderr.New(pderr.Internal, opApply, "incomplete apply input")
+	}
+	for _, op := range r.in.Plan.Ops {
+		if op.Kind == plan.OpCopyFile && (op.Copy == nil || (op.Copy.Side == plan.SideLeaving && r.in.LeavingFolder == "")) {
+			return pderr.New(pderr.Internal, opApply, "a copy from the leaving folder needs that folder")
+		}
 	}
 	if r.a.Holders == nil {
 		return pderr.New(pderr.Internal, opApply, "no holder check configured")
@@ -157,6 +199,9 @@ func (r *run) verify(ctx context.Context) error {
 		switch {
 		case isFileOp(op):
 			if err := r.checkFilePre(op); err != nil {
+				return err
+			}
+			if err := r.checkCopySource(op); err != nil {
 				return err
 			}
 		case op.Kind == plan.OpLSPut || op.Kind == plan.OpLSDelete:
@@ -203,22 +248,85 @@ func openLSMsg(err error) string {
 	return "opening Local Storage failed"
 }
 
-// checkFilePre compares a file's current hash with the op's pre-hash.
+// checkFilePre compares a target's current hash with the op's pre-hash.
 func (r *run) checkFilePre(op plan.Op) error {
-	got, _, err := fileHash(r.in.Folder, op.Path)
+	got, err := targetHash(r.in.Folder, op)
 	if err != nil {
-		return &pderr.Error{Code: pderr.Internal, Op: opApply, Msg: "reading " + pathKey(op.Path) + " failed", Err: err}
+		return &pderr.Error{Code: pderr.Internal, Op: opApply, Msg: "reading " + PostHashKey(op) + " failed", Err: err}
 	}
 	if got != op.PreHash {
-		return pderr.New(pderr.Internal, opApply, pathKey(op.Path)+" changed since the plan was made")
+		return pderr.New(pderr.Internal, opApply, PostHashKey(op)+" changed since the plan was made")
 	}
 	return nil
 }
 
+// sourcePath returns the absolute path of a copy's source.
+func (r *run) sourcePath(op plan.Op) (string, error) {
+	folder := r.in.Folder
+	if op.Copy.Side == plan.SideLeaving {
+		folder = r.in.LeavingFolder
+	}
+	return fsx.Contained(folder, op.Copy.Path)
+}
+
+// checkCopySource checks that a copy's source is still a regular file. A
+// soft copy whose source fails is marked soft-skipped instead.
+func (r *run) checkCopySource(op plan.Op) error {
+	if op.Kind != plan.OpCopyFile {
+		return nil
+	}
+	src, err := r.sourcePath(op)
+	if err != nil {
+		return pderr.Wrap(pderr.Internal, opApply, err)
+	}
+	fi, err := os.Lstat(src)
+	if err == nil && fi.Mode().IsRegular() && noSymlinkParents(r.sourceFolder(op), op.Copy.Path) {
+		return nil
+	}
+	if plan.SoftCopy(op) {
+		if r.soft == nil {
+			r.soft = map[string]bool{}
+		}
+		r.soft[op.Path] = true
+		return nil
+	}
+	return pderr.New(pderr.Internal, opApply, "the copy source of "+pathKey(op.Path)+" changed since the plan was made")
+}
+
+// sourceFolder returns the folder a copy reads from.
+func (r *run) sourceFolder(op plan.Op) string {
+	if op.Copy.Side == plan.SideLeaving {
+		return r.in.LeavingFolder
+	}
+	return r.in.Folder
+}
+
+// noSymlinkParents reports whether no parent component of rel under
+// folder is a symlink or a non-directory.
+func noSymlinkParents(folder, rel string) bool {
+	cur := folder
+	parts := strings.Split(filepath.Clean(rel), string(filepath.Separator))
+	for _, part := range parts[:len(parts)-1] {
+		cur = filepath.Join(cur, part)
+		fi, err := os.Lstat(cur)
+		if err != nil || !fi.IsDir() {
+			return false
+		}
+	}
+	return true
+}
+
 // writeFiles writes or quarantines every file op in order, re-checking
-// each pre-hash just before its write and reading each result back.
+// each pre-hash just before its write and reading each result back. After
+// the last row-scratch op the folder gets one full sync.
 func (r *run) writeFiles() error {
-	for _, op := range r.in.Plan.Ops {
+	last := -1
+	for i, op := range r.in.Plan.Ops {
+		if op.Row == model.RowScratch {
+			last = i
+		}
+	}
+	for i, op := range r.in.Plan.Ops {
 		if !isFileOp(op) {
 			continue
 		}
@@ -228,6 +336,11 @@ func (r *run) writeFiles() error {
 		r.written = append(r.written, op.Path)
 		r.res.Applied++
 		r.firstWrite()
+		if i == last {
+			if err := r.a.FS.FullSync(r.in.Folder); err != nil {
+				return r.rolledBack(err, "full sync of the folder failed")
+			}
+		}
 	}
 	return nil
 }
@@ -240,30 +353,63 @@ func (r *run) writeFile(op plan.Op) error {
 		}
 		return r.rolledBack(err, pathKey(op.Path)+" changed during apply")
 	}
-	r.res.Touched = true
-	var err error
-	switch op.Kind {
-	case plan.OpWriteFile:
-		mode, merr := r.modeFor(op)
-		if merr != nil {
-			return r.rolledBack(merr, "reading the mode of "+pathKey(op.Path)+" failed")
+	key := PostHashKey(op)
+	want := op.PostHash
+	if r.soft[op.Path] {
+		r.res.SoftSkipped = append(r.res.SoftSkipped, op.Path)
+		want = op.PreHash
+	} else {
+		r.res.Touched = true
+		var err error
+		switch op.Kind {
+		case plan.OpWriteFile:
+			mode, merr := r.modeFor(op)
+			if merr != nil {
+				return r.rolledBack(merr, "reading the mode of "+pathKey(op.Path)+" failed")
+			}
+			err = r.a.FS.WriteFileAtomic(r.in.Folder, op.Path, op.Content, mode, r.in.TmpDir)
+		case plan.OpQuarantine:
+			err = r.a.FS.MoveInto(r.in.Folder, op.Path, r.in.QuarantineDir)
+		case plan.OpMkdir:
+			err = r.a.FS.Mkdir(r.in.Folder, op.Path, op.Mode.Perm())
+		case plan.OpSymlink:
+			err = r.a.FS.Symlink(op.Link, r.in.Folder, op.Path)
+		case plan.OpCopyFile:
+			err = r.copyFile(op)
+			if err != nil && plan.SoftCopy(op) && (errors.Is(err, fsx.ErrHashMismatch) || errors.Is(err, fsx.ErrSourceChanged)) {
+				r.res.SoftSkipped = append(r.res.SoftSkipped, op.Path)
+				want, err = op.PreHash, nil
+			}
 		}
-		err = r.a.FS.WriteFileAtomic(r.in.Folder, op.Path, op.Content, mode, r.in.TmpDir)
-	case plan.OpQuarantine:
-		err = r.a.FS.MoveInto(r.in.Folder, op.Path, r.in.QuarantineDir)
+		if err != nil {
+			return r.rolledBack(err, "writing "+key+" failed")
+		}
 	}
+	got, err := targetHash(r.in.Folder, op)
 	if err != nil {
-		return r.rolledBack(err, "writing "+pathKey(op.Path)+" failed")
+		return r.rolledBack(err, "reading back "+key+" failed")
 	}
-	got, _, err := fileHash(r.in.Folder, op.Path)
-	if err != nil {
-		return r.rolledBack(err, "reading back "+pathKey(op.Path)+" failed")
-	}
-	r.res.PostHashes[pathKey(op.Path)] = got
-	if got != op.PostHash {
-		return r.rolledBack(nil, "read-back mismatch for "+pathKey(op.Path))
+	r.res.PostHashes[key] = got
+	if got != want {
+		return r.rolledBack(nil, "read-back mismatch for "+key)
 	}
 	return nil
+}
+
+// copyFile clones a copy's source into place, verified against its hash.
+func (r *run) copyFile(op plan.Op) error {
+	src, err := r.sourcePath(op)
+	if err != nil {
+		return err
+	}
+	if !noSymlinkParents(r.sourceFolder(op), op.Copy.Path) {
+		return fsx.ErrSourceChanged
+	}
+	mode := op.Mode.Perm()
+	if mode == 0 {
+		mode = defaultMode
+	}
+	return r.a.FS.CloneFileAtomic(src, r.in.Folder, op.Path, mode, time.Unix(0, op.Copy.MTimeNs), op.Copy.Hash, r.in.TmpDir)
 }
 
 // modeFor returns op.Mode, else the existing file's mode, else 0600.
@@ -372,7 +518,7 @@ func (a *Applier) Check(ctx context.Context, p *plan.Plan, folder string) (match
 		defer snap.Close()
 	}
 	for _, op := range p.Ops {
-		got, key, err := currentHash(snap, folder, op)
+		got, key, err := CurrentHash(snap, folder, op)
 		if err != nil {
 			return false, nil, err
 		}
@@ -401,15 +547,17 @@ func (a *Applier) openSnapshotIfNeeded(ctx context.Context, p *plan.Plan, folder
 	return nil, nil
 }
 
-// currentHash returns the current hash of op's target and its result key.
-func currentHash(snap kv.Reader, folder string, op plan.Op) (string, string, error) {
+// CurrentHash returns the current hash of op's target and its result
+// key: a file's sha256, a directory's DirHash, a symlink's LinkHash, an
+// LS value's hash ("" when absent). snap is needed for LS ops only.
+func CurrentHash(snap kv.Reader, folder string, op plan.Op) (string, string, error) {
 	switch {
 	case isFileOp(op):
-		got, _, err := fileHash(folder, op.Path)
+		got, err := targetHash(folder, op)
 		if err != nil {
-			return "", "", &pderr.Error{Code: pderr.Internal, Op: opCheck, Msg: "reading " + pathKey(op.Path) + " failed", Err: err}
+			return "", "", &pderr.Error{Code: pderr.Internal, Op: opCheck, Msg: "reading " + PostHashKey(op) + " failed", Err: err}
 		}
-		return got, pathKey(op.Path), nil
+		return got, PostHashKey(op), nil
 	case op.Kind == plan.OpLSPut || op.Kind == plan.OpLSDelete:
 		got, err := lsHash(snap, op.Key)
 		if err != nil {
@@ -424,9 +572,62 @@ func currentHash(snap kv.Reader, folder string, op plan.Op) (string, string, err
 // other non-regular file, or that has a symlink among its parents.
 var errNotRegular = errors.New("apply: target is not a regular file")
 
+// targetHash returns the current hash of an op's target by kind: an
+// OpMkdir's target must be a directory (DirHash of its mode), an
+// OpSymlink's a symlink (LinkHash of its target), every other file op's a
+// regular file (sha256); "" when absent. Any other type is an error, so a
+// path never changes kind between the pre and post checks.
+func targetHash(folder string, op plan.Op) (string, error) {
+	switch op.Kind {
+	case plan.OpMkdir, plan.OpSymlink:
+		fi, err := lstatNoSymlinkParents(folder, op.Path)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			return "", nil
+		case err != nil:
+			return "", err
+		case op.Kind == plan.OpMkdir && fi.IsDir():
+			return plan.DirHash(fi.Mode().Perm()), nil
+		case op.Kind == plan.OpSymlink && fi.Mode()&fs.ModeSymlink != 0:
+			p, _ := fsx.Contained(folder, op.Path)
+			target, err := os.Readlink(p)
+			if err != nil {
+				return "", err
+			}
+			return plan.LinkHash(target), nil
+		}
+		return "", errNotRegular
+	}
+	h, _, err := fileHash(folder, op.Path)
+	return h, err
+}
+
+// lstatNoSymlinkParents lstats folder/rel, refusing a symlink or a
+// non-directory among its parents.
+func lstatNoSymlinkParents(folder, rel string) (fs.FileInfo, error) {
+	target, err := fsx.Contained(folder, rel)
+	if err != nil {
+		return nil, err
+	}
+	cur := folder
+	parts := strings.Split(filepath.Clean(rel), string(filepath.Separator))
+	for _, part := range parts[:len(parts)-1] {
+		cur = filepath.Join(cur, part)
+		fi, err := os.Lstat(cur)
+		if err != nil {
+			return nil, err
+		}
+		if fi.Mode()&fs.ModeSymlink != 0 || !fi.IsDir() {
+			return nil, errNotRegular
+		}
+	}
+	return os.Lstat(target)
+}
+
 // fileHash returns the sha256 of folder/rel ("" when absent) and its
-// permission bits (0 when absent). It refuses symlinks in any component
-// and non-regular targets, and never follows a symlink.
+// permission bits (0 when absent), streamed (fsx.HashFile). It refuses
+// symlinks in any component and non-regular targets, and never follows a
+// symlink.
 func fileHash(folder, rel string) (string, fs.FileMode, error) {
 	target, err := fsx.Contained(folder, rel)
 	if err != nil {
@@ -448,11 +649,11 @@ func fileHash(folder, rel string) (string, fs.FileMode, error) {
 			return "", 0, errNotRegular
 		}
 		if last {
-			data, err := os.ReadFile(target)
+			h, mode, err := fsx.HashFile(target)
 			if err != nil {
 				return "", 0, err
 			}
-			return model.HashBytes(data), fi.Mode().Perm(), nil
+			return h, mode, nil
 		}
 	}
 	return "", 0, errNotRegular

@@ -2,7 +2,10 @@
 
 package fsx
 
-import "io/fs"
+import (
+	"io/fs"
+	"time"
+)
 
 // Default returns an implementation whose every call fails with
 // ErrUnsupported. paritydesk supports macOS only; this keeps the module
@@ -25,3 +28,10 @@ func (unsupported) ID(string) (FileID, error)                     { return FileI
 func (unsupported) GetXattr(string, string) ([]byte, bool, error) { return nil, false, ErrUnsupported }
 func (unsupported) SetXattr(string, string, []byte) error         { return ErrUnsupported }
 func (unsupported) FreeBytes(string) (uint64, error)              { return 0, ErrUnsupported }
+func (unsupported) CloneFileAtomic(string, string, string, fs.FileMode, time.Time, string, string) error {
+	return ErrUnsupported
+}
+func (unsupported) Mkdir(string, string, fs.FileMode) error { return ErrUnsupported }
+func (unsupported) Symlink(string, string, string) error    { return ErrUnsupported }
+func (unsupported) RemoveEmptyDir(string, string) error     { return ErrUnsupported }
+func (unsupported) BarrierSync(string) error                { return ErrUnsupported }

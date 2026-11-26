@@ -135,6 +135,7 @@ func (s *Store) List() ([]Info, error) {
 		if m, err := s.readManifest(n); err == nil {
 			info = Info{N: n, RunID: m.RunID, Alias: m.Alias, Created: m.Created,
 				Entries: len(m.Entries), LevelDB: m.LevelDB != "", Complete: m.Complete}
+			info.ScratchBytes = s.scratchBytes(m)
 		}
 		if info.Bytes, err = dirSize(s.genDir(n)); err != nil {
 			return nil, fmt.Errorf("gen: size of %d: %w", n, err)
@@ -297,10 +298,15 @@ func (s *Store) Prune(p PrunePolicy) error {
 	}
 	var total int64
 	for i, in := range complete {
-		total += in.Bytes
+		// Quarantined scratch files are kept (scratch-kept), so they do
+		// not count against the size limit.
+		total += in.Bytes - in.ScratchBytes
 		overCount := p.Keep > 0 && i >= p.Keep
 		overSize := p.MaxBytes > 0 && i > 0 && total > p.MaxBytes
 		if overCount || overSize {
+			if err := s.keepScratch(in.N); err != nil {
+				return err
+			}
 			if err := s.remove(name(in.N)); err != nil {
 				return err
 			}
@@ -355,6 +361,11 @@ func (s *Store) Purge() error {
 	}
 	for _, n := range ns {
 		if err := s.remove(name(n)); err != nil {
+			return err
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(s.dir, ScratchKeptDir)); err == nil {
+		if err := s.remove(ScratchKeptDir); err != nil {
 			return err
 		}
 	}

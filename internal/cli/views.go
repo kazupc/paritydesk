@@ -35,6 +35,7 @@ type runView struct {
 	// v0.2 anchor: view busy
 
 	// v0.2 anchor: view scratch
+	Scratch *render.ScratchSummary `json:"scratch,omitempty"`
 
 	// v0.2 anchor: view online
 
@@ -77,10 +78,12 @@ func newRunView(r *orchestrator.Result) runView {
 	}
 	// Without a target the run stopped before planning: no plan to show.
 	if v.To != "" {
-		v.Lines = render.PlanLines(render.PlanView{
+		pv := render.WithScratch(render.PlanView{
 			From: string(v.From), To: string(v.To), Approximate: v.Approximate,
 			FirstSync: v.NeedsConfirmation, Summary: v.Summary,
-		})
+		}, r.Plan)
+		v.Scratch = pv.Scratch
+		v.Lines = render.PlanLines(pv)
 	}
 	if len(r.Timings) > 0 {
 		v.TimingsMS = map[string]int64{}

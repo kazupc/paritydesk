@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -191,13 +192,18 @@ func (s *fakeState) root(t *testing.T) *state.Root {
 type fakeGen struct {
 	m     gen.Manifest
 	bytes map[string][]byte
+	modes map[string]fs.FileMode
 }
 
 type fakeGens struct {
 	gens          map[uint64]*fakeGen
 	restores      int
+	lastRestore   gen.RestoreInput
+	lastReport    gen.RestoreReport
 	levelRestores int
 	prunes        int
+	// qdir, if set, is every generation's quarantine directory.
+	qdir string
 }
 
 type fakeGenWriter struct {
@@ -209,13 +215,13 @@ func (g *fakeGens) Begin(n uint64, runID string, a ids.Alias, rep model.Replica)
 	if _, ok := g.gens[n]; ok {
 		return nil, errors.New("fake gens: generation exists")
 	}
-	fg := &fakeGen{m: gen.Manifest{Version: 1, N: n, RunID: runID, Alias: a, Replica: rep}, bytes: map[string][]byte{}}
+	fg := &fakeGen{m: gen.Manifest{Version: 1, N: n, RunID: runID, Alias: a, Replica: rep}, bytes: map[string][]byte{}, modes: map[string]fs.FileMode{}}
 	g.gens[n] = fg
 	return &fakeGenWriter{g: fg, gs: g}, nil
 }
 
 func (w *fakeGenWriter) Dir() string           { return "" }
-func (w *fakeGenWriter) QuarantineDir() string { return "" }
+func (w *fakeGenWriter) QuarantineDir() string { return w.gs.qdir }
 
 func (w *fakeGenWriter) SaveFile(row model.RowID, folder, rel, post string) error {
 	b, present, err := readContained(folder, rel)
@@ -223,6 +229,9 @@ func (w *fakeGenWriter) SaveFile(row model.RowID, folder, rel, post string) erro
 		return err
 	}
 	w.g.bytes[rel] = b
+	if fi, err := os.Lstat(filepath.Join(folder, filepath.FromSlash(rel))); err == nil {
+		w.g.modes[rel] = fi.Mode().Perm()
+	}
 	w.g.m.Entries = append(w.g.m.Entries, gen.Entry{Kind: gen.EntryFile, Row: row, Path: rel, Present: present,
 		PreHash: hashOf(b, present), PostHash: post})
 	return nil
@@ -233,6 +242,16 @@ func (w *fakeGenWriter) SaveLSValue(row model.RowID, name string, raw []byte, pr
 		PreHash: hashOf(raw, present), PostHash: post})
 	return nil
 }
+
+func (w *fakeGenWriter) SaveCreated(kind gen.EntryKind, row model.RowID, folder, rel, post string) error {
+	if _, present, err := readContained(folder, rel); err != nil || present {
+		return errors.New("fake gens: created path exists")
+	}
+	w.g.m.Entries = append(w.g.m.Entries, gen.Entry{Kind: kind, Row: row, Path: rel, PostHash: post})
+	return nil
+}
+
+func (w *fakeGenWriter) SetScratchRoot(root string) { w.g.m.ScratchRoot = root }
 
 func (w *fakeGenWriter) SaveConflict(row model.RowID, key string, raw []byte) error {
 	w.g.m.Entries = append(w.g.m.Entries, gen.Entry{Kind: gen.EntryConflict, Row: row, Key: key})
@@ -281,16 +300,48 @@ func (g *fakeGens) DeleteIncomplete(n uint64) (bool, error) {
 func (g *fakeGens) Prune(gen.PrunePolicy) error { g.prunes++; return nil }
 func (g *fakeGens) Purge() error                { g.gens = map[uint64]*fakeGen{}; return nil }
 
-// Restore is conditional and idempotent: post-hash -> restore, pre-hash ->
-// already restored, anything else -> conflict (never overwritten).
-func (g *fakeGens) Restore(_ context.Context, in gen.RestoreInput) (gen.RestoreReport, error) {
+// Restore is conditional and idempotent, in reverse entry order like
+// gen.Store: post-hash -> restore, pre-hash -> already restored, anything
+// else -> conflict (never overwritten). A directory row scratch created
+// is removed when empty and below the scratch root (the generation's or
+// the input's); a symlink it created is removed while it still points
+// where the run made it point.
+func (g *fakeGens) Restore(_ context.Context, in gen.RestoreInput) (rep gen.RestoreReport, err error) {
 	g.restores++
+	g.lastRestore = in
+	defer func() { g.lastReport = rep }()
 	fg, ok := g.gens[in.N]
 	if !ok {
 		return gen.RestoreReport{}, errors.New("fake gens: no generation")
 	}
-	var rep gen.RestoreReport
-	for _, e := range fg.m.Entries {
+	root := fg.m.ScratchRoot
+	if root == "" {
+		root = in.ScratchRoot
+	}
+	for i := len(fg.m.Entries) - 1; i >= 0; i-- {
+		e := fg.m.Entries[i]
+		if e.Kind == gen.EntryDir || e.Kind == gen.EntryLink {
+			p := filepath.Join(in.Folder, filepath.FromSlash(e.Path))
+			fi, err := os.Lstat(p)
+			switch {
+			case errors.Is(err, fs.ErrNotExist):
+				rep.Restored = append(rep.Restored, e)
+			case err != nil:
+				return rep, err
+			case e.Kind == gen.EntryDir && fi.IsDir() && e.Row == model.RowScratch && root != "" && (e.Path == root || strings.HasPrefix(e.Path, root+"/")) && os.Remove(p) == nil:
+				rep.Restored = append(rep.Restored, e)
+			case e.Kind == gen.EntryLink && fi.Mode()&fs.ModeSymlink != 0:
+				target, _ := os.Readlink(p)
+				if plan.LinkHash(target) == e.PostHash && os.Remove(p) == nil {
+					rep.Restored = append(rep.Restored, e)
+				} else {
+					rep.Conflicts = append(rep.Conflicts, e)
+				}
+			default:
+				rep.Conflicts = append(rep.Conflicts, e)
+			}
+			continue
+		}
 		if e.Kind != gen.EntryFile {
 			continue
 		}
@@ -305,7 +356,15 @@ func (g *fakeGens) Restore(_ context.Context, in gen.RestoreInput) (gen.RestoreR
 		case e.PostHash:
 			p := filepath.Join(in.Folder, e.Path)
 			if e.Present {
-				if err := os.WriteFile(p, fg.bytes[e.Path], 0o600); err != nil {
+				// Like gen.Store, the file gets its previous mode back.
+				mode, ok := fg.modes[e.Path]
+				if !ok {
+					mode = 0o600
+				}
+				if err := os.WriteFile(p, fg.bytes[e.Path], mode); err != nil {
+					return rep, err
+				}
+				if err := os.Chmod(p, mode); err != nil {
 					return rep, err
 				}
 			} else if err := os.Remove(p); err != nil {
@@ -1032,6 +1091,8 @@ type env struct {
 	scans    int
 	// basesBefore are the bases when markBases was last called.
 	basesBefore map[string]state.Ref
+	// tweak, if set, adjusts the dependencies deps returns.
+	tweak func(*Deps)
 }
 
 // markBases records the current bases for the I5 check.
@@ -1190,6 +1251,9 @@ func (e *env) deps() Deps {
 		Applier: e.applier, Sessions: e.sess, Worktrees: e.wt, Detach: e.det, Plans: e.plans, UI: e.ui,
 		Crash: e.crash, ReadOnly: e.readOnly,
 	}
+	if e.tweak != nil {
+		e.tweak(&d)
+	}
 	if e.readOnly {
 		d.FS = fsx.ReadOnly(e.fs)
 		d.KV = kv.ReadOnly(e.kv)
@@ -1255,6 +1319,9 @@ func (e *env) checkInvariants(label string) {
 		}
 		parts := strings.Split(k, "/")
 		row := model.RowID(parts[len(parts)-1])
+		if row == model.RowScratch {
+			continue // a workspace tree, checked by the scratch tests' own reader
+		}
 		ps := root.Profiles[ids.Alias(parts[0])]
 		if ps == nil {
 			continue

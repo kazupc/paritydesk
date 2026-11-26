@@ -3,6 +3,7 @@ package plan
 import (
 	"encoding/json"
 	"io/fs"
+	"regexp"
 	"sort"
 	"time"
 
@@ -26,6 +27,30 @@ const (
 	OpLSPut      Kind = "ls-put"     // put Local Storage item Key = Content (encoded value bytes)
 	OpLSDelete   Kind = "ls-delete"  // delete Local Storage item Key
 )
+
+// Operation kinds of row scratch (scratch workspaces, spec-scratch 6.4).
+// They carry no content: a copy clones a file of one folder and verifies
+// its hash, a mkdir creates one directory, a symlink creates one link.
+const (
+	OpCopyFile Kind = "copy-file" // clone Copy.Path of Copy.Side's folder to Path (verify Copy.Hash)
+	OpMkdir    Kind = "mkdir"     // create directory Path with Mode
+	OpSymlink  Kind = "symlink"   // create symlink Path -> Link
+)
+
+// Sides of a CopySource.
+const (
+	SideLeaving  = "leaving"
+	SideEntering = "entering"
+)
+
+// CopySource names the file an OpCopyFile clones.
+type CopySource struct {
+	Side    string `json:"side"`     // SideLeaving | SideEntering
+	Path    string `json:"path"`     // data-folder-relative, clean
+	Hash    string `json:"sha256"`   // sha256 the copy must have
+	Size    int64  `json:"size"`     // bytes
+	MTimeNs int64  `json:"mtime_ns"` // set on the copy
+}
 
 // Reasons a destructive op may carry when it removes no user data. Every
 // other destructive op (Destructive, OpQuarantine, OpLSDelete) must map to
@@ -74,6 +99,10 @@ type Op struct {
 	// Reason is one of NonUserDataReasons for a destructive op that removes
 	// no user data, else empty.
 	Reason string `json:"reason,omitempty"`
+	// Copy is the source of an OpCopyFile.
+	Copy *CopySource `json:"copy,omitempty"`
+	// Link is the target of an OpSymlink.
+	Link string `json:"link,omitempty"`
 }
 
 // Location names one write target: a file relative to the data folder,
@@ -101,6 +130,12 @@ const (
 	// EditRemove quarantines the file or deletes the LS item. It may not be
 	// combined with any other edit on the same location.
 	EditRemove EditKind = "remove"
+	// EditCopy, EditMkdir and EditSymlink are row scratch's edits: a file
+	// cloned from Copy, a directory with Mode, a symlink to Link. Each is
+	// the only edit of its location.
+	EditCopy    EditKind = "copy"
+	EditMkdir   EditKind = "mkdir"
+	EditSymlink EditKind = "symlink"
 )
 
 // Edit is one adapter-produced change to one location. Adapters return
@@ -133,6 +168,10 @@ type Edit struct {
 	// Reason is one of NonUserDataReasons for a destructive edit that
 	// removes no user data.
 	Reason string `json:"reason,omitempty"`
+	// Copy is the source of an EditCopy.
+	Copy *CopySource `json:"copy,omitempty"`
+	// Link is the target of an EditSymlink.
+	Link string `json:"link,omitempty"`
 }
 
 // Source returns a location's current bytes in the entering folder: the
@@ -165,6 +204,9 @@ type Plan struct {
 	// NeedsConfirmation is set when any row merged as a union because its
 	// base was invalid (exit 21 when non-interactive).
 	NeedsConfirmation bool `json:"needs_confirmation,omitempty"`
+	// ScratchNotes are the limits row scratch's notices name (memory
+	// only, set while planning; nil for a plan read from a file).
+	ScratchNotes *ScratchNotes `json:"-"`
 }
 
 // Empty reports whether the plan has no ops (fast path: P6 and P7 skipped).
@@ -183,6 +225,17 @@ type hashedOp struct {
 	Secret      bool          `json:"s,omitempty"`
 	Items       []string      `json:"i,omitempty"`
 	Reason      string        `json:"why,omitempty"`
+	// C and L cover row scratch's copy source and link target; plans
+	// without those kinds hash exactly as before.
+	C *hashedCopy `json:"c,omitempty"`
+	L string      `json:"l,omitempty"`
+}
+
+// hashedCopy is the part of a CopySource the plan hash covers.
+type hashedCopy struct {
+	Side string `json:"side"`
+	Path string `json:"path"`
+	Hash string `json:"sha256"`
 }
 
 // hashed is the canonical form the plan hash is computed over: the format
@@ -212,7 +265,10 @@ func (p *Plan) Hash() string {
 	for i, o := range p.Ops {
 		h.Ops[i] = hashedOp{Kind: o.Kind, Row: o.Row, Rows: o.Rows, Path: o.Path, Key: o.Key,
 			Pre: o.PreHash, Post: o.PostHash, Destructive: o.Destructive, Secret: o.Secret,
-			Items: o.Items, Reason: o.Reason}
+			Items: o.Items, Reason: o.Reason, L: o.Link}
+		if o.Copy != nil {
+			h.Ops[i].C = &hashedCopy{Side: o.Copy.Side, Path: o.Copy.Path, Hash: o.Copy.Hash}
+		}
 	}
 	b, err := json.Marshal(h)
 	if err != nil {
@@ -333,6 +389,15 @@ type Limits struct {
 	MaxDeleteMin      int
 	// AllowDeletions is --allow-deletions=N; 0 means not given.
 	AllowDeletions int
+	// PerCategory overrides the fraction and minimum for a category
+	// (scratch: [scratch] max_delete_fraction and max_delete_min).
+	PerCategory map[model.Category]CategoryLimits
+}
+
+// CategoryLimits are one category's breaker limits.
+type CategoryLimits struct {
+	MaxDeleteFraction float64
+	MaxDeleteMin      int
 }
 
 // WorktreeRisk is a worktree that the source references and the target
@@ -371,4 +436,13 @@ type ValidateInput struct {
 	// MaxOps and MaxBytes bound the plan size.
 	MaxOps   int
 	MaxBytes int64
+	// ScratchRoot is the manifest's scratch root ("" when the manifest has
+	// no scratch row); ScratchLeaf its leaf pattern.
+	ScratchRoot string
+	ScratchLeaf *regexp.Regexp
+	// MaxCopyBytes bounds the sum of Copy.Size (0 = no limit).
+	MaxCopyBytes int64
+	// BreakerExempt reports deletions the breaker does not count (nil:
+	// none).
+	BreakerExempt func(model.Change) bool
 }

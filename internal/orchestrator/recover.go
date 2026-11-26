@@ -378,7 +378,7 @@ func (rc *recovery) rollbackTarget(ctx context.Context, a ids.Alias, folder stri
 			withLS = applied && m.LevelDB != ""
 		}
 	}
-	rep, err := rc.o.restoreFolder(ctx, run.Generation, folder, withLS, run.ID)
+	rep, err := rc.o.restoreFolder(ctx, run.Generation, folder, withLS, run.ID, scratchRootOf(rc.manifest))
 	if err != nil {
 		return err
 	}
@@ -407,15 +407,17 @@ func (rc *recovery) finishP10(ctx context.Context) error {
 	claude := rc.o.claudePath()
 	data, _ := intentData(run, state.IntentPlanned)
 	rows := splitRows(data["rows"])
-	ok := true
-	if len(run.PostHashes) > 0 {
-		match, _, err := d.Applier.Check(ctx, planFromPostHashes(run.PostHashes, plan.Target{Alias: t, Replica: ps.Replica, Folder: claude}), claude)
-		ok = err == nil && match
+	ok, scratchOK := rc.recheckScratch(ctx, plan.Target{Alias: t, Replica: ps.Replica, Folder: claude}, claude)
+	refs := scratchRefsFromIntent(data)
+	if !scratchOK {
+		// Only T's scratch base is dropped: without refs the row is not
+		// re-read.
+		refs = nil
 	}
 	var reread map[model.RowID]*model.RowSnapshot
 	if ok && rc.manifest != nil {
 		var err error
-		if reread, err = rc.o.rereadRows(ctx, rc.manifest, claude, ps.Replica, rows, nil); err != nil {
+		if reread, err = rc.o.rereadRows(ctx, rc.manifest, claude, ps.Replica, rows, refs); err != nil {
 			ok = false
 		}
 	}
@@ -460,7 +462,6 @@ func (rc *recovery) finishP10(ctx context.Context) error {
 
 // recoverSync implements the RunSync table.
 func (rc *recovery) recoverSync(ctx context.Context) error {
-	d := rc.o.d
 	run := rc.root.Run
 	name, done := lastIntent(run)
 	switch {
@@ -485,8 +486,7 @@ func (rc *recovery) recoverSync(ctx context.Context) error {
 	if ps != nil {
 		rep = ps.Replica
 	}
-	match, _, err := d.Applier.Check(ctx, planFromPostHashes(run.PostHashes, plan.Target{Alias: run.To, Replica: rep, Folder: claude}), claude)
-	if err == nil && match {
+	if ok, _ := rc.recheckScratch(ctx, plan.Target{Alias: run.To, Replica: rep, Folder: claude}, claude); ok {
 		return rc.finishP10(ctx)
 	}
 	return rc.rollbackTarget(ctx, run.To, claude, true, "restored the active profile from the generation")

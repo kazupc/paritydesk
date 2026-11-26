@@ -21,6 +21,22 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 <!-- v0.2 anchor: sidebar-offline -->
 
 <!-- v0.2 anchor: scratch -->
+- Added: scratch workspaces ("Start without a folder" sessions) are
+  carried with sessions on Claude 7.x (row `scratch`, ADR 0008). The
+  workspace is mirrored at the same path in the entering folder, so the
+  session keeps its history and trust; files merge with the newest change
+  winning and the other copy kept next to it, a `.git` folder is taken
+  whole from one side, dependency, build and other version-control
+  folders are held back, and nothing is ever deleted outside the backup
+  generation. New `[scratch]` settings, `--only`/`--skip scratch` (scratch
+  follows sessions), `backups prune --scratch [--older-than <days>]`, and
+  doctor checks `scratch`, `scratch-orphans`, `scratch-kept`.
+- Changed: quarantined scratch files of pruned backup generations are
+  kept under `generations/scratch-kept/` until you remove them with
+  `paritydesk backups prune --scratch`.
+- Not yet confirmed on a real Mac: that a mirrored scratch session opens
+  on the other account (release checklist S-1), and which previews work
+  there (S-5, S-6).
 
 <!-- v0.2 anchor: online -->
 

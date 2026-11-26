@@ -235,6 +235,7 @@ func (o *Orchestrator) Doctor(ctx context.Context, opts DoctorOptions) ([]Check,
 	dr.managed()
 	dr.runnerJobs()
 	// v0.2 anchor: doctor scratch
+	dr.scratchChecks(ctx, m, root)
 
 	// v0.2 anchor: doctor pins
 
