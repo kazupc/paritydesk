@@ -472,7 +472,12 @@ type fakeApp struct {
 	locateErr    error
 	// inUse marks folders a process holds open (a write holder).
 	inUse map[string]bool
+	// scan is what HolderScan reports; nil means defaultHolderScan.
+	scan *app.HolderScanInfo
 }
+
+// defaultHolderScan is the fakes' open-file scan: native and healthy.
+var defaultHolderScan = app.HolderScanInfo{Mode: app.ScanAuto, Backend: "native", RegionFlavor: 22, SocketCheck: true, LsofOK: true}
 
 func (a *fakeApp) Locate(context.Context, string) (app.BundleIdentity, error) {
 	return a.bundle, a.locateErr
@@ -643,6 +648,13 @@ func (a *fakeApp) LogEvents(context.Context, int64, compat.Signals, ids.SessionI
 
 func (a *fakeApp) GitDirty(_ context.Context, dir string) (bool, error) { return a.dirty[dir], nil }
 func (a *fakeApp) LockHeld(string) (bool, error)                        { return true, nil }
+
+func (a *fakeApp) HolderScan(context.Context) app.HolderScanInfo {
+	if a.scan != nil {
+		return *a.scan
+	}
+	return defaultHolderScan
+}
 
 // ---- compat ----
 

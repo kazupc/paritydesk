@@ -145,6 +145,12 @@ n/data/Claude-ab/other
 f6
 a
 n/data/Claude/x
+ftwd
+a 
+n/data/Claude/twd
+ffp.
+aw
+n/data/Claude/port.txt
 p303
 fNOFD
 n/data/Claude (opendir: Permission denied)
@@ -152,18 +158,23 @@ fmem
 n/data/Claude/mapped
 `
 
+// lsofFixtureWant is what lsofFixture means under /data/Claude and
+// /data/Claude-a.
+var lsofFixtureWant = []Holder{
+	{PID: 101, Path: "/data/Claude", Access: "cwd"},
+	{PID: 101, Path: "/data/Claude/Local Storage/leveldb/000005.ldb", Access: "r"},
+	{PID: 101, Path: "/data/Claude/Local Storage/leveldb/LOCK", Access: "u"},
+	{PID: 202, Path: "/data/Claude-a/config.json", Access: "w"},
+	{PID: 202, Path: "/data/Claude/x", Access: "u"},
+	{PID: 202, Path: "/data/Claude/twd", Access: "cwd"},
+	{PID: 202, Path: "/data/Claude/port.txt", Access: "w"},
+	{PID: 303, Path: "/data/Claude/mapped", Access: "txt"},
+}
+
 func TestParseLsof(t *testing.T) {
-	got := parseLsof([]byte(lsofFixture), []string{"/data/Claude", "/data/Claude-a/"})
-	want := []Holder{
-		{PID: 101, Path: "/data/Claude", Access: "cwd"},
-		{PID: 101, Path: "/data/Claude/Local Storage/leveldb/000005.ldb", Access: "r"},
-		{PID: 101, Path: "/data/Claude/Local Storage/leveldb/LOCK", Access: "u"},
-		{PID: 202, Path: "/data/Claude-a/config.json", Access: "w"},
-		{PID: 202, Path: "/data/Claude/x", Access: "u"},
-		{PID: 303, Path: "/data/Claude/mapped", Access: "txt"},
-	}
-	if !slices.Equal(got, want) {
-		t.Fatalf("got\n%v\nwant\n%v", got, want)
+	got := parseLsof([]byte(lsofFixture), newPathMatcher([]string{"/data/Claude", "/data/Claude-a/"}).Match)
+	if !slices.Equal(got, lsofFixtureWant) {
+		t.Fatalf("got\n%v\nwant\n%v", got, lsofFixtureWant)
 	}
 	writes := 0
 	for _, h := range got {
@@ -171,7 +182,7 @@ func TestParseLsof(t *testing.T) {
 			writes++
 		}
 	}
-	if writes != 5 {
+	if writes != 7 {
 		t.Fatalf("writes = %d", writes)
 	}
 }

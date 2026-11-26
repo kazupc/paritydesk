@@ -122,7 +122,7 @@ cmd/paritydesk ─► cli ─► orchestrator (Service) ─► (interfaces only)
 | `sources/scratch` | (v0.2, planned) Adapter for row scratch: the scratch workspaces that session records reference, carried at the same path | no |
 | `artifacts` | (v0.2, planned) Artifact sync: archive, rounds, judge, ingest, the online provider, legacy archive import | mostly |
 | `legacy` | (v0.2, planned) Importer for folders left by an earlier folder-swap script (`profile adopt --from-legacy`); every input untrusted, writes nothing | mostly |
-| `fdscan` | (v0.2, planned) Native open-file scan through libproc without cgo; `lsof` stays the fallback | no |
+| `fdscan` | libproc open-file scan without cgo (trampolines), records only; `lsof` stays the fallback in `app` | no |
 | `testkit` | Synthetic data roots with real goleveldb databases | test only |
 | `policy` | Tests for project-wide rules | test only |
 
@@ -133,7 +133,7 @@ cmd/paritydesk ─► cli ─► orchestrator (Service) ─► (interfaces only)
 | `github.com/syndtr/goleveldb` | `v1.0.1-0.20220721030215-126854af5e6d` (pinned) | Local Storage |
 | `github.com/golang/snappy` | v0.0.4 (indirect, via goleveldb) | table blocks |
 | `github.com/pelletier/go-toml/v2` | v2.4.3 | config file |
-| `golang.org/x/sys` | v0.50.0 | renamex_np, clonefile, fcntl, xattr, sysctl |
+| `golang.org/x/sys` | v0.50.0 | renamex_np, clonefile, fcntl, xattr, sysctl (incl. kern.proc.pid) |
 | `golang.org/x/text` | v0.44.0 | NFC folding of folder names |
 | `pgregory.net/rapid` | v1.3.0 | property tests only |
 

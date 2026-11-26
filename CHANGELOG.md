@@ -51,6 +51,23 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   pairing lines); release checklist step 4 confirms them.
 
 <!-- v0.2 anchor: fdscan -->
+- Added: a native open-file scan (libproc, no cgo) replaces `lsof` for
+  the quiescence check; `lsof` stays as the fallback. New config key
+  `app.open_file_scan` (`auto`, `native`, `lsof`) and doctor check
+  `open-file-scan`.
+- Changed: thread working directories reported by `lsof` count as working
+  directories; folder paths match regardless of case, Unicode
+  normalization and symlinks in the folder path.
+- Changed: a process of your own user whose open files cannot be read
+  completely is never taken as "holds nothing" (`auto` then asks `lsof`
+  for that check). When paritydesk runs inside a sandbox that denies
+  reading other processes' open files, a switch stops with exit 70
+  before writing anything instead of trusting an empty answer; run it
+  from Terminal.
+- Not yet confirmed on a real Mac: a scan of every process (its time
+  against `lsof`, and how many processes of the same user cannot be
+  read). It runs only on the CI runners; `paritydesk doctor` shows the
+  counts on a Mac.
 
 <!-- v0.2 anchor: sidebar-offline -->
 

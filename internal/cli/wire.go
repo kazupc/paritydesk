@@ -134,7 +134,8 @@ func buildDeps(ctx context.Context, g *globalFlags, in wireInput) (orchestrator.
 	if err != nil {
 		return orchestrator.Deps{}, err
 	}
-	plat, err := app.NewDarwin(app.DarwinConfig{Home: in.Home, BundleID: cfg.App.BundleID, Exec: in.Exec, Clock: clk})
+	plat, err := app.NewDarwin(app.DarwinConfig{Home: in.Home, BundleID: cfg.App.BundleID, Exec: in.Exec, Clock: clk,
+		OpenFileScan: app.ScanMode(cfg.App.OpenFileScan)})
 	if err != nil {
 		return orchestrator.Deps{}, err
 	}
@@ -251,7 +252,7 @@ func realHookDeps(_ context.Context, e *env, pluginVersion string) (hook.Deps, e
 		return hook.Deps{}, err
 	}
 	d := hook.Deps{State: st, PluginVersion: pluginVersion, BinaryVersion: versionString()}
-	plat, err := app.NewDarwin(app.DarwinConfig{Home: home, BundleID: cfg.App.BundleID})
+	plat, err := app.NewDarwin(app.DarwinConfig{Home: home, BundleID: cfg.App.BundleID, OpenFileScan: app.ScanMode(cfg.App.OpenFileScan)})
 	if err != nil {
 		return d, nil // silent: InsideApp stays nil
 	}

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/kazupc/paritydesk/internal/clock"
+	"github.com/kazupc/paritydesk/internal/fdscan"
 	"github.com/kazupc/paritydesk/internal/fsx"
 	"github.com/kazupc/paritydesk/internal/pderr"
 )
@@ -18,7 +19,8 @@ const defaultAppName = "Claude"
 const systemAppDir = "/Applications"
 
 // NewDarwin returns the macOS implementation: processes from sysctl,
-// holders from lsof, fcntl lock probes, the bundle from Info.plist, the
+// holders from the native libproc scan with lsof as the fallback (or lsof
+// only, as cfg.OpenFileScan says), fcntl lock probes, the bundle from Info.plist, the
 // controller through osascript and open, and main.log under
 // Home/Library/Logs/Claude, all over cfg.Exec and cfg.Clock. Under
 // `go test` it refuses a nil Exec (the real runner), an empty Home and any
@@ -58,9 +60,13 @@ func NewDarwin(cfg DarwinConfig) (*Platform, error) {
 	if err := fsx.CheckTestPath(filepath.Join(logDir, "main.log")); err != nil {
 		return nil, pderr.Wrap(pderr.Internal, "app", err)
 	}
+	holders, err := holdersFor(cfg.OpenFileScan, cfg.FDScan, lsofHolders{run: run, procs: procs}, procs)
+	if err != nil {
+		return nil, err
+	}
 	return &Platform{
 		Procs:   procs,
-		Holders: lsofHolders{run: run, procs: procs},
+		Holders: holders,
 		Locks:   fcntlLocks{},
 		Bundle:  &plistBundle{run: run, procs: procs, clock: clk, home: home, dirs: dirs, name: name},
 		Control: osaController{run: run},
@@ -68,6 +74,33 @@ func NewDarwin(cfg DarwinConfig) (*Platform, error) {
 		Git:     gitPorcelain{run: run},
 		Clock:   clk,
 	}, nil
+}
+
+// holdersFor builds the open-file scan for mode: lsof only in lsof mode;
+// under go test a nil scanner means lsof only (reason "test"), and native
+// mode then is refused, so no test reads the real process table by
+// accident; otherwise the native scan (scanner, or fdscan.System()) with
+// lsof as the fallback.
+func holdersFor(mode ScanMode, scanner fdscan.Scanner, lsof lsofHolders, procs ProcessTable) (*scanHolders, error) {
+	switch mode {
+	case "":
+		mode = ScanAuto
+	case ScanAuto, ScanNative, ScanLsof:
+	default:
+		return nil, pderr.New(pderr.Internal, "app", "invalid open-file scan mode")
+	}
+	switch {
+	case mode == ScanLsof:
+		return newScanHolders(mode, nil, "config", lsof, procs), nil
+	case scanner == nil && testing.Testing():
+		if mode == ScanNative {
+			return nil, pderr.New(pderr.Internal, "app", "the native open-file scan needs a scanner under go test")
+		}
+		return newScanHolders(mode, nil, "test", lsof, procs), nil
+	case scanner == nil:
+		scanner = fdscan.System()
+	}
+	return newScanHolders(mode, scanner, "", lsof, procs), nil
 }
 
 // runnerFor returns exec, or the real runner outside tests.

@@ -247,6 +247,11 @@ message after that header, and anchored at its start by the loader. So:
   matched, because they can hold text Claude does not control.
 
 <!-- v0.2 anchor: fdscan -->
+The native open-file scan (`internal/fdscan`) calls libSystem through
+assembly trampolines and a linknamed `syscall.syscall6`; if a Go release
+ever refuses that, build with `-tags pd_nofdscan` to compile the stub
+(paritydesk then uses `lsof`), and keep every native-only file behind
+`//go:build darwin && !pd_nofdscan` (the policy tests check it).
 
 <!-- v0.2 anchor: sidebar-offline -->
 

@@ -29,7 +29,7 @@ func (h lsofHolders) Holders(ctx context.Context, prefixes []string) ([]Holder, 
 	if err != nil && len(out) == 0 {
 		return nil, fmt.Errorf("app: list open files: %w", err)
 	}
-	holders := parseLsof(out, prefixes)
+	holders := parseLsof(out, newPathMatcher(prefixes).Match)
 	if len(holders) == 0 || h.procs == nil {
 		return holders, nil
 	}
@@ -49,9 +49,9 @@ func (h lsofHolders) Holders(ctx context.Context, prefixes []string) ([]Holder, 
 
 // parseLsof parses `lsof -F pfan` output: a 'p' line starts a process, an
 // 'f' line starts a file, 'a' gives the access mode of a numbered
-// descriptor and 'n' the name. Only files at or under one of prefixes are
-// returned.
-func parseLsof(out []byte, prefixes []string) []Holder {
+// descriptor and 'n' the name. Only files whose name match accepts (the
+// shared pathMatcher) are returned.
+func parseLsof(out []byte, match func(string) bool) []Holder {
 	var (
 		holders []Holder
 		pid     int
@@ -82,7 +82,7 @@ func parseLsof(out []byte, prefixes []string) []Holder {
 				continue
 			}
 			mode, ok := lsofAccess(fd, access)
-			if !ok || !underAny(filepath.Clean(val), prefixes) {
+			if !ok || !match(val) {
 				continue
 			}
 			holders = append(holders, Holder{PID: pid, Path: val, Access: mode})
@@ -92,11 +92,12 @@ func parseLsof(out []byte, prefixes []string) []Holder {
 }
 
 // lsofAccess maps an lsof descriptor and access field to Holder.Access.
-// Unknown access on a numbered descriptor counts as read-write; lsof's
-// error records (NOFD) are skipped.
+// Working, root and thread working directories are "cwd"; unknown access
+// on a numbered descriptor counts as read-write; lsof's error records
+// (NOFD) are skipped.
 func lsofAccess(fd, access string) (string, bool) {
 	switch fd {
-	case "cwd", "rtd":
+	case "cwd", "rtd", "twd":
 		return "cwd", true
 	case "txt", "mem":
 		return "txt", true

@@ -16,7 +16,17 @@
 //     git-ignored testdata/private/pii.txt, and the test is skipped when
 //     neither exists. Labels are compared as sha256 hashes of lower-cased
 //     tokens, so even failure messages never print them;
-//   - no _test.go file references os.UserHomeDir or /Applications.
+//   - no _test.go file references os.UserHomeDir or /Applications;
+//   - the native open-file scan is fenced (fdscan_test.go): go:linkname and
+//     go:cgo_import_dynamic directives appear only in
+//     internal/fdscan/libproc_darwin.go and
+//     internal/fdscan/fdscantest/fileport_darwin.go, assembly files only
+//     under internal/fdscan; only test files import fdscantest; every
+//     native-only file there (and every internal/app test file importing
+//     fdscantest or declaring TestMain) builds only for
+//     "darwin && !pd_nofdscan"; no package declares TestMain in more than
+//     one file; buffer addresses are converted to uintptr in the call
+//     expression itself and no helper returns a uintptr.
 //
 // The credential-store rule allowlists internal/compat/manifests/ and
 // internal/denylist/ (the fixed deny floor) and this package.

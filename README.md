@@ -31,6 +31,12 @@ A staged Claude update installs when Claude quits (finding 4 of ADR 0003), so a 
 - **paritydesk waits for working sessions before quitting Claude.** It finds them in Claude's log, lists them in the plan and waits for them; Claude's own quit dialog stays the last guard. It refuses to run when a folder was signed in, inside Claude, to another profile's account ([ADR 0007](docs/adr/0007-log-signals.md); the patterns read from the app's code are confirmed on a real Mac before a release).
 
 <!-- v0.2 anchor: fdscan -->
+Before anything is written, paritydesk checks that no process still
+holds a file in Claude's data folders. It reads macOS's process
+information directly (no external command); `lsof` with fixed arguments
+is the fallback, and `app.open_file_scan = "lsof"` keeps the v0.1 check.
+If paritydesk cannot read other processes' open files (for example
+inside a sandbox), the switch stops before writing anything.
 
 <!-- v0.2 anchor: sidebar-offline -->
 

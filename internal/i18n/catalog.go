@@ -163,6 +163,14 @@ const (
 	PlanBusyTitled     Msg = "plan.busy_titled"
 
 	// v0.2 anchor: fdscan
+	DoctorFDScanNative       Msg = "doctor.fdscan_native"
+	DoctorFDScanLsofConfig   Msg = "doctor.fdscan_lsof_config"
+	DoctorFDScanFallback     Msg = "doctor.fdscan_fallback"
+	DoctorFDScanNativeFailed Msg = "doctor.fdscan_native_failed"
+	DoctorFDScanNone         Msg = "doctor.fdscan_none"
+	DoctorFDScanLsofTest     Msg = "doctor.fdscan_lsof_test"
+	DoctorFDScanBlind        Msg = "doctor.fdscan_blind"
+	DoctorFDScanPartial      Msg = "doctor.fdscan_partial"
 
 	// v0.2 anchor: sidebar-offline
 
@@ -336,6 +344,14 @@ var catalog = map[Msg]string{
 	PlanBusyTitled:     "%s (%s)",
 
 	// v0.2 anchor: fdscan
+	DoctorFDScanNative:       "Open files: checked with macOS's process information interface (libproc).",
+	DoctorFDScanLsofConfig:   `Open files: checked with lsof, as app.open_file_scan = "lsof" asks.`,
+	DoctorFDScanFallback:     "Open files: the native check is not available here, so lsof is used. Switches still work; please report this with paritydesk doctor --bundle.",
+	DoctorFDScanNativeFailed: `Open files: the native check is not available here and app.open_file_scan is "native", so switches stop before writing anything. Set it to "auto".`,
+	DoctorFDScanNone:         "Open files: neither the native check nor /usr/sbin/lsof is available, so paritydesk cannot confirm that Claude closed its files; switches stop before writing anything.",
+	DoctorFDScanLsofTest:     "Open files: checked with lsof (test build).",
+	DoctorFDScanBlind:        "Open files: paritydesk cannot read other processes' open files here (is it running inside a sandbox?), so switches stop before writing anything. Run paritydesk from Terminal.",
+	DoctorFDScanPartial:      "Open files: %d process(es) could not be read and %d only in part, so lsof is used for those checks. Switches still work.",
 
 	// v0.2 anchor: sidebar-offline
 

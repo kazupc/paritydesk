@@ -244,6 +244,7 @@ func (o *Orchestrator) Doctor(ctx context.Context, opts DoctorOptions) ([]Check,
 	dr.automation(ctx, opts.GrantAutomation)
 	dr.update(ctx)
 	// v0.2 anchor: doctor fdscan
+	dr.fdscanChecks(ctx)
 
 	if m != nil {
 		dr.bridge(ctx, m.Signals)
