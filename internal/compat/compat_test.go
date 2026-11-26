@@ -638,3 +638,27 @@ func TestDecide(t *testing.T) {
 		t.Fatal("gate")
 	}
 }
+
+// TestBridgeSignal7x: with 7.x the app logs either line when Claude in
+// Chrome connects, depending on which side opened the connection.
+func TestBridgeSignal7x(t *testing.T) {
+	ms, err := compat.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, _, err := compat.Select(ms, "7.37095.0")
+	if err != nil || m == nil {
+		t.Fatalf("select: %v", err)
+	}
+	re := regexp.MustCompile(m.Signals.BridgeConnected)
+	for line, want := range map[string]bool{
+		"2026-11-26 11:59:10 [info] [claude-in-chrome] Paired with Chrome extension (duration: 990ms)": true,
+		"2026-11-25 08:06:04 [info] [claude-in-chrome] Chrome extension connected to bridge":           true,
+		"2026-11-26 11:59:09 [info] [claude-in-chrome] Connecting to bridge: wss://example.invalid":    false,
+		"2026-11-26 11:59:09 [info] [claude-in-chrome] Not connecting, starting connection...":         false,
+	} {
+		if got := re.MatchString(line); got != want {
+			t.Errorf("%q: match %v, want %v", line, got, want)
+		}
+	}
+}

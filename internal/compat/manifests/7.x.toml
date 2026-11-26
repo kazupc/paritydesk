@@ -618,7 +618,11 @@ turn_started = ''
 turn_ended = '\[Stop hook\] Query completed for session {session}\b'
 app_started = '\[startup-perf\] main window shown [0-9]+ ms after launch'
 focused_session = 'setFocusedSession: sessionId={session}\b'
-bridge_connected = 'Chrome extension connected to bridge'
+# Claude in Chrome connects on first use. When the app starts the
+# connection it logs "Paired with Chrome extension"; when the extension
+# joins an open connection it logs "Chrome extension connected to bridge"
+# (both seen with 7.37095.0).
+bridge_connected = '\[claude-in-chrome\] (?:Chrome extension connected to bridge|Paired with Chrome extension\b)'
 pairing_disabled = ''
 unclean_exit = 'Previous run did not exit cleanly'
 login_required = ''

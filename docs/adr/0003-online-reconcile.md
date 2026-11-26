@@ -35,7 +35,7 @@ The design (D12, D26) says no capability claim goes into the README until a spik
 - **Preflight:** while a ShipIt update is staged, a switch lets it install when Claude quits, waits for the install and re-runs the shape probes on the new version. (Until 2026-11-25 it refused with exit 13 unless `--allow-update` was given; the re-check already covered the risk, so the refusal only cost a second run.)
 - **Relaunch (P11):** reopen the invoking session with `claude://claude.ai/epitaxy/<id>`, rebuilt from a validated id (`^local_[0-9a-f-]{36}$`), and confirm it with `setFocusedSession` in main.log.
 - **Identity marker (S17):** the xattr marker is used.
-- **Claude in Chrome (G1):** paritydesk cannot keep one extension signed in to two accounts. The supported setup is **one Chrome profile per Claude account**, each with Claude in Chrome signed in to that account and kept open (S18 passed). The README and `init` explain it. `doctor` reports whether the recent main.log shows an extension connecting to the bridge (`Chrome extension connected to bridge`) and explains the setup when it did not.
+- **Claude in Chrome (G1):** paritydesk cannot keep one extension signed in to two accounts. The supported setup is **one Chrome profile per Claude account**, each with Claude in Chrome signed in to that account and kept open (S18 passed). The README and `init` explain it. `doctor` and `verify` report a connection when main.log shows one. Claude in Chrome connects on first use, not at launch, so no line is no problem. With App 7.37095.0 the line is `Paired with Chrome extension` when the app opens the connection and `Chrome extension connected to bridge` when the extension joins one.
 
 ## Second round (2026-11-23, app 6.28899.6)
 
