@@ -1,0 +1,64 @@
+{
+ "chain": "art-20261126T100000Z-00000001",
+ "phase": "read",
+ "steps": [
+  {
+   "role": "chunk",
+   "slug": "00000000-0000-4000-8000-000000000012",
+   "tool": "mcp__claude-artifacts__read_artifact",
+   "input": {
+    "limit": 1500,
+    "slug": "00000000-0000-4000-8000-000000000012"
+   },
+   "needs": [
+    "replica",
+    "read:r000"
+   ],
+   "data": {
+    "role": "chunk",
+    "slug": "00000000-0000-4000-8000-000000000012",
+    "parse": {
+     "fields": {
+      "next_offset": [
+       "next_offset"
+      ],
+      "notice": [
+       "notice"
+      ],
+      "offset": [
+       "offset"
+      ],
+      "owned": [
+       "owned_by_user"
+      ],
+      "slug": [
+       "slug"
+      ],
+      "summary_files": [
+       "files",
+       "file_names"
+      ],
+      "title": [
+       "title"
+      ],
+      "total_lines": [
+       "total_lines"
+      ],
+      "version": [
+       "version",
+       "version_id"
+      ]
+     },
+     "others_marker": "\u003cartifact-content-authored-by-others/\u003e",
+     "wrapper_tag_pattern": "^untrusted-document-[0-9a-f]{8,64}$",
+     "wrapper_forms": [
+      "bare",
+      "nl"
+     ],
+     "version_pattern": "^[A-Za-z0-9._:-]{1,128}$",
+     "max_content_bytes": 16777216
+    }
+   }
+  }
+ ]
+}

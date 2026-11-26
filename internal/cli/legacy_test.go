@@ -51,6 +51,15 @@ func TestLegacyFlagsHidden(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// `artifacts import-legacy --apply` is a visible flag of its own
+		// (spec-artifacts 9); only the profile adopt flags must be hidden.
+		var kept []string
+		for _, line := range strings.Split(s, "\n") {
+			if !strings.Contains(line, "artifacts import-legacy") {
+				kept = append(kept, line)
+			}
+		}
+		s = strings.Join(kept, "\n")
 		for _, n := range append(legacyOnlyFlags, flagFromLegacy) {
 			if strings.Contains(s, "--"+n) || strings.Contains(s, "-l "+n+" ") {
 				t.Errorf("%s completion offers %s", shell, n)

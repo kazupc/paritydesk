@@ -73,6 +73,19 @@ type Deps struct {
 	Online   OnlineReader
 	Mode     string
 	MaxShows int
+	// ArtifactsDue reads the artifact archive's due.json (nil: no
+	// artifacts line); ArtifactsOn is config sync.artifacts.
+	ArtifactsDue func() (ArtifactsDue, bool)
+	ArtifactsOn  bool
+}
+
+// ArtifactsDue is the artifact archive's due.json (spec-artifacts 4.6):
+// how many artifacts wait for a profile in an epoch.
+type ArtifactsDue struct {
+	Seq     uint64
+	Profile string
+	Epoch   uint64
+	Count   int
 }
 
 // SessionStart reads at most MaxPayload bytes of the payload from in,
@@ -121,21 +134,40 @@ func sessionLine(root *state.Root, p SessionStartInput, d Deps) string {
 		head, _ = d.Online.ReadHead()
 	}
 	id, isOnline := pendingItem(root, head, d.Mode)
-	if !isOnline {
-		return msgText(id)
-	}
 	max := d.MaxShows
 	if max <= 0 {
 		max = 3
 	}
-	if !onlineSources[p.Source] || !d.Online.CreateShown(head.ID, max) {
+	if isOnline {
+		if onlineSources[p.Source] && d.Online.CreateShown(head.ID, max) {
+			if id == i18n.HookOnlineAuto && !attendedModes[p.PermissionMode] {
+				id = i18n.HookOnlinePrompt
+			}
+			return i18n.T(id)
+		}
 		id, _ = pendingItem(root, nil, d.Mode)
-		return msgText(id)
 	}
-	if id == i18n.HookOnlineAuto && !attendedModes[p.PermissionMode] {
-		id = i18n.HookOnlinePrompt
+	// Item 4b: artifacts from another profile wait (after the online
+	// line, before drift).
+	if (id == "" || id == i18n.HookDrift) && artifactsDue(root, p, d, max) {
+		return i18n.T(i18n.HookArtifactsDue)
 	}
-	return i18n.T(id)
+	return msgText(id)
+}
+
+// artifactsDue reports the artifacts line: for a startup or resume, when
+// due.json names the active profile and epoch with a count, artifact
+// sync is on, and the line was shown fewer than max times for that
+// due.json.
+func artifactsDue(root *state.Root, p SessionStartInput, d Deps, max int) bool {
+	if !d.ArtifactsOn || d.ArtifactsDue == nil || d.Online == nil || !onlineSources[p.Source] {
+		return false
+	}
+	due, ok := d.ArtifactsDue()
+	if !ok || due.Count <= 0 || due.Profile != string(root.Active) || due.Epoch != root.Epoch {
+		return false
+	}
+	return d.Online.CreateShown("due-"+strconv.FormatUint(due.Seq, 10), max)
 }
 
 func msgText(id i18n.Msg) string {

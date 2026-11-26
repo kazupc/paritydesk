@@ -27,6 +27,8 @@ type PlanView struct {
 	ScratchNotes []string
 	// Online is what the switch applies inside Claude afterwards.
 	Online *OnlinePlanView
+	// Artifacts are the artifact sync lines (render/artifacts.go).
+	Artifacts *ArtifactsPlanView
 	// Seeded: the first switch after profile adopt --from-legacy seeded
 	// the bases (plan.Plan.Seeded); its first-sync line says so.
 	Seeded bool
@@ -68,6 +70,7 @@ func PlanLines(v PlanView) []string {
 	lines = append(lines, onlineLines(v)...)
 
 	// v0.2 anchor: plan artifacts
+	lines = append(lines, artifactsLines(v)...)
 
 	return append(lines, DestructiveLine(v.Summary))
 }

@@ -228,6 +228,21 @@ inside Claude and is counted in the plan's `online` line. Facts and
 decisions: [ADR 0005](adr/0005-online-layer.md), section "Pins".
 
 <!-- v0.2 anchor: artifacts -->
+### Artifact sync (v0.2, beta)
+
+`internal/artifacts` keeps claude.ai artifacts the same on every profile.
+A sync is a chain of rounds, each an ordinary reconcile-phase queue of
+the online layer: the pure `PlanRound` builds a round (inventory, inspect,
+read, publish, verify) from the archive, `paritydesk artifacts next`
+publishes it under the run lock (`Orchestrator.ArtifactsRound`, recorded
+in `Root.Online` with kind `artifacts`) and drives it through
+`online.Next`, the provider's `ParseResult` records results from the
+PostToolUse payload, and the pure `Ingest` applies a completed round to
+the archive under `<SupportDir>/artifacts` (lock order: run, online,
+artifacts). The orchestrator only reads the archive (`ArtifactsView`):
+plan lines at P2, `due.json` after the P10 commit, profile rename and
+remove, and the doctor check. Facts and decisions:
+[ADR 0006](adr/0006-artifact-sync.md).
 
 <!-- v0.2 anchor: legacy-adopt -->
 ### Adopting folders of an earlier folder-swap script (v0.2)

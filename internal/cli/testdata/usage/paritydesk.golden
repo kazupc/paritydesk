@@ -3,6 +3,7 @@ usage: paritydesk <command> [flags]
 Switch the Claude desktop app between accounts and keep everything else in step.
 
 commands:
+  artifacts    Keep claude.ai artifacts the same on every profile (beta)
   backups      Prune or purge backup generations
   completion   Print a shell completion script
   config       Show, locate or validate the config file

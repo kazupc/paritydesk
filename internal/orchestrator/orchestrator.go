@@ -10,6 +10,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/online"
 	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/plan"
+	"github.com/kazupc/paritydesk/internal/state"
 )
 
 // Phase names a step of the switch algorithm.
@@ -169,6 +170,10 @@ type Result struct {
 	// Online counts what the run queued (or, for a preview, would queue)
 	// for inside Claude; not part of the plan hash.
 	Online *online.Summary `json:"online,omitempty"`
+
+	// Artifacts are the plan's artifact facts (P2); shown as plan lines
+	// only, never part of the plan hash or the JSON document.
+	Artifacts *ArtifactsPreview `json:"-"`
 }
 
 // Service is every command the front end calls. cli depends on this
@@ -200,6 +205,10 @@ type Service interface {
 	// OnlineCancel records a cancelled queue in root.json when the run
 	// lock is free (never waits); `online cancel` already stopped it.
 	OnlineCancel(ctx context.Context, queue string) (bool, error)
+	// ArtifactsRound and CloseArtifactsQueue are the run-lock side of
+	// artifact sync (spec-artifacts A3).
+	ArtifactsRound(ctx context.Context, f func(root *state.Root) (*online.Draft, *online.QueueHeader, error)) (string, error)
+	CloseArtifactsQueue(ctx context.Context, queueID string) (bool, error)
 }
 
 // Orchestrator runs commands.

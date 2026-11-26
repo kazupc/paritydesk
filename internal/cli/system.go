@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/kazupc/paritydesk/internal/artifacts"
 	"github.com/kazupc/paritydesk/internal/clock"
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/config"
@@ -65,6 +66,9 @@ type system struct {
 	// rules returns the reserved folder names and preference tags of the
 	// embedded compat manifests, for config.Validate.
 	rules func(e *env) (reserved []string, prefTags map[string]string, err error)
+	// artifacts builds the artifact sync service of the `artifacts`
+	// commands.
+	artifacts func(ctx context.Context, e *env) (*artifacts.Service, error)
 }
 
 // realSystem returns the production system.
@@ -84,6 +88,7 @@ func realSystem() *system {
 		online:       realOnline,
 		onlineCancel: realOnlineCancel,
 		rules:        realRules,
+		artifacts:    realArtifacts,
 	}
 }
 

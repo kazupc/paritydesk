@@ -1,0 +1,13 @@
+usage: paritydesk artifacts skip <id> [flags]
+
+Stop syncing an artifact (it stays in the archive)
+
+global flags:
+  --app-support-dir string     paritydesk support directory
+  --ascii                      ASCII only
+  --config string              config file (also PARITYDESK_CONFIG)
+  --json                       print one JSON document
+  --no-color                   no colour (also NO_COLOR, TERM=dumb)
+  --plain                      plain lines, no tables or spinners
+  --read-only                  plan only; never write (also PARITYDESK_READONLY=1)
+  --state-dir string           state directory (also PARITYDESK_STATE_DIR)

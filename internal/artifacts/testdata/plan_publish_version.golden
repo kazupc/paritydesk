@@ -1,0 +1,85 @@
+{
+ "chain": "art-20261126T100000Z-00000001",
+ "phase": "publish",
+ "steps": [
+  {
+   "role": "update_v",
+   "pair": "8ab6351216838d1c",
+   "slug": "00000000-0000-4000-8000-000000000010",
+   "tool": "mcp__claude-artifacts__publish_version",
+   "input": {
+    "base_version": "1700000000-0000a",
+    "content": "\u003c!DOCTYPE html\u003e\n\u003chtml\u003e\u003chead\u003e\u003ctitle\u003eT\u003c/title\u003e\u003c/head\u003e\u003cbody\u003e\n\u003cp\u003eline\u003c/p\u003e\n\u003cp\u003eline\u003c/p\u003e\n\u003cp\u003eline\u003c/p\u003e\n\u003c/body\u003e\u003c/html\u003e",
+    "slug": "00000000-0000-4000-8000-000000000010",
+    "title": "Notes"
+   },
+   "input_sha256": "88be836b826e00c845f1a66e927f4b863045ddca3a42535142e94449953838e3",
+   "needs": [
+    "replica",
+    "read:r000",
+    "decision:artifacts_publish"
+   ],
+   "data": {
+    "role": "update_v",
+    "pair": "8ab6351216838d1c",
+    "slug": "00000000-0000-4000-8000-000000000010",
+    "blob_sha": "dc4f0ee3f3eb9c711aa33bf18aaabf87df20b19a1d46513f2623bead679b7e6d",
+    "title": true,
+    "parse": {
+     "fields": {
+      "slug": [
+       "slug"
+      ],
+      "url": [
+       "url"
+      ],
+      "version": [
+       "version",
+       "version_id"
+      ]
+     },
+     "others_marker": "\u003cartifact-content-authored-by-others/\u003e",
+     "version_pattern": "^[A-Za-z0-9._:-]{1,128}$"
+    }
+   }
+  },
+  {
+   "role": "create_v",
+   "pair": "ba66c3370afdd54f",
+   "tool": "mcp__claude-artifacts__publish_version",
+   "input": {
+    "content": "\u003c!DOCTYPE html\u003e\n\u003chtml\u003e\u003chead\u003e\u003ctitle\u003eT\u003c/title\u003e\u003c/head\u003e\u003cbody\u003e\n\u003cp\u003eline\u003c/p\u003e\n\u003c/body\u003e\u003c/html\u003e",
+    "icon": "page",
+    "title": "Other"
+   },
+   "input_sha256": "53d3a5b948b5b845786347a4335ec7d2d555177e5a3accd585c3a323027c67e5",
+   "needs": [
+    "replica",
+    "read:r000",
+    "decision:artifacts_publish"
+   ],
+   "data": {
+    "role": "create_v",
+    "pair": "ba66c3370afdd54f",
+    "blob_sha": "039334f4e11bb6e2c58febdc0351b8a6e3420c77d52ebe95ea5c70f6dd5115cd",
+    "title": true,
+    "parse": {
+     "fields": {
+      "slug": [
+       "slug"
+      ],
+      "url": [
+       "url"
+      ],
+      "version": [
+       "version",
+       "version_id"
+      ]
+     },
+     "others_marker": "\u003cartifact-content-authored-by-others/\u003e",
+     "version_pattern": "^[A-Za-z0-9._:-]{1,128}$"
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,175 @@
+{
+ "chain": "art-20261126T100000Z-00000001",
+ "phase": "inspect",
+ "steps": [
+  {
+   "role": "get",
+   "pair": "8ab6351216838d1c",
+   "slug": "00000000-0000-4000-8000-000000000010",
+   "tool": "mcp__claude-artifacts__get_artifact",
+   "input": {
+    "slug": "00000000-0000-4000-8000-000000000010"
+   },
+   "needs": [
+    "replica",
+    "read:r000"
+   ],
+   "data": {
+    "role": "get",
+    "pair": "8ab6351216838d1c",
+    "slug": "00000000-0000-4000-8000-000000000010",
+    "parse": {
+     "fields": {
+      "icon": [
+       "icon"
+      ],
+      "notice": [
+       "notice"
+      ],
+      "read": [
+       "read"
+      ],
+      "slug": [
+       "slug"
+      ],
+      "title": [
+       "title"
+      ],
+      "version": [
+       "version",
+       "version_id"
+      ]
+     },
+     "others_marker": "\u003cartifact-content-authored-by-others/\u003e",
+     "wrapper_tag_pattern": "^untrusted-document-[0-9a-f]{8,64}$",
+     "version_pattern": "^[A-Za-z0-9._:-]{1,128}$"
+    }
+   }
+  },
+  {
+   "role": "files",
+   "pair": "8ab6351216838d1c",
+   "slug": "00000000-0000-4000-8000-000000000010",
+   "tool": "mcp__claude-artifacts__list_files",
+   "input": {
+    "slug": "00000000-0000-4000-8000-000000000010"
+   },
+   "needs": [
+    "replica",
+    "read:r000"
+   ],
+   "data": {
+    "role": "files",
+    "pair": "8ab6351216838d1c",
+    "slug": "00000000-0000-4000-8000-000000000010",
+    "parse": {
+     "fields": {
+      "file_path": [
+       "path"
+      ],
+      "files_list": [
+       "files"
+      ]
+     },
+     "others_marker": "\u003cartifact-content-authored-by-others/\u003e",
+     "version_pattern": "^[A-Za-z0-9._:-]{1,128}$"
+    }
+   }
+  },
+  {
+   "role": "get",
+   "slug": "00000000-0000-4000-8000-000000000012",
+   "tool": "mcp__claude-artifacts__get_artifact",
+   "input": {
+    "slug": "00000000-0000-4000-8000-000000000012"
+   },
+   "needs": [
+    "replica",
+    "read:r000"
+   ],
+   "data": {
+    "role": "get",
+    "slug": "00000000-0000-4000-8000-000000000012",
+    "parse": {
+     "fields": {
+      "icon": [
+       "icon"
+      ],
+      "notice": [
+       "notice"
+      ],
+      "read": [
+       "read"
+      ],
+      "slug": [
+       "slug"
+      ],
+      "title": [
+       "title"
+      ],
+      "version": [
+       "version",
+       "version_id"
+      ]
+     },
+     "others_marker": "\u003cartifact-content-authored-by-others/\u003e",
+     "wrapper_tag_pattern": "^untrusted-document-[0-9a-f]{8,64}$",
+     "version_pattern": "^[A-Za-z0-9._:-]{1,128}$"
+    }
+   }
+  },
+  {
+   "role": "files",
+   "slug": "00000000-0000-4000-8000-000000000012",
+   "tool": "mcp__claude-artifacts__list_files",
+   "input": {
+    "slug": "00000000-0000-4000-8000-000000000012"
+   },
+   "needs": [
+    "replica",
+    "read:r000"
+   ],
+   "data": {
+    "role": "files",
+    "slug": "00000000-0000-4000-8000-000000000012",
+    "parse": {
+     "fields": {
+      "file_path": [
+       "path"
+      ],
+      "files_list": [
+       "files"
+      ]
+     },
+     "others_marker": "\u003cartifact-content-authored-by-others/\u003e",
+     "version_pattern": "^[A-Za-z0-9._:-]{1,128}$"
+    }
+   }
+  },
+  {
+   "role": "decl",
+   "slug": "00000000-0000-4000-8000-000000000012",
+   "tool": "mcp__claude-artifacts__read_declaration",
+   "input": {
+    "slug": "00000000-0000-4000-8000-000000000012"
+   },
+   "needs": [
+    "replica",
+    "read:r000"
+   ],
+   "data": {
+    "role": "decl",
+    "slug": "00000000-0000-4000-8000-000000000012",
+    "parse": {
+     "fields": {
+      "capabilities": [
+       "capabilities"
+      ]
+     },
+     "others_marker": "\u003cartifact-content-authored-by-others/\u003e",
+     "version_pattern": "^[A-Za-z0-9._:-]{1,128}$"
+    }
+   }
+  }
+ ]
+}

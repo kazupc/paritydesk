@@ -1008,6 +1008,77 @@ assign_path = ["state", "customGroupsByScope", "{acct}/{org}"]
 row_key_prefix = "code:"
 
 # v0.2 anchor: tables artifacts
+# ---------------------------------------------------------------- artifacts
+#
+# Artifact sync through the claude-artifacts MCP tools (beta). Tool names and
+# schema facts: ADR 0006. Result field names are not in the app code (the
+# server is remote); they follow an earlier tool's observations and are
+# confirmed by release step R-AR-1. publish_via ships "off" (capture only)
+# until release step R-AR-4 passes for one transport ("files" or "version").
+[artifacts]
+enabled = true
+server = "claude-artifacts"
+publish_via = "off"               # files | version | off (R-AR-4 decides)
+read_mode = "chunks"              # only "chunks" in v0.2
+entry_path = "index.html"
+blob_suffix = ".html.txt"
+outbox_suffix = ".html"
+default_icon = "page"
+max_content_bytes = 16777216      # publish_version limit
+version_max_bytes = 262144        # publish_via = "version" only
+max_title_units = 256
+list_page_limit = 100             # paged maximum
+max_list_pages = 50
+read_limit_lines = 1500           # 0: let the server size the parts (R-AR-2)
+max_chunks = 64
+first_chunk_estimate = 98304
+round_bytes = 786432
+inspect_per_round = 60
+read_per_round = 12
+publish_per_round = 5
+batch_max = 2
+result_grace_reads = "60s"
+max_rounds = 40
+others_marker = "<artifact-content-authored-by-others/>"
+wrapper_tag_pattern = '^untrusted-document-[0-9a-f]{8,64}$'
+wrapper_forms = ["bare", "nl"]
+reminder_prefixes = []            # filled from R-AR-1; empty = only whitespace may follow the closing tag
+version_pattern = '^[A-Za-z0-9._:-]{1,128}$'
+version_time_prefix = '^([0-9]{9,11})-'
+
+[artifacts.fields]
+list_items = ["artifacts"]
+next_cursor = ["next_cursor"]
+slug = ["slug"]
+url = ["url"]
+version = ["version", "version_id"]
+updated_at = ["updated_at"]
+soft_deleted = ["soft_deleted"]
+owner = ["rel"]
+owner_mine = "mine"
+mine_bool = ["mine"]
+title = ["title"]
+read = ["read"]
+icon = ["icon"]
+total_lines = ["total_lines"]
+offset = ["offset"]
+next_offset = ["next_offset"]
+notice = ["notice"]
+summary_files = ["files", "file_names"]
+owned = ["owned_by_user"]
+files_list = ["files"]
+file_path = ["path"]
+capabilities = ["capabilities"]
+
+[artifacts.refusals]
+# Prefixes of tool error texts; empty until observed (R-AR-5). Unmatched
+# errors are app_refused.
+type_made = []
+live_doc = []
+version_conflict = []
+not_found = []
+client_refused = []
+too_large = []
 
 # v0.2 anchor: tables legacy
 # ---------------------------------------------------------------- legacy migration

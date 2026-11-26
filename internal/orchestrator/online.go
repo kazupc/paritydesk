@@ -223,6 +223,11 @@ func (r *run) onlineP0(ctx context.Context) error {
 	if d.Online == nil || d.ReadOnly {
 		return nil
 	}
+	if r.o.closeArtifactsRecord(r.root) {
+		if err := r.o.commit(r.root); err != nil {
+			return err
+		}
+	}
 	if res, err := r.o.confirmPending(ctx, r.root, r.manifest); err == nil && res != nil && res.changed {
 		if err := r.o.commit(r.root); err != nil {
 			return err
@@ -500,6 +505,9 @@ func (rc *recovery) confirmOnline(ctx context.Context) {
 	if o.d.Online == nil {
 		return
 	}
+	if o.closeArtifactsRecord(rc.root) {
+		_ = o.commit(rc.root)
+	}
 	if res, err := o.confirmPending(ctx, rc.root, rc.manifest); err == nil && res != nil && res.changed {
 		_ = o.commit(rc.root)
 	}
@@ -540,6 +548,9 @@ func (rc *recovery) republishOnline(ctx context.Context) bool {
 // busy `online done` could not commit: a queue whose head is complete
 // while root.Online is not.
 func (o *Orchestrator) verifyConfirm(ctx context.Context, root *state.Root, m *compat.Manifest) error {
+	if o.closeArtifactsRecord(root) {
+		return o.commit(root)
+	}
 	rec := root.Online
 	if o.d.Online == nil || rec == nil || rec.Kind != "" || rec.State == string(online.QueueComplete) {
 		return nil

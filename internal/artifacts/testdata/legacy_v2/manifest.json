@@ -1,0 +1,103 @@
+{
+ "schema": 2,
+ "artifacts": {
+  "one": {
+   "title": "Fictional notes",
+   "content": {
+    "sha256": "0a6aab7c8c466a087e16331e2b22f60ab9b329b1f88c93d19be6b548f4e4c409",
+    "path": "pages/one/index.html",
+    "total_lines": 2,
+    "saved_at": "2026-11-01T10:00:00",
+    "source_account": "00000000-0000-4000-8000-000000000001",
+    "source_label": "Canary Label",
+    "source_version": "1700000000-0000a",
+    "changed_at": "2026-11-01T10:00:00Z"
+   },
+   "copies": {
+    "00000000-0000-4000-8000-000000000001": {
+     "label": "Canary Label",
+     "slug": "00000000-0000-4000-8000-000000000101",
+     "url": "https://claude.ai/artifact/00000000-0000-4000-8000-000000000101",
+     "synced_version": "1700000000-0000a",
+     "synced_sha": "0a6aab7c8c466a087e16331e2b22f60ab9b329b1f88c93d19be6b548f4e4c409"
+    },
+    "00000000-0000-4000-8000-000000000003": {
+     "label": "Canary Other",
+     "slug": "00000000-0000-4000-8000-000000000102",
+     "synced_version": "1700000000-0000b",
+     "synced_sha": "0a6aab7c8c466a087e16331e2b22f60ab9b329b1f88c93d19be6b548f4e4c409",
+     "published_at": "2026-11-01T11:00:00Z"
+    },
+    "00000000-0000-4000-8000-000000000005": {
+     "label": "Canary Third",
+     "slug": "00000000-0000-4000-8000-000000000103"
+    }
+   }
+  },
+  "two": {
+   "title": "Fictional list",
+   "content": {
+    "sha256": "519330490d75547b7f890b7196adfe78b998096d8e632caecfd234e883079cb2",
+    "path": "pages/two/index.html",
+    "total_lines": 2,
+    "saved_at": "2026-11-02T10:00:00Z",
+    "source_account": "00000000-0000-4000-8000-000000000003",
+    "source_version": "1700000000-0000c",
+    "changed_at": "2026-11-02T10:00:00Z",
+    "other_files_not_saved": true
+   },
+   "copies": {
+    "00000000-0000-4000-8000-000000000003": {
+     "label": "Canary Other",
+     "url": "https://claude.ai/code/artifact/my-list-00000000-0000-4000-8000-000000000104",
+     "synced_version": "1700000000-0000c",
+     "synced_sha": "519330490d75547b7f890b7196adfe78b998096d8e632caecfd234e883079cb2"
+    }
+   },
+   "skipped": "user"
+  },
+  "wrapped": {
+   "title": "Fictional wrapped",
+   "content": {
+    "sha256": "027df21097cd6836b952a8aef4e90d8d41586095067940fa4993f1b4344d23d4",
+    "path": "pages/wrapped/index.html",
+    "saved_at": "2026-11-03T10:00:00Z",
+    "source_account": "00000000-0000-4000-8000-000000000001",
+    "source_version": "1700000000-0000d",
+    "changed_at": "2026-11-03T10:00:00Z"
+   },
+   "copies": {
+    "00000000-0000-4000-8000-000000000001": {
+     "slug": "00000000-0000-4000-8000-000000000105",
+     "synced_sha": "027df21097cd6836b952a8aef4e90d8d41586095067940fa4993f1b4344d23d4"
+    }
+   }
+  },
+  "escape": {
+   "title": "Fictional escape",
+   "content": {
+    "sha256": "0a6aab7c8c466a087e16331e2b22f60ab9b329b1f88c93d19be6b548f4e4c409",
+    "path": "../outside.html",
+    "source_account": "00000000-0000-4000-8000-000000000001"
+   },
+   "copies": {
+    "00000000-0000-4000-8000-000000000001": {
+     "slug": "00000000-0000-4000-8000-000000000106"
+    }
+   }
+  },
+  "base58": {
+   "title": "Fictional base58",
+   "content": {
+    "sha256": "0a6aab7c8c466a087e16331e2b22f60ab9b329b1f88c93d19be6b548f4e4c409",
+    "path": "pages/one/index.html",
+    "source_account": "00000000-0000-4000-8000-000000000001"
+   },
+   "copies": {
+    "00000000-0000-4000-8000-000000000001": {
+     "url": "https://claude.ai/artifact/AbCdEfGhJkLmNpQrStUvWx"
+    }
+   }
+  }
+ }
+}

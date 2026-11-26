@@ -39,6 +39,12 @@ type onlineEnv struct {
 	replica func(ctx context.Context, since time.Time) online.ReplicaObs
 	// activeOrg is the active account's org from main.log, when known.
 	activeOrg func(ctx context.Context, account ids.AccountID) (ids.OrgID, bool)
+	// art is the installed Claude's [artifacts] table (Enabled false when
+	// unknown), appVersion its version and dataRoot the expanded data
+	// root (artifact sync).
+	art        compat.ArtifactsSpec
+	appVersion string
+	dataRoot   string
 }
 
 // onlineGroup is the `online` command group: status and cancel are
@@ -313,7 +319,7 @@ func runOnlineRetry(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) e
 }
 
 func runOnlineDone(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
-	_, c, info, err := queueCommand(ctx, e, fs, "online done")
+	o, c, info, err := queueCommand(ctx, e, fs, "online done")
 	if err != nil {
 		return err
 	}
@@ -335,6 +341,16 @@ func runOnlineDone(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) er
 		return err
 	}
 	v := doneView(res)
+	if res.State == string(online.QueueComplete) {
+		// A17: artifacts from another profile wait (due.json, no lock).
+		if paths, _, perr := e.paths(); perr == nil {
+			if _, root, rerr := o.rootInfo(); rerr == nil {
+				if line := artifactsNextLine(paths.SupportDir, root); line != "" {
+					v.Lines = append(v.Lines, line)
+				}
+			}
+		}
+	}
 	return e.emit(v, func(p *render.Printer) { p.Lines(v.Lines) }, nil)
 }
 

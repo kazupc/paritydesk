@@ -172,6 +172,29 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   the backup list's time stamp (release checklist R-PIN-1 to R-PIN-5).
 
 <!-- v0.2 anchor: artifacts -->
+- Added: artifact sync, **capture only (beta)**: `/paritydesk:artifacts`
+  saves the claude.ai artifacts of the account Claude is on into
+  paritydesk's archive (`<SupportDir>/artifacts`), newest change winning
+  per artifact and the older version kept in history. Publishing to the
+  other profiles is built (outbox file plus a folder grant, verified by
+  reading the page back) but ships turned off (`[artifacts] publish_via =
+  "off"`) until release step R-AR-4 has passed on a real Mac. ADR 0006.
+- Added: `paritydesk artifacts status|plan|ingest|allow|skip|forget|import-legacy`.
+  `allow`, `forget` and `import-legacy --apply` run only in Terminal.
+  `import-legacy --from <dir>` imports the artifact archive of an earlier
+  folder-swap script (dry run by default).
+- Added: config `sync.artifacts` (default true) and `[artifacts]`
+  (`verify`, `history_keep`, `cross_managed`); `sync.export` and
+  `sync.import` accept `artifacts`. `--only artifacts` is refused: a
+  switch never carries artifacts.
+- Added: the plan says when the leaving profile was not synced since it
+  became active and how many artifacts wait for the entering one; the
+  next session start on that profile offers `/paritydesk:artifacts`.
+- Changed: `uninstall` keeps the artifact archive unless
+  `--keep-artifacts=false`.
+- Not yet confirmed on a real Mac: every artifact tool's result shape,
+  the outbox grant and publish path, refusal texts and the account check
+  after an in-app account change (release checklist R-AR-1 to R-AR-10).
 
 <!-- v0.2 anchor: legacy-adopt -->
 - Added: hidden `profile adopt --from-legacy` for people coming from an

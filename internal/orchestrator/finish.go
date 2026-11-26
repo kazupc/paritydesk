@@ -225,6 +225,7 @@ func (r *run) commitP10(ctx context.Context) error {
 		return err
 	}
 	r.o.afterPublish(ctx, published)
+	r.artifactsDue(ctx)
 	if err := d.State.GC(root); err != nil {
 		r.warn(P10Commit, "unreferenced state objects could not be removed")
 	}

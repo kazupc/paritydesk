@@ -725,6 +725,9 @@ enabled = false
 # v0.2 anchor: tables pins
 
 # v0.2 anchor: tables artifacts
+# Artifact sync is not supported on 6.x.
+[artifacts]
+enabled = false
 
 # v0.2 anchor: tables legacy
 # ---------------------------------------------------------------- legacy migration

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kazupc/paritydesk/internal/artifacts"
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/gen"
 	"github.com/kazupc/paritydesk/internal/hook"
@@ -290,6 +291,14 @@ func (f *fakeService) AdoptLegacy(_ context.Context, o orchestrator.LegacyOption
 	return &r, nil
 }
 
+func (f *fakeService) ArtifactsRound(_ context.Context, _ func(*state.Root) (*online.Draft, *online.QueueHeader, error)) (string, error) {
+	return "", f.record("artifacts-round")
+}
+
+func (f *fakeService) CloseArtifactsQueue(_ context.Context, queue string) (bool, error) {
+	return true, f.record("artifacts-close", queue)
+}
+
 var _ orchestrator.Service = (*fakeService)(nil)
 
 // fakeGens is a generationStore.
@@ -345,6 +354,11 @@ type harness struct {
 	// ol is the online environment of the `online` commands, built on
 	// first use over the temporary home (online_test.go).
 	ol *onlineEnv
+	// art is the artifact service of the `artifacts` commands, built on
+	// first use (artifacts_test.go); artReplica is main.log's replica
+	// for it (nil: unknown).
+	art        *artifacts.Service
+	artReplica *model.Replica
 }
 
 func newHarness(t *testing.T) *harness {
@@ -385,6 +399,11 @@ func newHarness(t *testing.T) *harness {
 		},
 		rules: func(*env) ([]string, map[string]string, error) {
 			return []string{"Claude", "Claude-3p"}, map[string]string{"sidebarMode": "ui_state", "keepAwakeEnabled": "other"}, nil
+		},
+		artifacts: func(_ context.Context, e *env) (*artifacts.Service, error) {
+			s := h.artifactsService()
+			s.ReadOnly = e.readOnly()
+			return s, nil
 		},
 	}
 	return h

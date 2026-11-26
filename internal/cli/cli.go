@@ -468,9 +468,11 @@ func root() *command {
 		onlineGroup(),
 
 		// v0.2 anchor: commands artifacts
+		artifactsGroup(),
 
 		leaf("uninstall", "", "Remove paritydesk's state; every data folder is kept", 0, 0, func(fs *flag.FlagSet) {
 			fs.Bool("keep-backups", true, "keep backup generations")
+			fs.Bool("keep-artifacts", true, "keep the artifact archive (saved pages and their history)")
 			fs.Bool("keep-state", false, "keep the state directory as well")
 			yesFlag(fs)
 		}, runUninstall),
