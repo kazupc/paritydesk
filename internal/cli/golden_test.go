@@ -101,6 +101,10 @@ var jsonCases = []struct {
 	{name: "switch", args: []string{"switch", "home", "--yes"}},
 	{name: "sync", args: []string{"sync", "--yes"}},
 	{name: "verify", args: []string{"verify"}},
+	// Claude in Chrome connects on first use: no connection seen prints nothing about it.
+	{name: "verify_no_bridge", args: []string{"verify"}, setup: func(h *harness) {
+		h.svc.verify.BridgeSeen = false
+	}},
 	{name: "verify_drift", args: []string{"verify"}, code: 50, setup: func(h *harness) {
 		h.svc.verify.Drift = []model.RowID{model.RowGroupOrder}
 	}},
@@ -162,12 +166,11 @@ func TestPlanJSONFields(t *testing.T) {
 		t.Fatalf("code %d", code)
 	}
 	var doc struct {
-		PlanHash          string     `json:"plan_hash"`
-		DestructiveDigest string     `json:"destructive_digest"`
-		NeedsConfirmation *bool      `json:"needs_confirmation"`
-		ExpiresAt         *time.Time `json:"expires_at"`
-		Lines             []string   `json:"lines"`
-		Saved             *bool      `json:"saved"`
+		PlanHash          string   `json:"plan_hash"`
+		DestructiveDigest string   `json:"destructive_digest"`
+		NeedsConfirmation *bool    `json:"needs_confirmation"`
+		Lines             []string `json:"lines"`
+		Saved             *bool    `json:"saved"`
 	}
 	if err := json.Unmarshal([]byte(out), &doc); err != nil {
 		t.Fatal(err)

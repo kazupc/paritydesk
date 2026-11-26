@@ -115,7 +115,6 @@ const (
 	VerifySignIn   Msg = "verify.sign_in"
 	VerifyFocused  Msg = "verify.focused"
 	VerifyBridge   Msg = "verify.bridge"
-	VerifyNoBridge Msg = "verify.no_bridge"
 
 	RecoverAction Msg = "recover.action"
 	RecoverActive Msg = "recover.active"
@@ -263,7 +262,6 @@ var catalog = map[Msg]string{
 	VerifySignIn:   "Verify: the active profile needs a sign-in with its own account.",
 	VerifyFocused:  "Verify: the invoking session was reopened.",
 	VerifyBridge:   "Verify: Claude in Chrome connected after the launch.",
-	VerifyNoBridge: "Verify: Claude in Chrome did not connect after the launch. Use one Chrome profile per Claude account.",
 
 	RecoverAction: "  %s",
 	RecoverActive: "Active profile: %s",

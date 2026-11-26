@@ -739,3 +739,20 @@ func TestJSONOutputHidesHome(t *testing.T) {
 		})
 	}
 }
+
+// TestVerifyQuietWithoutChrome: Claude in Chrome connects on first use, not
+// at launch, so verify says nothing about it until a connection is seen.
+func TestVerifyQuietWithoutChrome(t *testing.T) {
+	for _, seen := range []bool{false, true} {
+		h := newHarness(t)
+		h.svc.verify.BridgeSeen = seen
+		code, out, errOut := h.run("", "verify")
+		if code != 0 {
+			t.Fatalf("seen=%v: code %d, stderr %q", seen, code, errOut)
+		}
+		all := out + errOut
+		if got := strings.Contains(all, "Claude in Chrome"); got != seen {
+			t.Errorf("seen=%v: Chrome line shown=%v in %q", seen, got, all)
+		}
+	}
+}

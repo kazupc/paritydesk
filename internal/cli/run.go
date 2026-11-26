@@ -266,10 +266,10 @@ func runVerify(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error 
 		if v.SessionFocused {
 			p.Line(i18n.T(i18n.VerifyFocused))
 		}
+		// Claude in Chrome connects on first use, not at launch, so no
+		// connection line is no sign of a problem: only a seen one is shown.
 		if v.BridgeSeen {
 			p.Line(i18n.T(i18n.VerifyBridge))
-		} else {
-			p.Line(i18n.T(i18n.VerifyNoBridge))
 		}
 	}, err)
 }

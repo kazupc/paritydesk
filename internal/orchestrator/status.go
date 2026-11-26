@@ -478,9 +478,10 @@ func (dr *doctor) bridge(ctx context.Context, sig compat.Signals) {
 			return
 		}
 	}
-	dr.add("chrome-bridge", "warn", "no Claude in Chrome connection line was found in the recent Claude log. "+
-		"The extension follows the Chrome profile's sign-in, not the Claude folder: use one Chrome profile per account. "+
-		"If Claude in Chrome works, the log line may have changed in this Claude version (release checklist step 6)")
+	// Claude in Chrome connects on first use, not at launch: a log with no
+	// connection line only means it was not used since the log's start.
+	dr.add("chrome-bridge", "ok", "Claude in Chrome was not used in the recent Claude log; it connects on first use. "+
+		"The extension follows the Chrome profile's sign-in, not the Claude folder: use one Chrome profile per account")
 }
 
 // busyDetection reports whether paritydesk can see working Code

@@ -17,7 +17,7 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   and the internal `hook session-start`. Every command prints one JSON
   document with `--json`; flags work before and after arguments.
 - `plan --json` returns `plan_hash`, `destructive_digest`,
-  `needs_confirmation`, `expires_at` and the summary `lines` (the
+  `needs_confirmation` and the summary `lines` (the
   DESTRUCTIVE line last), which the plugin's skill shows verbatim before
   `switch --detach --confirmed-plan`.
 - Exit codes with an error catalog (`PD-E<code>`) and
@@ -134,6 +134,11 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 
 ### Fixed
 
+- `verify` no longer says Claude in Chrome "did not connect" after a
+  switch, and `doctor` no longer warns about it. Claude in Chrome connects
+  when it is first used, not when Claude starts, so a log without a
+  connection line only means it was not used yet. `verify` still says
+  when a connection was seen.
 - Planning is about 20 times faster. On a test Mac with about 750 session
   records of up to 600 KB each, one plan took 82 s and a switch planned
   twice; it now takes about 4 s, and the second plan of a switch about

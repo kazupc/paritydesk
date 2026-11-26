@@ -227,7 +227,9 @@ func TestDoctor(t *testing.T) {
 		strings.Contains(un.Detail, "identity.json") {
 		t.Errorf("unclassified = %+v", un)
 	}
-	if !strings.Contains(byID["chrome-bridge"].Detail, "one Chrome profile per account") {
+	// No connection line in the log is normal: Claude in Chrome connects
+	// on first use, so the check stays ok.
+	if br := byID["chrome-bridge"]; br.Status != "ok" || !strings.Contains(br.Detail, "one Chrome profile per account") {
 		t.Errorf("bridge = %+v", byID["chrome-bridge"])
 	}
 	for _, c := range checks {
