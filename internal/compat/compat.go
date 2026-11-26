@@ -117,26 +117,51 @@ type Probe struct {
 	Critical bool        `toml:"critical"` // failure gives swap-only
 }
 
-// Signals are main.log line patterns (Go regexp syntax). {session} is
-// replaced by regexp.QuoteMeta of a validated session id before compiling.
+// Signals are main.log message patterns (Go regexp syntax), matched on
+// record lines only and anchored at the start of the message. {session}
+// is replaced by a group that captures a local session id (validated with
+// ids.ParseSession), or by the quoted id when one session is asked about.
 // An empty pattern means the signal is unknown for this version; callers
-// then fall back (for example, busy detection uses session records and the
-// app's own quit veto only).
+// then fall back (for example, busy detection uses session records and
+// the app's own quit veto only).
 type Signals struct {
 	QuitVetoed  string `toml:"quit_vetoed"`
-	TurnStarted string `toml:"turn_started"` // with {session}, or a named group (?P<session>...)
-	TurnEnded   string `toml:"turn_ended"`   // with {session}, or a named group (?P<session>...)
-	// AppStarted marks a fresh app start; busy scans begin after the last
-	// one.
+	TurnStarted string `toml:"turn_started"`
+	TurnEnded   string `toml:"turn_ended"`
+	// TurnCleared are other ends of a turn (interrupt, stop, failure),
+	// each with {session} exactly once.
+	TurnCleared []string `toml:"turn_cleared"`
+	// WorkHeld and WorkReleased are the keep-awake hold lines (Code
+	// sessions only); WorkReleased has a named group (?P<reason>...).
+	WorkHeld        string   `toml:"work_held"`
+	WorkReleased    string   `toml:"work_released"`
+	WorkIdleReasons []string `toml:"work_idle_reasons"`
+	// WorkUncounted names a session the hold stopped counting.
+	WorkUncounted string `toml:"work_uncounted"`
+	// WorkHoldPrefs are preference names in claude_desktop_config.json
+	// that must not be false for a missing hold to mean "no turn".
+	WorkHoldPrefs []string `toml:"work_hold_prefs"`
+	// AppStarted marks a fresh app start; busy scans without a known app
+	// start time begin after the last one.
 	AppStarted      string `toml:"app_started"`
 	FocusedSession  string `toml:"focused_session"`
 	BridgeConnected string `toml:"bridge_connected"`
 	PairingDisabled string `toml:"pairing_disabled"`
-	UncleanExit     string `toml:"unclean_exit"`
-	LoginRequired   string `toml:"login_required"`
+	// PairingState has a named group (?P<state>established|closed).
+	PairingState  string `toml:"pairing_state"`
+	UncleanExit   string `toml:"unclean_exit"`
+	LoginRequired string `toml:"login_required"`
 	// ActiveOrg has a named group (?P<org>...) holding the active
 	// organization's UUID; the value is validated with ids.ParseOrg.
-	ActiveOrg          string `toml:"active_org"`
+	ActiveOrg string `toml:"active_org"`
+	// AccountChanged has named groups (?P<from>...) and (?P<to>...).
+	AccountChanged string `toml:"account_changed"`
+	// AccountChangedHint are account-change lines that name no account;
+	// used only by LastReplica.
+	AccountChangedHint []string `toml:"account_changed_hint"`
+	// Deprecated: ignored since v0.2; account changes come from
+	// account_changed. Kept decodable so a v0.1 override still loads;
+	// removed in v0.3.
 	NativeMultiAccount string `toml:"native_multi_account"`
 }
 

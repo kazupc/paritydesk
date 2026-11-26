@@ -2,6 +2,7 @@ package cli
 
 import (
 	"sort"
+	"time"
 
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/ids"
@@ -33,6 +34,11 @@ type runView struct {
 	Warnings          []string         `json:"warnings,omitempty"`
 	TimingsMS         map[string]int64 `json:"timings_ms,omitempty"`
 	// v0.2 anchor: view busy
+	// Busy lists the sessions still working; titles are data written by
+	// other sessions and never appear in Lines.
+	Busy []orchestrator.BusyView `json:"busy,omitempty"`
+	// humanBusy is the titled busy block of the human output only.
+	humanBusy []string
 
 	// v0.2 anchor: view scratch
 
@@ -75,12 +81,25 @@ func newRunView(r *orchestrator.Result) runView {
 	default:
 		v.Summary = (*plan.Plan)(nil).Summarize()
 	}
+	var busy []render.BusyLine
+	var titles, masked []string
+	for _, b := range r.Busy {
+		b.Title = render.Sanitize(b.Title, 80)
+		b.Session = render.Sanitize(b.Session, 48)
+		v.Busy = append(v.Busy, b)
+		busy = append(busy, render.BusyLine{Masked: b.Session, Age: time.Duration(b.WorkingForS) * time.Second,
+			Known: b.StartedKnown || b.WorkingForS > 0, Stale: b.Stale})
+		if !b.Stale {
+			titles, masked = append(titles, b.Title), append(masked, b.Session)
+		}
+	}
 	// Without a target the run stopped before planning: no plan to show.
 	if v.To != "" {
 		v.Lines = render.PlanLines(render.PlanView{
 			From: string(v.From), To: string(v.To), Approximate: v.Approximate,
-			FirstSync: v.NeedsConfirmation, Summary: v.Summary,
+			FirstSync: v.NeedsConfirmation, Summary: v.Summary, Busy: busy, BusyWait: r.BusyWait,
 		})
+		v.humanBusy = render.BusyTitled(titles, masked)
 	}
 	if len(r.Timings) > 0 {
 		v.TimingsMS = map[string]int64{}

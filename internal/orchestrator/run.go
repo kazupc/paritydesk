@@ -65,6 +65,21 @@ type run struct {
 
 	invoking ids.SessionID
 	busyAck  map[ids.SessionID]bool
+	// busyTitles are the Code titles of the last busy scan.
+	busyTitles map[ids.SessionID]string
+	// warnedStale, warnedTruncated and warnedWindow keep the busy and
+	// account warnings to one each per run.
+	warnedStale, warnedTruncated, warnedWindow bool
+	// warnedBusyLog keeps the "log could not be read" warning to one.
+	warnedBusyLog bool
+	// changes are the account changes inside a folder logged since the
+	// last committed run (nil: not known).
+	changes []profile.AttributedChange
+	// previewCLI is plan's --invoking-session.
+	previewCLI string
+	// since is the app's start time (appSince, memoized).
+	since     time.Time
+	sinceDone bool
 
 	p2, p5    *planned
 	t4        time.Time
@@ -361,6 +376,8 @@ func (r *run) updateQuit(ctx context.Context) error {
 	if err := r.locate(ctx); err != nil {
 		return r.abort(ctx, err)
 	}
+	// The updater may have relaunched the app: its start time is new.
+	r.sinceDone = false
 	r.o.progress(P0Preflight, "ok", "Claude updated to "+r.bundle.Version)
 	return nil
 }
@@ -385,11 +402,15 @@ func (r *run) resolve(ctx context.Context) error {
 			acct = f.Identity.Account
 		}
 	}
-	if org, found, err := d.App.ActiveOrg(ctx, r.sig, acct); err == nil && found {
+	if org, found, err := d.App.ActiveOrg(ctx, r.sig, acct, r.appSince(ctx)); err == nil && found {
 		hints.ActiveOrg = org
 	}
 	res, err := d.Resolve(d.Config, r.root, folders, hints)
 	if err != nil {
+		return err
+	}
+	r.loadAccountChanges(ctx)
+	if err := r.checkInFolderSignIn(res); err != nil {
 		return err
 	}
 	r.resn = res
@@ -478,7 +499,11 @@ func (r *run) gate(ctx context.Context) error {
 		}
 		in.CompressionOK = ok
 	}
-	in.NativeMultiAccount = r.nativeMulti()
+	_, chain := profile.NativeMultiFromLog(r.changes)
+	in.NativeMultiAccount = r.nativeMultiAlias() != "" || chain >= 2
+	for _, w := range accountChangeWarnings(r.changes) {
+		r.warn(P0Preflight, w)
+	}
 	in.Downgraded = downgraded(r.root.LastAppVersion, r.bundle.Version)
 	in.SQLiteLS = sqliteLS(r.sPath) || (r.kind != state.RunSync && sqliteLS(r.tPath))
 	r.decision = d.Compat.Decide(in)
@@ -491,10 +516,17 @@ func (r *run) gate(ctx context.Context) error {
 			return pderr.New(pderr.CompatRefused, "compat", "this Claude version is untested and require_tested is set; only plan works")
 		}
 	case compat.ModeSwapOnly:
+		warning, syncErr, known := r.nativeCause()
 		if r.kind == state.RunSync {
+			if known {
+				return pderr.New(pderr.SwapOnly, "compat", syncErr)
+			}
 			return pderr.New(pderr.SwapOnly, "compat", "sync is not possible in swap-only mode")
 		}
-		r.warn(P0Preflight, "swap-only mode: the switch will not carry anything")
+		if !known {
+			warning = "swap-only mode: the switch will not carry anything"
+		}
+		r.warn(P0Preflight, warning)
 	case compat.ModeDegraded:
 		r.warn(P0Preflight, "degraded mode: some rows are skipped")
 	}
@@ -563,17 +595,18 @@ func sqliteLS(folder string) bool {
 // sqliteLSName is the SQLite Local Storage entry of a data folder.
 const sqliteLSName = "LocalStorage"
 
-// nativeMulti reports signs of the app's own multi-account mode.
-func (r *run) nativeMulti() bool {
+// nativeMultiAlias returns the profile whose folder shows signs of the
+// app's own multi-account mode in its recorded account history, or "".
+func (r *run) nativeMultiAlias() ids.Alias {
 	for _, b := range []*profile.Binding{r.S, r.T} {
 		if b == nil || b.Folder == nil || b.Folder.Identity == nil {
 			continue
 		}
 		if profile.NativeMultiAccount(r.root.Profiles[b.Profile.Alias], b.Folder.Identity.Account) {
-			return true
+			return b.Profile.Alias
 		}
 	}
-	return false
+	return ""
 }
 
 // lockedChecks are the P0 checks that only matter for a run that will
@@ -661,71 +694,6 @@ func (r *run) resolveInvoking(ctx context.Context) {
 	r.invoking = id
 }
 
-// busyList returns the busy sessions (records plus main.log), without
-// the invoking session, and sanitized lines describing them.
-func (r *run) busyList(ctx context.Context) ([]ids.SessionID, []string) {
-	d := r.d()
-	titles := map[ids.SessionID]string{}
-	busy := map[ids.SessionID]bool{}
-	if r.manifest != nil {
-		spec, _ := r.manifest.Row(model.RowSessions)
-		infos, err := d.Sessions.ListSessions(ctx, r.sPath, r.S.Replica, spec.Expand(r.S.Replica))
-		if err == nil {
-			for _, s := range infos {
-				titles[s.ID] = s.Title
-				if s.Busy {
-					busy[s.ID] = true
-				}
-			}
-		}
-	}
-	logBusy, err := d.App.BusySessions(ctx, 0, r.sig)
-	if err == nil {
-		for _, s := range logBusy {
-			busy[s] = true
-		}
-	}
-	delete(busy, r.invoking)
-	var list []ids.SessionID
-	var lines []string
-	for _, id := range sortedSessions(busy) {
-		list = append(list, id)
-		lines = append(lines, fmt.Sprintf("%s (%s)", sanitizeTitle(titles[id]), ids.Mask(string(id))))
-	}
-	return list, lines
-}
-
-func sortedSessions(m map[ids.SessionID]bool) []ids.SessionID {
-	out := make([]ids.SessionID, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	for i := 1; i < len(out); i++ {
-		for j := i; j > 0 && out[j] < out[j-1]; j-- {
-			out[j], out[j-1] = out[j-1], out[j]
-		}
-	}
-	return out
-}
-
-// checkBusyP0 asks about busy sessions, or exits 12 when nobody can.
-func (r *run) checkBusyP0(ctx context.Context) error {
-	busy, lines := r.busyList(ctx)
-	if len(busy) == 0 {
-		return nil
-	}
-	if !r.interactive {
-		return pderr.New(pderr.SessionsBusy, "preflight", fmt.Sprintf("%d Code session(s) are still working", len(busy)))
-	}
-	if err := r.o.ask(ctx, true, Confirmation{Kind: ConfirmBusy, Lines: lines}); err != nil {
-		return err
-	}
-	for _, id := range busy {
-		r.busyAck[id] = true
-	}
-	return nil
-}
-
 // preview is P2: the approximate plan from snapshots.
 func (r *run) preview(ctx context.Context) error {
 	defer r.phase(P2Preview, "planning")()
@@ -797,47 +765,13 @@ func (r *run) confirmP2(ctx context.Context) error {
 	return nil
 }
 
-// waitBusy is the P3 busy wait: detached and non-interactive runs wait up
-// to quit_timeout (then 12, without quitting); interactive runs ask again
-// when the list grew.
-func (r *run) waitBusy(ctx context.Context) error {
-	deadline := r.o.now().Add(r.o.quitTimeout())
-	for {
-		busy, lines := r.busyList(ctx)
-		if len(busy) == 0 {
-			return nil
-		}
-		if r.interactive {
-			grown := false
-			for _, id := range busy {
-				grown = grown || !r.busyAck[id]
-			}
-			if !grown {
-				return nil
-			}
-			if err := r.o.ask(ctx, true, Confirmation{Kind: ConfirmBusy, Lines: lines}); err != nil {
-				return err
-			}
-			for _, id := range busy {
-				r.busyAck[id] = true
-			}
-			return nil
-		}
-		if !r.o.now().Before(deadline) {
-			return pderr.New(pderr.SessionsBusy, "quit", fmt.Sprintf("%d Code session(s) are still working; Claude was not asked to quit", len(busy)))
-		}
-		if err := r.o.d.Clock.Sleep(ctx, busyPoll); err != nil {
-			return pderr.Wrap(pderr.Declined, "interrupted", err)
-		}
-	}
-}
-
 // quitApp is P3.
 func (r *run) quitApp(ctx context.Context) error {
 	defer r.phase(P3Quit, "quitting Claude")()
 	d := r.d()
 	if r.opts.FromRunner && r.invoking != "" {
-		err := d.App.WaitTurnEnded(ctx, r.opts.LogOffset, r.sig, r.invoking, r.o.quitTimeout())
+		from := app.LogCursor{Ino: r.opts.LogInode, Off: max(r.opts.LogOffset, 0)}
+		err := d.App.WaitTurnEnded(ctx, from, r.sig, r.invoking, r.o.quitTimeout())
 		if err != nil && !errors.Is(err, app.ErrSignalUnknown) {
 			if ctx.Err() != nil {
 				return r.abort(ctx, pderr.Wrap(pderr.Declined, "interrupted", err))

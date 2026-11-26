@@ -49,6 +49,7 @@ const (
 	ConfirmNewDestructive ConfirmKind = "new-destructive" // P5 differs from P2
 	ConfirmBaseInvalid    ConfirmKind = "base-invalid"    // union first sync (exit 21 non-interactive)
 	ConfirmBusy           ConfirmKind = "busy"            // sessions working (exit 12 non-interactive)
+	ConfirmBusyStill      ConfirmKind = "busy-still"      // still working after quit_timeout: quit anyway?
 	ConfirmOutsideSwitch  ConfirmKind = "outside-switch"  // offer sync
 	ConfirmRecover        ConfirmKind = "recover"         // recover proposes a move
 	ConfirmRollback       ConfirmKind = "rollback"
@@ -106,6 +107,10 @@ type SwitchOptions struct {
 	// the hand-off (P0, before anything else), so the job's turn-end wait
 	// sees a turn that ended before P3. -1 means unset.
 	LogOffset int64
+	// LogInode is the inode of the main.log that LogOffset belongs to, so
+	// the job finds the offset after a rotation; 0 means unknown (main.log
+	// by assumption).
+	LogInode uint64
 	// ConfirmedPlan is the hash of a plan the user already confirmed (saved
 	// in the PlanStore by `plan` or by the interactive parent). The job's
 	// P2 loads it and aborts before quitting when its own plan has a
@@ -127,6 +132,9 @@ type PreviewOptions struct {
 	// Save stores the plan in the PlanStore so a later switch can name it
 	// with --confirmed-plan (ignored in read-only mode).
 	Save bool
+	// InvokingCLISession is the Claude Code session id (UUID) running the
+	// command; it is left out of the busy list.
+	InvokingCLISession string
 }
 
 // Result is the outcome of a run.
@@ -150,6 +158,11 @@ type Result struct {
 	// the end of the late-quit watch: the user's answer in the app decides.
 	QuitPending bool `json:"quit_pending,omitempty"`
 	// v0.2 anchor: result busy
+	// Busy lists the sessions still working in the leaving folder's app
+	// run (preview only); titles are data written by other sessions.
+	Busy []BusyView `json:"busy,omitempty"`
+	// BusyWait is how long a switch waits for them (quit_timeout).
+	BusyWait time.Duration `json:"-"`
 
 	// v0.2 anchor: result online
 

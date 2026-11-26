@@ -118,6 +118,7 @@ func (r *run) commitP10(ctx context.Context) error {
 	if r.bundle.Version != "" {
 		root.LastAppVersion = r.bundle.Version
 	}
+	root.LastCommitAt = r.o.now()
 	if r.gen != 0 {
 		root.Generations = append(root.Generations, state.GenerationRef{N: r.gen, RunID: r.res.RunID, Target: r.T.Profile.Alias, At: r.o.now()})
 	}

@@ -594,26 +594,43 @@ epitaxyPrefs = "internal_state"
 
 # ---------------------------------------------------------------- main.log signals
 #
-# Go regexps over main.log lines, only from text observed on a tested Mac
-# (ADR 0003, ADR 0004). {session} is replaced by the quoted, validated
-# local session id. Empty means not observed: callers fall back. No line
-# names a session when a turn starts, so turn_started stays empty. No
-# record field means a turn is running either (the sessions busy role is
-# empty), so v0.1 cannot list busy sessions: only the app's own quit veto
-# protects them, and doctor reports busy detection as unavailable.
+# Go regexps over main.log, only from text observed on a tested Mac (ADR
+# 0003, ADR 0004). A pattern is tried only on record lines (a line that
+# starts with "<timestamp> [<level>] "), only against the message after
+# that header, and it is anchored at the start of the message (the loader
+# adds the "^"): write each pattern from the first character of the
+# message and never start one with "^" or ".*". Continuation lines are
+# never matched. {session} is replaced by a group that captures a
+# validated local session id, or by the quoted id when one session is
+# asked about. Each pattern needs a fixed text of at least 8 characters.
+# Empty means not observed: callers fall back.
+#
+# The busy-detection keys (turn_started, turn_cleared, work_*), the
+# account and pairing keys are not observed on 6.x; ADR 0003 names
+# "Mapping internal session" as a start candidate without an end set. So
+# turn_started stays empty: busy detection is unavailable on 6.x, only
+# the app's own quit veto protects a working session, and doctor says so.
 
 [signals]
 quit_vetoed = 'beforeQuit: vetoed by before-quit interceptor'
 turn_started = ''
 turn_ended = '\[Stop hook\] Query completed for session {session}\b'
+turn_cleared = []
+work_held = ''
+work_released = ''
+work_idle_reasons = []
+work_uncounted = ''
+work_hold_prefs = []
 app_started = '\[startup-perf\] main window shown [0-9]+ ms after launch'
-focused_session = 'setFocusedSession: sessionId={session}\b'
-bridge_connected = 'Chrome extension connected to bridge'
+focused_session = '(?:\[CCD\] LocalSessions\.)?setFocusedSession: sessionId={session}\b'
+bridge_connected = '(?:\[[a-z-]{1,40}\] )?Chrome extension connected to bridge'
 pairing_disabled = ''
-unclean_exit = 'Previous run did not exit cleanly'
+pairing_state = ''
+unclean_exit = '(?:\[updater\] )?Previous run did not exit cleanly\b'
 login_required = ''
 active_org = '\[(?:CCD)?ScheduledTasks\] Initialized \{ accountId: \x27(?P<account>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\x27, orgId: \x27(?P<org>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\x27 \}'
-native_multi_account = ''
+account_changed = ''
+account_changed_hint = []
 
 # ---------------------------------------------------------------- other tools
 #

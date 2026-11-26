@@ -2,6 +2,7 @@ package render
 
 import (
 	"strings"
+	"time"
 
 	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/model"
@@ -16,6 +17,10 @@ type PlanView struct {
 	// (plan.Plan.NeedsConfirmation).
 	FirstSync bool
 	Summary   plan.Summary
+	// Busy lists the sessions still working (masked ids and ages only)
+	// and BusyWait how long the switch waits for them.
+	Busy     []BusyLine
+	BusyWait time.Duration
 }
 
 // PlanLines returns the human summary of a plan: a header, one line per
@@ -41,6 +46,7 @@ func PlanLines(v PlanView) []string {
 		lines = append(lines, i18n.T(i18n.PlanNoChanges))
 	}
 	// v0.2 anchor: plan busy
+	lines = append(lines, busyLines(v)...)
 
 	// v0.2 anchor: plan scratch
 

@@ -61,7 +61,7 @@ fact is applied.
 | The config mirror is written at once by the app; Local Storage later. After an unclean exit the app rebuilds Local Storage from the mirror. | The mirror is authoritative: adapters harvest mirrored values from the mirror; a differing LS copy is reported stale and never harvested (section 5). P12 reads only the JSON mirror. |
 | The mirror holds the bare value; Local Storage holds an envelope `{"value", "tabId", "timestamp"}` for `LSS-persisted.*` keys, and `{"state", "version"}` for persisted stores. | `localstorage` envelope helpers (implemented). Item hashes cover the bare value only (section 5). |
 | Several rows share one target: `claude_desktop_config.json` holds the mirror of three rows and `mcpServers`; the `dframe-store` value holds both the sidebar view and the pin order. | Adapters return literal-path edits; `plan.Compose` applies them in row order and emits one op per target. |
-| Quit is vetoed while any session is working; a queued message restarts work; a vetoed quit can still happen later if the user picks "Wait for Claude". | P0 lists busy sessions (session records plus main.log turn lines); P3 waits until nothing is busy before sending the quit; after a vetoed timeout the run keeps watching (`late_quit_watch`) and relaunches the leaving profile if the app quits late. In-app switches first wait for the invoking session's turn to end, from a log offset recorded before the hand-off. |
+| Quit is vetoed while any session is working; a queued message restarts work; a vetoed quit can still happen later if the user picks "Wait for Claude". | P0 lists busy sessions (session records plus main.log turn start, end, clear and keep-awake lines of the app's current run, rotation-safe; ADR 0007); the detached job waits at P3 instead of exiting at P0; P3 waits up to `quit_timeout` until nothing is busy before sending the quit; after a vetoed timeout the run keeps watching (`late_quit_watch`) and relaunches the leaving profile if the app quits late. In-app switches first wait for the invoking session's turn to end, from a log cursor (offset and inode) recorded before the hand-off. |
 | SIGTERM is not a clean quit. | No signal is ever sent to the app. There is no `--force-quit`. The detached job never boots itself out (launchd would SIGTERM it). |
 | Chrome's native messaging host, the updater and the crash handler live in the bundle but are not the app. | `app.IsAppProcess` excludes them from the app's process set. |
 | A staged update installs on quit. | P0 lets it install: quit intent and `QuitByUs` first, wait for the install, new identity baseline and probes, P3 again if the updater relaunched the app; an abort relaunches (I4). |
@@ -170,14 +170,18 @@ P0  record main.log offset (LogOffset) first, while the invoking turn runs
     load config, state; open run -> 41 unless recover; data-root binding
     locate bundle (identity tuple); staged update? -> quit, wait for the install, re-probe
     scan folders -> identities, markers -> profile.Resolve(hints: active
-      org from main.log) (20 on mismatch; PendingAdd -> 41)
+      org from main.log since the app started) (20 on mismatch; PendingAdd
+      -> 41); account changes since last_commit_at -> 20 when Claude/ is
+      one profile's folder signed in to another profile's account
+      (profile.InFolderSignIn), and a chain of two -> swap-only
     manifest + probes per folder + kv CheckFormat on S and T copies
       -> compat.Decide (30/31/32; unknown compression and native
          multi-account -> swap-only; unknown org with several -> per-org
          rows skipped)
     other tools -> 14; free space; Automation; outside-switch detection
-    busy list: records (SessionInfo.Busy) + App.BusySessions, minus the
-      invoking session -> ConfirmBusy, or 12 when non-interactive
+    busy list: records (SessionInfo.Busy) + App.BusySessions (Counted =
+      Code records), minus the invoking session -> ConfirmBusy; the
+      detached job warns and waits at P3; other non-interactive runs 12
 P2  snapshots (kv OpenSnapshot) of S and T -> adapters Read -> rows Merge
     (AllRows order; Policy from config, manifest field lists, T's
     permission acks) -> rows.PostMerge -> adapters Ops (edits)
@@ -188,9 +192,10 @@ P2  snapshots (kv OpenSnapshot) of S and T -> adapters Read -> rows Merge
        -> 3 before quitting; NeedsConfirmation without --confirm-first-sync
        -> 21
     -> otherwise confirm (unless --yes; expires after ConfirmedPlanTTL)
-P3  [in-app: WaitTurnEnded from LogOffset]; wait until the busy list is
-    empty (detached: up to quit_timeout, then 12 without quitting;
-    interactive: ask again if it grew); intent quit + QuitByUs committed;
+P3  [in-app: WaitTurnEnded from LogOffset/LogInode]; wait until the busy
+    list is empty (detached: up to quit_timeout, then 12 without quitting;
+    interactive: ask again when a new session works, and at quit_timeout
+    ask whether to quit anyway); intent quit + QuitByUs committed;
     QuitAndWait (veto callback)
     timeout: not vetoed -> close run, 10; vetoed (Pending) -> WaitExited up
     to late_quit_watch: exited -> relaunch S (I4), close run, 10 ("quit
@@ -400,7 +405,8 @@ Rules every side relies on:
 Implemented in `pderr` (catalog text included). 0 ok, 2 usage, 3 declined
 (also: confirmed plan missing, expired or exceeded), 10 app did not quit, 11
 run lock busy, 12 sessions busy, 13 update pending, 14 other tool, 15
-Automation missing, 20 identity mismatch, 21 base invalid, 22 deletion
+Automation missing, 20 identity mismatch (also a folder signed in, inside
+Claude, to another profile's account), 21 base invalid, 22 deletion
 breaker, 23 worktree risk, 30 compat refused, 31 swap-only, 32 degraded, 40
 apply rolled back, 41 needs recover, 50 verify drift, 51 needs sign-in
 (rendered with the validated alias), 70 internal (also
@@ -519,12 +525,14 @@ kind, then `recover`, then assert I1–I5). WI-9 and WI-10 (section 1) follow.
 
 ## 11. Open questions
 
-1. The main.log pattern for a turn start is not yet known. The manifest
-   leaves it empty, and the session records have no field that means a
-   turn is running (the `busy` role is empty, ADR 0004). Busy detection
-   then relies on the app's own quit veto (with the late-quit watch). The
-   `active_org` pattern was taken from observed lines (ADR 0004); release
-   checklist step 5 confirms it with an account in two organizations.
+1. The main.log pattern for a turn start. Settled for 7.x: `turn_started`
+   was observed on 7.37095.0; see [ADR 0007](../adr/0007-log-signals.md).
+   The 6.x manifest leaves it empty, and the session records have no field
+   that means a turn is running (the `busy` role is empty, ADR 0004), so
+   on 6.x busy detection still relies on the app's own quit veto (with
+   the late-quit watch). The `active_org` pattern was taken from observed
+   lines (ADR 0004); release checklist step 5 confirms it with an account
+   in two organizations.
 2. Whether plugin skills expand `${CLAUDE_SESSION_ID}`. The skill quotes it
    and an empty value means no reopen and no turn wait; the job then relies
    on the busy wait and the veto.

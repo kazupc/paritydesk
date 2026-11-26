@@ -26,7 +26,7 @@ const (
 // testSig holds invented, manifest-style patterns.
 var testSig = compat.Signals{
 	QuitVetoed:      `\[quit\] refused by interceptor`,
-	TurnStarted:     `\[turn\] begin id=(?P<session>[^ ]+)`,
+	TurnStarted:     `\[turn\] begin id={session}`,
 	TurnEnded:       `\[turn\] done id={session}`,
 	AppStarted:      `\[boot\] ready v=[0-9.]+`,
 	FocusedSession:  `\[focus\] id={session}`,

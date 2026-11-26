@@ -44,6 +44,7 @@ var hiddenFlags = map[string]bool{
 	"plugin-version":            true,
 	orchestrator.FlagFromRunner: true,
 	orchestrator.FlagLogOffset:  true,
+	orchestrator.FlagLogInode:   true,
 	orchestrator.FlagAfterRun:   true,
 }
 
@@ -293,6 +294,16 @@ func categoryFlags(fs *flag.FlagSet) {
 	fs.String(orchestrator.FlagSkip, "", "categories to leave alone, comma-separated")
 }
 
+// planFlags registers the plan flags.
+func planFlags(fs *flag.FlagSet) {
+	categoryFlags(fs)
+	fs.String(flagInvokingSession, "", "the Claude Code session running this command, left out of the busy list")
+}
+
+// flagInvokingSession names the Claude Code session that runs plan (set
+// by the plugin's skill).
+const flagInvokingSession = "invoking-session"
+
 func leaf(name, args, short string, min, max int, flags func(*flag.FlagSet), run func(context.Context, *env, *flag.FlagSet, []string) error) *command {
 	return &command{name: name, args: args, short: short, minArgs: min, maxArgs: max, flags: flags, run: run}
 }
@@ -318,6 +329,7 @@ func switchFlags(fs *flag.FlagSet) {
 	fs.String(orchestrator.FlagConfirmedPlan, "", "hash of the plan you confirmed (printed by paritydesk plan --json)")
 	fs.Bool(orchestrator.FlagConfirmFirstSync, false, "confirm the first-sync union that the confirmed plan showed")
 	fs.Int64(orchestrator.FlagLogOffset, -1, "internal: main.log offset recorded before the hand-off")
+	fs.Uint64(orchestrator.FlagLogInode, 0, "internal: inode of the main.log the offset belongs to")
 	fs.Bool(orchestrator.FlagFromRunner, false, "internal: this process is the detached job")
 }
 
@@ -351,7 +363,7 @@ func root() *command {
 		leaf("status", "", "Show the active profile and anything pending", 0, 0, func(fs *flag.FlagSet) {
 			fs.Bool("short", false, "one line; never opens Local Storage")
 		}, runStatus),
-		leaf("plan", "[<alias>|-]", "Preview what a switch would change (approximate)", 0, 1, categoryFlags, runPlan),
+		leaf("plan", "[<alias>|-]", "Preview what a switch would change (approximate)", 0, 1, planFlags, runPlan),
 		leaf("switch", "[<alias>|-]", "Switch to another profile", 0, 1, switchFlags, runSwitch),
 		leaf("sync", "", "Re-apply the shared state to the active profile", 0, 0, func(fs *flag.FlagSet) {
 			yesFlag(fs)

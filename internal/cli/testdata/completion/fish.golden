@@ -26,7 +26,7 @@ function __paritydesk_value_flags
         case 'log'
             printf '%s\n' --run
         case 'plan'
-            printf '%s\n' --only --skip
+            printf '%s\n' --invoking-session --only --skip
         case 'switch'
             printf '%s\n' --allow-deletions --confirmed-plan --only --reopen-session --skip
         case 'sync'
@@ -128,6 +128,7 @@ complete -c paritydesk -n '__paritydesk_at \'init\'' -l label -x -d 'display lab
 complete -c paritydesk -n '__paritydesk_at \'init\'' -l managed -d 'the account is managed by an employer or client'
 complete -c paritydesk -n '__paritydesk_at \'init\'' -l unmanaged -d 'the account is not managed by an employer or client'
 complete -c paritydesk -n '__paritydesk_at \'log\'' -l run -x -d 'run id (default: the last run)'
+complete -c paritydesk -n '__paritydesk_at \'plan\'' -l invoking-session -x -d 'the Claude Code session running this command, left out of the busy list'
 complete -c paritydesk -n '__paritydesk_at \'plan\'' -l only -x -a '(__paritydesk_categories)' -d 'categories to carry, comma-separated: sessions,environments,order,sidebar,pins,prefs,worktrees,scratch,window,mcp'
 complete -c paritydesk -n '__paritydesk_at \'plan\'' -l skip -x -a '(__paritydesk_categories)' -d 'categories to leave alone, comma-separated'
 complete -c paritydesk -n '__paritydesk_at \'profile add\'' -l managed -d 'the account is managed by an employer or client'

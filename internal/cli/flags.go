@@ -25,6 +25,7 @@ func getBool(fs *flag.FlagSet, name string) bool     { return value(fs, name).(b
 func getString(fs *flag.FlagSet, name string) string { return value(fs, name).(string) }
 func getInt(fs *flag.FlagSet, name string) int       { return value(fs, name).(int) }
 func getInt64(fs *flag.FlagSet, name string) int64   { return value(fs, name).(int64) }
+func getUint64(fs *flag.FlagSet, name string) uint64 { return value(fs, name).(uint64) }
 
 // categoryNames lists the --only and --skip category names.
 func categoryNames() []string {
@@ -125,6 +126,7 @@ func switchOptions(fs *flag.FlagSet, args []string) (orchestrator.SwitchOptions,
 		AllowDeletions:     getInt(fs, orchestrator.FlagAllowDeletions),
 		AcceptWorktreeRisk: getBool(fs, orchestrator.FlagAcceptWorktreeRisk),
 		LogOffset:          getInt64(fs, orchestrator.FlagLogOffset),
+		LogInode:           getUint64(fs, orchestrator.FlagLogInode),
 		ConfirmedPlan:      getString(fs, orchestrator.FlagConfirmedPlan),
 		ConfirmFirstSync:   getBool(fs, orchestrator.FlagConfirmFirstSync),
 	}

@@ -21,7 +21,7 @@ _paritydesk_flags() {
     ('doctor') reply=('--bundle:write a redacted support archive (tar.gz) to this new file' '--bundle-logs:newest run logs to put in the archive' '--grant-automation:ask macOS for Automation permission now') ;;
     ('init') reply=('--alias:alias for the account in Claude now (asked when missing)' '--label:display label for the profile' '--managed:the account is managed by an employer or client' '--unmanaged:the account is not managed by an employer or client') ;;
     ('log') reply=('--run:run id (default: the last run)') ;;
-    ('plan') reply=('--only:categories to carry, comma-separated: sessions,environments,order,sidebar,pins,prefs,worktrees,scratch,window,mcp' '--skip:categories to leave alone, comma-separated') ;;
+    ('plan') reply=('--invoking-session:the Claude Code session running this command, left out of the busy list' '--only:categories to carry, comma-separated: sessions,environments,order,sidebar,pins,prefs,worktrees,scratch,window,mcp' '--skip:categories to leave alone, comma-separated') ;;
     ('profile add') reply=('--managed:the account is managed by an employer or client' '--unmanaged:the account is not managed by an employer or client') ;;
     ('profile adopt') reply=('--managed:the account is managed by an employer or client' '--unmanaged:the account is not managed by an employer or client') ;;
     ('recover') reply=('--rollback:undo the interrupted run instead of completing it' '--yes:do not ask') ;;
@@ -40,7 +40,7 @@ _paritydesk_value_flags() {
     ('doctor') reply=(--bundle --bundle-logs) ;;
     ('init') reply=(--alias --label) ;;
     ('log') reply=(--run) ;;
-    ('plan') reply=(--only --skip) ;;
+    ('plan') reply=(--invoking-session --only --skip) ;;
     ('switch') reply=(--allow-deletions --confirmed-plan --only --reopen-session --skip) ;;
     ('sync') reply=(--allow-deletions) ;;
     (*) reply=() ;;

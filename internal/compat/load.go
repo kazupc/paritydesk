@@ -326,21 +326,160 @@ func relativeClean(p string) bool {
 // patterns.
 const sampleSession = "local_00000000-0000-4000-8000-000000000000"
 
+// minSignalLiteral is the shortest fixed text a signal pattern must
+// contain; it lets the log reader skip lines quickly.
+const minSignalLiteral = 8
+
+var (
+	idleReasonRE = regexp.MustCompile(`^[a-z_]{1,32}$`)
+	holdPrefRE   = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]{0,63}$`)
+)
+
+// sessionRule says how often {session} may or must appear in a pattern.
+type sessionRule int
+
+const (
+	sessionAny      sessionRule = iota // no rule
+	sessionAtMost1                     // at most once
+	sessionExactly1                    // exactly once
+	sessionNone                        // never
+)
+
+// checkSignal checks one signal pattern (rules 1 to 4 of the signal
+// validation) and returns it compiled with {session} replaced by the
+// sample id. Errors name the key, never the pattern text.
+func checkSignal(key, p string, rule sessionRule) (*regexp.Regexp, error) {
+	n := strings.Count(p, SessionPlaceholder)
+	switch {
+	case rule == sessionExactly1 && n == 0:
+		return nil, fmt.Errorf("signals.%s: must name a session ({session})", key)
+	case (rule == sessionAtMost1 || rule == sessionExactly1) && n > 1:
+		return nil, fmt.Errorf("signals.%s: names {session} more than once", key)
+	case rule == sessionNone && n > 0:
+		return nil, fmt.Errorf("signals.%s: must not name a session", key)
+	}
+	re, err := regexp.Compile(strings.ReplaceAll(p, SessionPlaceholder, regexp.QuoteMeta(sampleSession)))
+	if err != nil {
+		return nil, fmt.Errorf("signals.%s: does not compile", key)
+	}
+	for _, bad := range []string{"^", ".*", ".+"} {
+		if strings.HasPrefix(p, bad) {
+			return nil, fmt.Errorf("signals.%s: must start at the message; the loader anchors it", key)
+		}
+	}
+	if len(RequiredLiteral(p)) < minSignalLiteral {
+		return nil, fmt.Errorf("signals.%s: needs a fixed text of at least %d characters", key, minSignalLiteral)
+	}
+	return re, nil
+}
+
+// validate checks every signal pattern. NativeMultiAccount is deprecated
+// and never checked.
 func (s Signals) validate() error {
-	for name, p := range map[string]string{
-		"quit_vetoed": s.QuitVetoed, "turn_started": s.TurnStarted, "turn_ended": s.TurnEnded,
-		"app_started": s.AppStarted, "focused_session": s.FocusedSession, "bridge_connected": s.BridgeConnected,
-		"pairing_disabled": s.PairingDisabled, "unclean_exit": s.UncleanExit, "login_required": s.LoginRequired,
-		"active_org": s.ActiveOrg, "native_multi_account": s.NativeMultiAccount,
-	} {
-		if p == "" {
+	single := []struct {
+		key  string
+		p    string
+		rule sessionRule
+	}{
+		{"quit_vetoed", s.QuitVetoed, sessionAny},
+		{"turn_started", s.TurnStarted, sessionExactly1},
+		{"turn_ended", s.TurnEnded, sessionAtMost1},
+		{"work_held", s.WorkHeld, sessionAny},
+		{"work_released", s.WorkReleased, sessionAny},
+		{"work_uncounted", s.WorkUncounted, sessionExactly1},
+		{"app_started", s.AppStarted, sessionAny},
+		{"focused_session", s.FocusedSession, sessionAtMost1},
+		{"bridge_connected", s.BridgeConnected, sessionAny},
+		{"pairing_disabled", s.PairingDisabled, sessionAny},
+		{"pairing_state", s.PairingState, sessionAny},
+		{"unclean_exit", s.UncleanExit, sessionAny},
+		{"login_required", s.LoginRequired, sessionAny},
+		{"active_org", s.ActiveOrg, sessionAny},
+		{"account_changed", s.AccountChanged, sessionAny},
+	}
+	compiled := map[string]*regexp.Regexp{}
+	for _, c := range single {
+		if c.p == "" {
 			continue
 		}
-		if _, err := regexp.Compile(strings.ReplaceAll(p, "{session}", regexp.QuoteMeta(sampleSession))); err != nil {
-			return fmt.Errorf("signals.%s: %w", name, err)
+		re, err := checkSignal(c.key, c.p, c.rule)
+		if err != nil {
+			return err
+		}
+		compiled[c.key] = re
+	}
+	for i, p := range s.TurnCleared {
+		if p == "" {
+			return fmt.Errorf("signals.turn_cleared[%d]: is empty", i)
+		}
+		if _, err := checkSignal(fmt.Sprintf("turn_cleared[%d]", i), p, sessionExactly1); err != nil {
+			return err
+		}
+	}
+	for i, p := range s.AccountChangedHint {
+		key := fmt.Sprintf("account_changed_hint[%d]", i)
+		if p == "" {
+			return fmt.Errorf("signals.%s: is empty", key)
+		}
+		re, err := checkSignal(key, p, sessionNone)
+		if err != nil {
+			return err
+		}
+		for _, name := range re.SubexpNames() {
+			if name != "" {
+				return fmt.Errorf("signals.%s: must not have named groups", key)
+			}
+		}
+	}
+	if len(s.AccountChangedHint) > 0 && s.ActiveOrg == "" {
+		return errors.New("signals.account_changed_hint: needs active_org")
+	}
+	hasGroup := func(key, group string) error {
+		if re := compiled[key]; re != nil && re.SubexpIndex(group) < 0 {
+			return fmt.Errorf("signals.%s: needs the named group %s", key, group)
+		}
+		return nil
+	}
+	for _, g := range []struct{ key, group string }{
+		{"work_released", "reason"}, {"account_changed", "from"}, {"account_changed", "to"}, {"pairing_state", "state"},
+	} {
+		if err := hasGroup(g.key, g.group); err != nil {
+			return err
+		}
+	}
+	if len(s.WorkIdleReasons) > 0 && s.WorkReleased == "" {
+		return errors.New("signals.work_idle_reasons: needs work_released")
+	}
+	for i, r := range s.WorkIdleReasons {
+		if !idleReasonRE.MatchString(r) {
+			return fmt.Errorf("signals.work_idle_reasons[%d]: must be lower-case letters and underscores", i)
+		}
+	}
+	if s.WorkUncounted != "" && s.WorkHeld == "" {
+		return errors.New("signals.work_uncounted: needs work_held")
+	}
+	if len(s.WorkHoldPrefs) > 0 && s.WorkHeld == "" {
+		return errors.New("signals.work_hold_prefs: needs work_held")
+	}
+	for i, p := range s.WorkHoldPrefs {
+		if !holdPrefRE.MatchString(p) {
+			return fmt.Errorf("signals.work_hold_prefs[%d]: must be a preference name", i)
 		}
 	}
 	return nil
+}
+
+// DeprecatedKeys lists the keys this manifest sets that paritydesk no
+// longer uses (doctor warns about them).
+func (m *Manifest) DeprecatedKeys() []string {
+	if m == nil {
+		return nil
+	}
+	var out []string
+	if m.Signals.NativeMultiAccount != "" {
+		out = append(out, "signals.native_multi_account")
+	}
+	return out
 }
 
 // parseVersion splits a dotted numeric version.

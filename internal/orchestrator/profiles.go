@@ -201,6 +201,7 @@ func (o *Orchestrator) ProfileAdopt(ctx context.Context, alias ids.Alias, folder
 		return err
 	}
 	s.root.Profiles[alias] = newProfileState(alias, f)
+	s.root.LastCommitAt = o.now()
 	return o.commit(s.root)
 }
 

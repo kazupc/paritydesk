@@ -627,6 +627,7 @@ func (rc *recovery) bind(ctx context.Context, folder *profile.Folder, pa *state.
 	rc.root.Previous, rc.root.Active = pa.ParkedFrom, pa.Alias
 	rc.root.PendingAdd = nil
 	rc.root.Run = nil
+	rc.root.LastCommitAt = rc.o.now()
 	if err := rc.o.commit(rc.root); err != nil {
 		return err
 	}

@@ -54,8 +54,8 @@ func NewDarwin(cfg DarwinConfig) (*Platform, error) {
 		return nil, pderr.New(pderr.Internal, "app", "invalid app name")
 	}
 	procs := sysctlProcs{}
-	logPath := filepath.Join(home, "Library", "Logs", defaultAppName, "main.log")
-	if err := fsx.CheckTestPath(logPath); err != nil {
+	logDir := filepath.Join(home, "Library", "Logs", defaultAppName)
+	if err := fsx.CheckTestPath(filepath.Join(logDir, "main.log")); err != nil {
 		return nil, pderr.Wrap(pderr.Internal, "app", err)
 	}
 	return &Platform{
@@ -64,7 +64,7 @@ func NewDarwin(cfg DarwinConfig) (*Platform, error) {
 		Locks:   fcntlLocks{},
 		Bundle:  &plistBundle{run: run, procs: procs, clock: clk, home: home, dirs: dirs, name: name},
 		Control: osaController{run: run},
-		Log:     fileLog{path: logPath},
+		Log:     fileLog{dir: logDir, loc: cfg.Location},
 		Git:     gitPorcelain{run: run},
 		Clock:   clk,
 	}, nil

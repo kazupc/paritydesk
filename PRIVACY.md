@@ -102,6 +102,18 @@ every other entry the compatibility manifest marks as never touched.
   filter such as Git LFS normalizes may therefore count as modified.
 
 <!-- v0.2 anchor: busy -->
+- Claude's rotated logs `main1.log` … `main4.log` next to `main.log`, read
+  the same way (record lines only, matched at the start of the message),
+  to find working sessions and the account changes inside a data folder
+  since the last switch. Account ids found in the log are compared with
+  the accounts paritydesk recorded, shown only masked, and never stored.
+  Session titles of working sessions are shown to you (sanitized) and in
+  `plan --json`; they never go into paritydesk's logs.
+- Two keep-awake preference booleans in a data folder's
+  `claude_desktop_config.json` (`ccKeepAwakeWhileWorking`,
+  `ccKeepAwakeOnBattery`), to know whether Claude's keep-awake hold is a
+  reliable sign of a running turn. Nothing else in that file is read for
+  this.
 
 <!-- v0.2 anchor: fdscan -->
 

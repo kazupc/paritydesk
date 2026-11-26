@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kazupc/paritydesk/internal/app"
 	"github.com/kazupc/paritydesk/internal/compat"
@@ -218,39 +219,40 @@ func TestSignals(t *testing.T) {
 	m := testkit.Manifest(t)
 	sig := m.Signals
 	session := testkit.FakeSession(1)
+	// The app anchors every pattern at the start of the message (the text
+	// after "<timestamp> [<level>] ").
 	compile := func(p string) *regexp.Regexp {
-		return regexp.MustCompile(strings.ReplaceAll(p, "{session}", regexp.QuoteMeta(session)))
+		return regexp.MustCompile("^(?:" + strings.ReplaceAll(p, "{session}", regexp.QuoteMeta(session)) + ")")
 	}
-	lines := map[string]string{
-		sig.QuitVetoed:      "[info] beforeQuit: vetoed by before-quit interceptor",
-		sig.TurnEnded:       "[info] [Stop hook] Query completed for session " + session,
-		sig.FocusedSession:  "[info] setFocusedSession: sessionId=" + session + ", other",
-		sig.BridgeConnected: "[info] Chrome extension connected to bridge",
-		sig.UncleanExit:     "[warn] Previous run did not exit cleanly",
+	messages := map[string][]string{
+		sig.QuitVetoed:      {"beforeQuit: vetoed by before-quit interceptor"},
+		sig.TurnEnded:       {"[Stop hook] Query completed for session " + session},
+		sig.FocusedSession:  {"setFocusedSession: sessionId=" + session + ", other", "[CCD] LocalSessions.setFocusedSession: sessionId=" + session},
+		sig.BridgeConnected: {"Chrome extension connected to bridge", "[claude-in-chrome] Chrome extension connected to bridge"},
+		sig.UncleanExit:     {"Previous run did not exit cleanly", "[updater] Previous run did not exit cleanly; prompt install is switched off"},
 	}
-	for p, line := range lines {
-		if p == "" || !compile(p).MatchString(line) {
-			t.Errorf("pattern %q does not match %q", p, line)
+	for p, msgs := range messages {
+		for _, msg := range msgs {
+			if p == "" || !compile(p).MatchString(msg) {
+				t.Errorf("pattern %q does not match %q", p, msg)
+			}
+			if compile(p).MatchString("text before " + msg) {
+				t.Errorf("pattern %q is not anchored", p)
+			}
 		}
 	}
 	if compile(sig.TurnEnded).MatchString("[Stop hook] Query completed for session " + testkit.FakeSession(2)) {
 		t.Error("turn_ended matches another session")
 	}
-	for name, p := range map[string]string{"turn_started": sig.TurnStarted,
-		"pairing_disabled": sig.PairingDisabled, "login_required": sig.LoginRequired, "native_multi_account": sig.NativeMultiAccount} {
-		if p != "" {
-			t.Errorf("%s must stay empty until observed", name)
-		}
-	}
-	started := regexp.MustCompile(sig.AppStarted)
-	for line, want := range map[string]bool{
-		"[2026-11-22 10:00:00.000] [info] [startup-perf] main window shown 1234 ms after launch": true,
-		"[info] [startup-perf] main window shown 7 ms after launch":                              true,
-		"[info] [startup-perf] main window shown soon ms after launch":                           false,
-		"[info] main window shown 12 ms after launch":                                            false,
+	started := compile(sig.AppStarted)
+	for msg, want := range map[string]bool{
+		"[startup-perf] main window shown 1234 ms after launch": true,
+		"[startup-perf] main window shown 7 ms after launch":    true,
+		"[startup-perf] main window shown soon ms after launch": false,
+		"main window shown 12 ms after launch":                  false,
 	} {
-		if started.MatchString(line) != want {
-			t.Errorf("app_started on %q: want %v", line, want)
+		if started.MatchString(msg) != want {
+			t.Errorf("app_started on %q: want %v", msg, want)
 		}
 	}
 }
@@ -304,7 +306,8 @@ func (nopRunner) Run(context.Context, app.Template, ...string) ([]byte, error) {
 // TestSignalsReadByApp feeds a synthetic main.log in a temporary home to
 // the app package with the embedded manifest's signals: the active org is
 // the last Initialized line's, and busy detection reports the signal as
-// unknown (turn_started is empty), which callers treat as "fall back".
+// unknown on 6.x (turn_started is empty), which callers treat as "fall
+// back".
 func TestSignalsReadByApp(t *testing.T) {
 	m := testkit.Manifest(t)
 	home := t.TempDir()
@@ -328,17 +331,20 @@ func TestSignalsReadByApp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	org, found, err := p.ActiveOrg(context.Background(), m.Signals, ids.AccountID(acct))
+	org, found, err := p.ActiveOrg(context.Background(), m.Signals, ids.AccountID(acct), time.Time{})
 	if err != nil || !found || string(org) != last {
 		t.Fatalf("active org %q found %v err %v", org, found, err)
 	}
-	if _, err := p.BusySessions(context.Background(), 0, m.Signals); !errors.Is(err, app.ErrSignalUnknown) {
+	if _, err := p.BusySessions(context.Background(), m.Signals, app.BusyOptions{}); !errors.Is(err, app.ErrSignalUnknown) {
 		t.Fatalf("busy sessions: %v, want ErrSignalUnknown", err)
+	}
+	if _, err := p.Log.NewBusyTracker(m.Signals); !errors.Is(err, app.ErrSignalUnknown) {
+		t.Fatalf("busy tracker: %v, want ErrSignalUnknown", err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "main.log"), []byte("[info] [CCDScheduledTasks] Initialized { accountId: 'x', orgId: 'y' }\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, found, err := p.ActiveOrg(context.Background(), m.Signals, ids.AccountID(acct)); err != nil || found {
+	if _, found, err := p.ActiveOrg(context.Background(), m.Signals, ids.AccountID(acct), time.Time{}); err != nil || found {
 		t.Fatalf("malformed ids gave found %v err %v", found, err)
 	}
 }
@@ -367,7 +373,7 @@ func TestOverrides(t *testing.T) {
 		{"removes never_touched", strings.Replace(base, `  "Cookies",`+"\n", "", 1), false, nil},
 		{"unknown key", base + "\nsurprise = 1\n", false, nil},
 		{"unknown row key", strings.Replace(base, `row = "tasks"`, "row = \"tasks\"\nbogus = true", 1), false, nil},
-		{"bad signal", strings.Replace(base, `unclean_exit = 'Previous run did not exit cleanly'`, `unclean_exit = '('`, 1), false, nil},
+		{"bad signal", strings.Replace(base, `login_required = ''`, `login_required = '('`, 1), false, nil},
 		{"removes ls_never_touched", strings.Replace(base, `  "dframe-store.backup.*",`+"\n", "", 1), false, nil},
 		{"removes never_until_classified", strings.Replace(base, `  "scratch-workspaces/**",`+"\n", "", 1), false, nil},
 		{"widens synced", strings.Replace(base, `synced = [`, `synced = [

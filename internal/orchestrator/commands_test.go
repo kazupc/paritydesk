@@ -214,7 +214,7 @@ func TestDoctor(t *testing.T) {
 			byID[c.ID] = c
 		}
 	}
-	for _, id := range []string{"state", "version", "probes", "identity", "foreign-tools", "unclassified", "automation", "update", "chrome-bridge", "busy-detection", "managed", "runner"} {
+	for _, id := range []string{"state", "version", "probes", "identity", "foreign-tools", "unclassified", "automation", "update", "chrome-bridge", "busy-detection", "busy-now", "account-change", "chrome-pairing-org", "managed", "runner"} {
 		if _, ok := byID[id]; !ok {
 			t.Errorf("missing check %s", id)
 		}
@@ -239,24 +239,6 @@ func TestDoctor(t *testing.T) {
 	}
 	if e.st.commits != 0 {
 		t.Error("doctor wrote state")
-	}
-}
-
-// TestDoctorBusyDetectionUnavailable: the shipped manifest has no
-// turn_started pattern and no busy field, so doctor says busy detection
-// is unavailable; a manifest with a pattern reports ok.
-func TestDoctorBusyDetectionUnavailable(t *testing.T) {
-	m := testkit.Manifest(t)
-	dr := &doctor{}
-	dr.busyDetection(m)
-	if len(dr.checks) != 1 || dr.checks[0].Status != "warn" || !strings.Contains(dr.checks[0].Detail, "unavailable") {
-		t.Fatalf("shipped manifest: %+v", dr.checks)
-	}
-	m.Signals.TurnStarted = `turn started (?P<session>\S+)`
-	dr = &doctor{}
-	dr.busyDetection(m)
-	if dr.checks[0].Status != "ok" {
-		t.Fatalf("with a pattern: %+v", dr.checks)
 	}
 }
 
@@ -351,6 +333,9 @@ func TestInitAndProfiles(t *testing.T) {
 	}
 	if p := e.cfg.Profiles[len(e.cfg.Profiles)-1]; p.Alias != "b" || !p.ManagedByOrg {
 		t.Errorf("adopted profile %+v is not managed", p)
+	}
+	if !e.st.root(t).LastCommitAt.Equal(e.clk.Now()) {
+		t.Error("profile adopt did not move the last-switch mark")
 	}
 	if err := o.ProfileAdopt(ctx, "x", "Claude-b", false); codeOf(t, err) != pderr.IdentityMismatch {
 		t.Errorf("adopting a registered folder: %v", err)

@@ -3,11 +3,13 @@ package app
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/kazupc/paritydesk/internal/clock"
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/ids"
+	"github.com/kazupc/paritydesk/internal/model"
 )
 
 // Errors.
@@ -130,35 +132,45 @@ type LogEvent string
 
 // Log events (patterns come from the compat manifest's Signals).
 const (
-	EvQuitVetoed      LogEvent = "quit-vetoed"
-	EvTurnEnded       LogEvent = "turn-ended"
-	EvFocusedSession  LogEvent = "focused-session"
-	EvBridgeConnected LogEvent = "bridge-connected"
-	EvPairingDisabled LogEvent = "pairing-disabled"
-	EvUncleanExit     LogEvent = "unclean-exit"
-	EvLoginRequired   LogEvent = "login-required"
-	EvNativeMulti     LogEvent = "native-multi-account"
+	EvQuitVetoed         LogEvent = "quit-vetoed"
+	EvTurnEnded          LogEvent = "turn-ended"
+	EvTurnCleared        LogEvent = "turn-cleared"
+	EvAppStarted         LogEvent = "app-started"
+	EvFocusedSession     LogEvent = "focused-session"
+	EvBridgeConnected    LogEvent = "bridge-connected"
+	EvPairingDisabled    LogEvent = "pairing-disabled"
+	EvPairingEstablished LogEvent = "pairing-established"
+	EvPairingClosed      LogEvent = "pairing-closed"
+	EvUncleanExit        LogEvent = "unclean-exit"
+	EvLoginRequired      LogEvent = "login-required"
 )
 
-// MainLog reads the app's main.log from byte offsets.
+// MainLog reads the app's main.log and its rotated files (main1.log …
+// main4.log). Patterns match the message of record lines only, anchored
+// at its start; lines are never returned or logged verbatim.
 type MainLog interface {
-	// Size returns the current size (the offset to read from later).
+	// Size returns main.log's current size.
 	Size() (int64, error)
-	// Events scans from offset and returns recognized events (with the
-	// session id for session events) and the new offset. Lines are never
-	// returned or logged verbatim.
+	// Cursor returns main.log's inode and size (a position that survives
+	// rotation).
+	Cursor() (LogCursor, error)
+	// Events is EventsAt with LogCursor{Off: from} (v0.1 callers).
 	Events(ctx context.Context, from int64, sig compat.Signals, session ids.SessionID) ([]LogEvent, int64, error)
-	// Busy returns the sessions with a turn start and no later turn end,
-	// scanning from the later of from and the last AppStarted line, and at
-	// most the last 8 MiB. Ids are validated (ids.ParseSession); anything
-	// else is skipped. ErrSignalUnknown when TurnStarted or TurnEnded is
-	// empty.
-	Busy(ctx context.Context, from int64, sig compat.Signals) ([]ids.SessionID, error)
-	// ActiveOrg returns the org named by the last ActiveOrg line (bounded
-	// tail scan), validated as a UUID, when that line names account; found
-	// is false when none was seen or the last line is another account's.
-	// ErrSignalUnknown when the pattern is empty.
-	ActiveOrg(ctx context.Context, sig compat.Signals, account ids.AccountID) (org ids.OrgID, found bool, err error)
+	// EventsAt returns the events recognized after from (with the
+	// session id for session events) and the new cursor.
+	EventsAt(ctx context.Context, from LogCursor, sig compat.Signals, session ids.SessionID) ([]LogEvent, LogCursor, error)
+	// NewBusyTracker follows the log for busy detection; ErrSignalUnknown
+	// when the manifest has no usable busy signals.
+	NewBusyTracker(sig compat.Signals) (*BusyTracker, error)
+	// ActiveOrg returns the org named by the last active_org line of the
+	// window (since the app start when since is set) when that line names
+	// account. ErrSignalUnknown when the pattern is empty.
+	ActiveOrg(ctx context.Context, sig compat.Signals, account ids.AccountID, since time.Time) (ids.OrgID, bool, error)
+	// AccountChanges returns the account_changed lines back to since.
+	AccountChanges(ctx context.Context, sig compat.Signals, since time.Time) ([]AccountChange, bool, error)
+	// LastReplica returns the account and org of the newest active_org
+	// line at or after since, unless an account change follows it.
+	LastReplica(ctx context.Context, sig compat.Signals, since time.Time) (model.Replica, bool, error)
 }
 
 // GitStatus runs a read-only `git -C <dir> status --porcelain`.
@@ -178,6 +190,12 @@ type Platform struct {
 	// Clock drives every poll and timeout (250 ms polls in QuitAndWait,
 	// WaitExited and WaitTurnEnded), so tests use clock.Fake.
 	Clock clock.Clock
+
+	// busy is the BusyTracker of BusySessions, for the signals busyFor
+	// fingerprints.
+	busyMu  sync.Mutex
+	busy    *BusyTracker
+	busyFor string
 }
 
 // DarwinConfig configures the macOS platform.
@@ -193,6 +211,9 @@ type DarwinConfig struct {
 	// means /Applications then Home/Applications (under `go test`, only
 	// Home/Applications).
 	AppDirs []string
+	// Location is the time zone of main.log's local timestamps; nil means
+	// time.Local.
+	Location *time.Location
 }
 
 // QuiescenceInput describes one quiescence check (D15).

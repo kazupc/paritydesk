@@ -18,7 +18,7 @@ _paritydesk_flags() {
         'doctor') echo '--bundle --bundle-logs --grant-automation' ;;
         'init') echo '--alias --label --managed --unmanaged' ;;
         'log') echo '--run' ;;
-        'plan') echo '--only --skip' ;;
+        'plan') echo '--invoking-session --only --skip' ;;
         'profile add') echo '--managed --unmanaged' ;;
         'profile adopt') echo '--managed --unmanaged' ;;
         'recover') echo '--rollback --yes' ;;
@@ -36,7 +36,7 @@ _paritydesk_value_flags() {
         'doctor') echo '--bundle --bundle-logs' ;;
         'init') echo '--alias --label' ;;
         'log') echo '--run' ;;
-        'plan') echo '--only --skip' ;;
+        'plan') echo '--invoking-session --only --skip' ;;
         'switch') echo '--allow-deletions --confirmed-plan --only --reopen-session --skip' ;;
         'sync') echo '--allow-deletions' ;;
     esac

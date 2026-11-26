@@ -187,6 +187,9 @@ func TestProfileAddThenBind(t *testing.T) {
 	if root.PendingAdd != nil || root.Active != "c" || root.Previous != "a" || root.Profiles["c"].Replica.Account != acctC {
 		t.Errorf("after bind: %+v", root)
 	}
+	if !root.LastCommitAt.Equal(e.clk.Now()) {
+		t.Errorf("the binding did not move the last-switch mark: %v", root.LastCommitAt)
+	}
 	if p, ok := e.cfg.Profile("c"); !ok || !p.ManagedByOrg {
 		t.Error("config not updated")
 	}

@@ -116,20 +116,20 @@ func TestRepeatedSwitchConverges(t *testing.T) {
 }
 
 func TestBusyAtP0(t *testing.T) {
-	busy := []ids.SessionID{fakeSession(7)}
+	busy := working(fakeSession(7))
 	t.Run("non-interactive exits 12", func(t *testing.T) {
 		e := newEnv(t)
-		e.app.busySeq = [][]ids.SessionID{busy}
+		e.app.busySeq = []app.BusyReport{busy}
 		_, err := e.orch().Switch(context.Background(), yes("b"))
 		if codeOf(t, err) != pderr.SessionsBusy || e.app.quits != 0 {
 			t.Fatalf("err = %v, quits %d", err, e.app.quits)
 		}
 	})
-	t.Run("interactive asks with sanitized titles", func(t *testing.T) {
+	t.Run("interactive asks with sanitized titles and masked ids", func(t *testing.T) {
 		e := newEnv(t)
 		e.ui.interactive = true
 		e.sess.infos = []sources.SessionInfo{{ID: fakeSession(8), Title: "fix\x1b[31m the\u202e bug\n now", Busy: true}}
-		e.app.busySeq = [][]ids.SessionID{busy}
+		e.app.busySeq = []app.BusyReport{busy}
 		if _, err := e.orch().Switch(context.Background(), SwitchOptions{To: "b", LogOffset: -1}); err != nil {
 			t.Fatal(err)
 		}
@@ -138,7 +138,8 @@ func TestBusyAtP0(t *testing.T) {
 			t.Fatalf("asked = %v", e.ui.asked)
 		}
 		joined := strings.Join(e.ui.lines[i], "|")
-		if strings.ContainsAny(joined, "\x1b\u202e\n") || !strings.Contains(joined, "fix[31m the bug now") || len(e.ui.lines[i]) != 2 {
+		if strings.ContainsAny(joined, "\x1b\u202e\n") || !strings.Contains(joined, "fix[31m the bug now (local_0000…)") ||
+			!strings.Contains(joined, "untitled session (local_0000…), working for 1m") || len(e.ui.lines[i]) != 2 {
 			t.Errorf("lines = %q", e.ui.lines[i])
 		}
 	})
@@ -146,7 +147,7 @@ func TestBusyAtP0(t *testing.T) {
 		e := newEnv(t)
 		e.ui.interactive = true
 		e.ui.answers[ConfirmBusy] = false
-		e.app.busySeq = [][]ids.SessionID{busy}
+		e.app.busySeq = []app.BusyReport{busy}
 		_, err := e.orch().Switch(context.Background(), SwitchOptions{To: "b", LogOffset: -1})
 		if codeOf(t, err) != pderr.Declined || e.app.quits != 0 {
 			t.Fatalf("err = %v", err)
@@ -155,18 +156,69 @@ func TestBusyAtP0(t *testing.T) {
 	t.Run("the invoking session is excluded", func(t *testing.T) {
 		e := newEnv(t)
 		e.sess.cli["cli-1"] = fakeSession(7)
-		e.app.busySeq = [][]ids.SessionID{busy}
+		e.app.busySeq = []app.BusyReport{busy}
 		opts := yes("b")
 		opts.ReopenCLISession = "cli-1"
 		if _, err := e.orch().Switch(context.Background(), opts); err != nil {
 			t.Fatal(err)
 		}
 	})
+	t.Run("a detached job does not exit at P0 and waits at P3", func(t *testing.T) {
+		e := newEnv(t)
+		e.app.busySeq = []app.BusyReport{busy, busy, {}}
+		opts := yes("b")
+		opts.FromRunner = true
+		start := e.clk.Now()
+		res, err := e.orch().Switch(context.Background(), opts)
+		if err != nil || e.app.quits != 1 {
+			t.Fatalf("err = %v, quits %d", err, e.app.quits)
+		}
+		if !slices.ContainsFunc(res.Warnings, func(w string) bool { return strings.Contains(w, "the switch waits up to 1m for them") }) {
+			t.Errorf("warnings %q", res.Warnings)
+		}
+		if e.clk.Now().Sub(start) < busyPoll {
+			t.Error("did not wait at P3")
+		}
+	})
+	t.Run("stale sessions warn and are not asked about", func(t *testing.T) {
+		e := newEnv(t)
+		e.ui.interactive = true
+		e.app.busySeq = []app.BusyReport{{Stale: []app.BusySession{{ID: fakeSession(9), StartedAt: e.clk.Now().Add(-7 * time.Hour)}}}}
+		res, err := e.orch().Switch(context.Background(), SwitchOptions{To: "b", LogOffset: -1})
+		if err != nil || slices.Contains(e.ui.asked, ConfirmBusy) {
+			t.Fatalf("err %v asked %v", err, e.ui.asked)
+		}
+		if !slices.ContainsFunc(res.Warnings, func(w string) bool { return strings.Contains(w, "1 session(s) started a turn more than 6h00m ago") }) {
+			t.Errorf("warnings %q", res.Warnings)
+		}
+	})
+	t.Run("Counted is true for Code records only", func(t *testing.T) {
+		e := newEnv(t)
+		e.sess.infos = []sources.SessionInfo{{ID: fakeSession(1), Title: "one"}}
+		if _, err := e.orch().Switch(context.Background(), yes("b")); err != nil {
+			t.Fatal(err)
+		}
+		c := e.app.lastBusyOpts.Counted
+		if c == nil || !c(fakeSession(1)) || c(fakeSession(5)) {
+			t.Fatal("Counted does not follow the Code records")
+		}
+		if e.app.lastBusyOpts.StaleAfter != 6*time.Hour || e.app.lastBusyOpts.Now.IsZero() {
+			t.Errorf("options %+v", e.app.lastBusyOpts)
+		}
+	})
+	t.Run("a short log window warns", func(t *testing.T) {
+		e := newEnv(t)
+		e.app.busySeq = []app.BusyReport{{Truncated: true}}
+		res, err := e.orch().Switch(context.Background(), yes("b"))
+		if err != nil || !slices.Contains(res.Warnings, txtWarnBusyTruncated) {
+			t.Fatalf("err %v warnings %q", err, res.Warnings)
+		}
+	})
 }
 
 func TestP3BusyWaitTimesOutDetached(t *testing.T) {
 	e := newEnv(t)
-	e.app.busySeq = [][]ids.SessionID{nil, {fakeSession(7)}}
+	e.app.busySeq = []app.BusyReport{{}, working(fakeSession(7))}
 	opts := yes("b")
 	opts.FromRunner = true
 	start := e.clk.Now()
@@ -222,12 +274,12 @@ func TestTurnEndedBeforeP3(t *testing.T) {
 	e.sess.cli["cli-1"] = fakeSession(1)
 	e.app.turnEnds = []int64{150}
 	opts := yes("b")
-	opts.FromRunner, opts.ReopenCLISession, opts.LogOffset = true, "cli-1", 100
+	opts.FromRunner, opts.ReopenCLISession, opts.LogOffset, opts.LogInode = true, "cli-1", 100, 77
 	if _, err := e.orch().Switch(context.Background(), opts); err != nil {
 		t.Fatal(err)
 	}
-	if e.app.turnWaited || !slices.Equal(e.app.turnFrom, []int64{100}) {
-		t.Errorf("waited %v from %v", e.app.turnWaited, e.app.turnFrom)
+	if e.app.turnWaited || !slices.Equal(e.app.turnFrom, []int64{100}) || !slices.Equal(e.app.turnIno, []uint64{77}) {
+		t.Errorf("waited %v from %v ino %v", e.app.turnWaited, e.app.turnFrom, e.app.turnIno)
 	}
 	if !slices.Equal(e.app.opened, []ids.SessionID{fakeSession(1)}) {
 		t.Errorf("reopened %v", e.app.opened)
@@ -258,6 +310,23 @@ func TestStagedUpdate(t *testing.T) {
 			t.Errorf("first intent %v", e.st.log)
 		}
 		e.checkInvariants("update")
+	})
+	t.Run("the busy scan after the relaunch uses the new app start", func(t *testing.T) {
+		e := newEnv(t)
+		oldStart := time.Date(2026, 1, 2, 1, 0, 0, 0, time.UTC)
+		newStart := time.Date(2026, 1, 2, 3, 0, 0, 0, time.UTC)
+		e.app.since, e.app.relaunchSince = oldStart, newStart
+		e.app.staged, e.app.updRelaunch = true, true
+		if _, err := e.orch().Switch(context.Background(), yes("b")); err != nil {
+			t.Fatal(err)
+		}
+		n := len(e.app.busySince)
+		if n < 2 || !e.app.busySince[0].Equal(oldStart) || !e.app.busySince[n-1].Equal(newStart) {
+			t.Fatalf("busy scans used %v, want %v first and %v last", e.app.busySince, oldStart, newStart)
+		}
+		if len(e.app.orgSince) == 0 || !e.app.orgSince[0].Equal(oldStart) {
+			t.Fatalf("org read with %v", e.app.orgSince)
+		}
 	})
 	t.Run("a decline after the update quit relaunches S", func(t *testing.T) {
 		e := newEnv(t)
@@ -667,6 +736,10 @@ func parseJobArgs(t *testing.T, args []string) SwitchOptions {
 			o.ConfirmedPlan = strings.TrimPrefix(a, "--"+FlagConfirmedPlan+"=")
 		case strings.HasPrefix(a, "--"+FlagLogOffset+"="):
 			if _, err := fmt.Sscan(strings.TrimPrefix(a, "--"+FlagLogOffset+"="), &o.LogOffset); err != nil {
+				t.Fatal(err)
+			}
+		case strings.HasPrefix(a, "--"+FlagLogInode+"="):
+			if _, err := fmt.Sscan(strings.TrimPrefix(a, "--"+FlagLogInode+"="), &o.LogInode); err != nil {
 				t.Fatal(err)
 			}
 		}

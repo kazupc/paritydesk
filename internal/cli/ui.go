@@ -139,6 +139,7 @@ func questionFor(k orchestrator.ConfirmKind) string {
 		orchestrator.ConfirmNewDestructive: i18n.AskNewDestructive,
 		orchestrator.ConfirmBaseInvalid:    i18n.AskBaseInvalid,
 		orchestrator.ConfirmBusy:           i18n.AskBusy,
+		orchestrator.ConfirmBusyStill:      i18n.AskBusyStill,
 		orchestrator.ConfirmOutsideSwitch:  i18n.AskOutsideSwitch,
 		orchestrator.ConfirmRecover:        i18n.AskRecover,
 		orchestrator.ConfirmRollback:       i18n.AskRollback,

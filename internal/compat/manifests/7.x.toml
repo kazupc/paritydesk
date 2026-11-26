@@ -614,30 +614,99 @@ epitaxyPrefs = "internal_state"
 
 # ---------------------------------------------------------------- main.log signals
 #
-# Go regexps over main.log lines, only from text observed on a tested Mac
-# (ADR 0003, ADR 0004). {session} is replaced by the quoted, validated
-# local session id. Empty means not observed: callers fall back. No line
-# names a session when a turn starts, so turn_started stays empty. No
-# record field means a turn is running either (the sessions busy role is
-# empty), so v0.1 cannot list busy sessions: only the app's own quit veto
-# protects them, and doctor reports busy detection as unavailable.
+# Go regexps over main.log. A pattern is tried only on record lines (a
+# line that starts with "<timestamp> [<level>] "), only against the text
+# after that header (the message), and it is anchored at the start of the
+# message: the loader adds the "^". So write each pattern from the first
+# character of the message, and never start one with "^" or ".*".
+# Continuation lines of multi-line messages are never matched: they can
+# hold text Claude does not control (for example a tool's stderr).
+#
+# {session} is replaced by a group that captures a local session id
+# (local_<uuid>), validated with ids.ParseSession, or by the quoted id when
+# one session is asked about. A pattern holds {session} at most once. Each
+# pattern needs a fixed text of at least 8 characters that every match
+# contains (used to skip lines quickly). Empty means not known: callers
+# fall back. "observed" = seen on a tested Mac (ADR 0003, ADR 0004).
+# "from code" = read from the app's code of 7.37095.0 and confirmed by
+# release checklist step 4 before a release lists the version as tested.
+# A code-read pattern that never matches only makes paritydesk fall back.
+#
+# Busy detection: a session is working from its turn_started line until a
+# turn_ended or turn_cleared line for it, within the current run of the
+# app. The keep-awake hold counts Code sessions only; its idle release
+# ends their open turns. Starts older than app.busy_stale_after are shown
+# as stale, not waited for. Claude's own quit veto stays the last guard:
+# it also counts background tasks, loops, shells and permission cards,
+# which no line names.
 
 [signals]
+# observed
 quit_vetoed = 'beforeQuit: vetoed by before-quit interceptor'
-turn_started = ''
+# observed
+turn_started = 'Sending message to session {session}\b'
+# observed (the app's Stop hook)
 turn_ended = '\[Stop hook\] Query completed for session {session}\b'
+# Other ends of a turn, each naming one session. Interrupt and stop lines
+# are observed; the [interruptTurn] (Cowork), query, turn-failed and
+# result lines are from code.
+turn_cleared = [
+  'Interrupting session {session}\b',
+  '\[interruptTurn\] Interrupting session {session}\b',
+  'LocalSessions\.(?:interrupt|stop|stopFamily): sessionId={session}\b',
+  'Stopping session {session}\b',
+  '\[interruptTurn\] Stopping session {session}\b',
+  'Session {session} query (?:error|interrupted|iterator completed)\b',
+  '\[CCD\] {session}: the turn failed\b',
+  'Session {session} stream ended without a result message\b',
+  '\[Result\] Turn (?:succeeded|failed|ended by user interrupt) for session {session}\b',
+]
+# The keep-awake hold counts working Code sessions (none named; Cowork is
+# not counted). Taken: observed. Released and no longer counted: from
+# code; the release reason is a named group.
+work_held = '\[keep-awake\] code session hold taken \('
+work_released = '\[keep-awake\] code session hold released \((?P<reason>[a-z_]+),'
+# Release reasons that mean no turn was counted when the hold ended.
+work_idle_reasons = ["idle", "armed_grace", "agent_grace"]
+# The hold stopped counting this session (no progress for a long time);
+# its turn may still run (for example waiting on a permission card).
+work_uncounted = '\[keep-awake\] session {session} no longer counted \((?:stalled|max)\)'
+# Preferences (claude_desktop_config.json preferences) that must not be
+# false for "no hold" to mean "no turn" (from code; defaults true).
+work_hold_prefs = ["ccKeepAwakeWhileWorking", "ccKeepAwakeOnBattery"]
+# observed
 app_started = '\[startup-perf\] main window shown [0-9]+ ms after launch'
-focused_session = 'setFocusedSession: sessionId={session}\b'
+# observed; 7.37095.0 writes the "[CCD] LocalSessions." part (from code)
+focused_session = '(?:\[CCD\] LocalSessions\.)?setFocusedSession: sessionId={session}\b'
 # Claude in Chrome connects on first use. When the app starts the
 # connection it logs "Paired with Chrome extension"; when the extension
 # joins an open connection it logs "Chrome extension connected to bridge"
 # (both seen with 7.37095.0).
 bridge_connected = '\[claude-in-chrome\] (?:Chrome extension connected to bridge|Paired with Chrome extension\b)'
-pairing_disabled = ''
-unclean_exit = 'Previous run did not exit cleanly'
+# From code: logged when the data folder is not at the usual path, so
+# Claude in Chrome's local pairing is off for that launch.
+pairing_disabled = '\[Chrome Extension MCP\] local pairing disabled for this launch: '
+# From code: the local pairing beside the relay opened or closed.
+pairing_state = '\[Chrome Extension MCP\] local pairing beside the relay: (?P<state>established|closed)\b'
+# observed; 7.37095.0 writes the "[updater] " part (from code)
+unclean_exit = '(?:\[updater\] )?Previous run did not exit cleanly\b'
 login_required = ''
+# observed
 active_org = '\[(?:CCD)?ScheduledTasks\] Initialized \{ accountId: \x27(?P<account>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\x27, orgId: \x27(?P<org>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\x27 \}'
-native_multi_account = ''
+# From code: the account signed in to this data folder changed from the
+# folder's last known account (from) to another one (to). This covers a
+# sign-in with another account and a switch in Claude's own
+# multi-account mode alike. Never counted from account directories.
+account_changed = '\[account\] Login-state transition \(loggedOut: (?:null|true|false) \x{2192} false, uuid: (?P<from>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}) \x{2192} (?P<to>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\), clearing oauth cache'
+# Other lines written when the account changes inside one data folder.
+# They name no account, so they never count as an account change: they
+# only make the active organization from the log unknown until the next
+# active_org line (LastReplica, used by online reconcile and artifact sync).
+# observed (7.37095.0); anchoring confirmed by checklist step 6.
+account_changed_hint = [
+  '\[connector-owner\] account changed\b',
+  'Cannot get base query config: oauth failed \(not_logged_in detail=account changed mid-flow\)',
+]
 
 # ---------------------------------------------------------------- other tools
 #

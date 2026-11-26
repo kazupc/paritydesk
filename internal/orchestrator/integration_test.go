@@ -49,6 +49,9 @@ type stubApp struct {
 	launches int
 	quits    int
 	dirty    map[string]bool // worktree paths git status reports dirty
+	// replica and replicaKnown are what LastReplica returns.
+	replica      model.Replica
+	replicaKnown bool
 }
 
 var _ AppControl = (*stubApp)(nil)
@@ -76,14 +79,23 @@ func (a *stubApp) QuitAndWait(context.Context, string, string, compat.Signals, t
 func (a *stubApp) WaitExited(context.Context, string, time.Duration) (bool, error) {
 	return !a.running, nil
 }
-func (a *stubApp) WaitTurnEnded(context.Context, int64, compat.Signals, ids.SessionID, time.Duration) error {
+func (a *stubApp) WaitTurnEnded(context.Context, app.LogCursor, compat.Signals, ids.SessionID, time.Duration) error {
 	return nil
 }
-func (a *stubApp) BusySessions(context.Context, int64, compat.Signals) ([]ids.SessionID, error) {
-	return nil, nil
+func (a *stubApp) BusySessions(context.Context, compat.Signals, app.BusyOptions) (app.BusyReport, error) {
+	return app.BusyReport{}, nil
 }
+func (a *stubApp) AccountChanges(context.Context, compat.Signals, time.Time) ([]app.AccountChange, bool, error) {
+	return nil, false, app.ErrSignalUnknown
+}
+
+// LastReplica returns the settable replica.
+func (a *stubApp) LastReplica(context.Context, compat.Signals, time.Time) (model.Replica, bool, error) {
+	return a.replica, a.replicaKnown, nil
+}
+func (a *stubApp) LogCursor() (app.LogCursor, error)                                { return app.LogCursor{}, nil }
 func (a *stubApp) WaitUpdateInstalled(context.Context, string, time.Duration) error { return nil }
-func (a *stubApp) ActiveOrg(context.Context, compat.Signals, ids.AccountID) (ids.OrgID, bool, error) {
+func (a *stubApp) ActiveOrg(context.Context, compat.Signals, ids.AccountID, time.Time) (ids.OrgID, bool, error) {
 	return "", false, app.ErrSignalUnknown
 }
 func (a *stubApp) Launch(context.Context, string) error {

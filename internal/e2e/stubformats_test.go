@@ -19,8 +19,9 @@ var (
 	interpRE      = regexp.MustCompile(`\\\(([^)]*)\)`)
 )
 
-// stubLogLines returns the main.log lines the stub can write, read from
-// its source, with fake values for the interpolated parts.
+// stubLogLines returns the messages of the main.log lines the stub can
+// write (the text after "[…] [info] "), read from its source, with fake
+// values for the interpolated parts.
 func stubLogLines(t *testing.T) []string {
 	t.Helper()
 	src, err := os.ReadFile(stubSource)
@@ -41,7 +42,7 @@ func stubLogLines(t *testing.T) []string {
 			}
 			return "x"
 		})
-		lines = append(lines, "[2026-01-01 00:00:00.000] [info] "+line)
+		lines = append(lines, line)
 	}
 	if len(lines) == 0 {
 		t.Fatal("no mainLog calls found in the stub source")
@@ -51,7 +52,8 @@ func stubLogLines(t *testing.T) []string {
 
 // TestStubLogLinesMatchManifest keeps the stub's main.log lines in step
 // with the signals of the 6.x manifest: every signal the stub is meant to
-// produce matches one of its lines.
+// produce matches the message of one of its lines, anchored at the start
+// of the message as the app package matches it.
 func TestStubLogLinesMatchManifest(t *testing.T) {
 	lines := stubLogLines(t)
 	sig := testkit.Manifest(t).Signals
@@ -68,7 +70,7 @@ func TestStubLogLinesMatchManifest(t *testing.T) {
 			t.Logf("%s is empty in the manifest; nothing to match", name)
 			continue
 		}
-		re, err := regexp.Compile(strings.ReplaceAll(pat, "{session}", `local_`+ids.UUIDPattern))
+		re, err := regexp.Compile("^(?:" + strings.ReplaceAll(pat, "{session}", `local_`+ids.UUIDPattern) + ")")
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}

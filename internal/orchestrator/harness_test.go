@@ -437,19 +437,39 @@ type fakeApp struct {
 	badLaunch   int
 	opened      []ids.SessionID
 	notes       []string // notification texts, in order
-	busySeq     [][]ids.SessionID
+	busySeq     []app.BusyReport
 	busyCalls   int
-	logSize     int64
-	turnEnds    []int64
-	turnFrom    []int64
-	turnWaited  bool
-	events      []app.LogEvent
-	intruder    bool
-	holders     bool
-	notQuiet    bool
-	dirty       map[string]bool
-	autoErr     error
-	locateErr   error
+	busyErr     error
+	// lastBusyOpts is the BusyOptions of the last BusySessions call;
+	// busySince lists the Since of every call.
+	lastBusyOpts app.BusyOptions
+	busySince    []time.Time
+	// relaunchSince, when set, is the start time of the app the updater
+	// relaunches (updRelaunch).
+	relaunchSince time.Time
+	// changes feed AccountChanges; changesTrunc is its truncated flag.
+	changes      []app.AccountChange
+	changesTrunc bool
+	changesSince []time.Time
+	// replica and replicaKnown are what LastReplica returns.
+	replica      model.Replica
+	replicaKnown bool
+	logSize      int64
+	logIno       uint64
+	turnEnds     []int64
+	turnFrom     []int64
+	turnIno      []uint64
+	since        time.Time // Started of the app's processes
+	org          ids.OrgID // ActiveOrg's answer ("": signal unknown)
+	orgSince     []time.Time
+	turnWaited   bool
+	events       []app.LogEvent
+	intruder     bool
+	holders      bool
+	notQuiet     bool
+	dirty        map[string]bool
+	autoErr      error
+	locateErr    error
 	// inUse marks folders a process holds open (a write holder).
 	inUse map[string]bool
 }
@@ -463,7 +483,7 @@ func (a *fakeApp) Running(_ context.Context, path string) ([]app.Process, error)
 	if !a.running {
 		return nil, nil
 	}
-	return []app.Process{{PID: 100, Exe: path + "/Contents/MacOS/Claude"}}, nil
+	return []app.Process{{PID: 100, Exe: path + "/Contents/MacOS/Claude", Started: a.since}}, nil
 }
 
 func (a *fakeApp) CheckQuiescence(_ context.Context, in app.QuiescenceInput) (app.QuiescenceReport, error) {
@@ -513,10 +533,11 @@ func (a *fakeApp) WaitExited(context.Context, string, time.Duration) (bool, erro
 	return false, nil
 }
 
-func (a *fakeApp) WaitTurnEnded(_ context.Context, from int64, _ compat.Signals, _ ids.SessionID, _ time.Duration) error {
-	a.turnFrom = append(a.turnFrom, from)
+func (a *fakeApp) WaitTurnEnded(_ context.Context, from app.LogCursor, _ compat.Signals, _ ids.SessionID, _ time.Duration) error {
+	a.turnFrom = append(a.turnFrom, from.Off)
+	a.turnIno = append(a.turnIno, from.Ino)
 	for _, off := range a.turnEnds {
-		if off >= from {
+		if off >= from.Off {
 			return nil
 		}
 	}
@@ -524,12 +545,49 @@ func (a *fakeApp) WaitTurnEnded(_ context.Context, from int64, _ compat.Signals,
 	return errors.New("turn did not end")
 }
 
-func (a *fakeApp) BusySessions(context.Context, int64, compat.Signals) ([]ids.SessionID, error) {
+// working is a busy report listing sessions as working, started at a
+// known time (one minute before the harness clock's start).
+func working(ss ...ids.SessionID) app.BusyReport {
+	var rep app.BusyReport
+	for _, s := range ss {
+		rep.Working = append(rep.Working, app.BusySession{ID: s, StartedAt: time.Date(2026, 1, 2, 3, 3, 5, 0, time.UTC)})
+	}
+	return rep
+}
+
+func (a *fakeApp) BusySessions(_ context.Context, _ compat.Signals, opts app.BusyOptions) (app.BusyReport, error) {
 	a.busyCalls++
+	a.lastBusyOpts = opts
+	a.busySince = append(a.busySince, opts.Since)
+	if a.busyErr != nil {
+		return app.BusyReport{}, a.busyErr
+	}
 	if len(a.busySeq) == 0 {
-		return nil, nil
+		return app.BusyReport{}, nil
 	}
 	return a.busySeq[min(a.busyCalls-1, len(a.busySeq)-1)], nil
+}
+
+func (a *fakeApp) AccountChanges(_ context.Context, _ compat.Signals, since time.Time) ([]app.AccountChange, bool, error) {
+	a.changesSince = append(a.changesSince, since)
+	if a.changes == nil {
+		return nil, false, app.ErrSignalUnknown
+	}
+	var out []app.AccountChange
+	for _, c := range a.changes {
+		if since.IsZero() || c.At.IsZero() || !c.At.Before(since) {
+			out = append(out, c)
+		}
+	}
+	return out, a.changesTrunc, nil
+}
+
+func (a *fakeApp) LastReplica(context.Context, compat.Signals, time.Time) (model.Replica, bool, error) {
+	return a.replica, a.replicaKnown, nil
+}
+
+func (a *fakeApp) LogCursor() (app.LogCursor, error) {
+	return app.LogCursor{Ino: a.logIno, Off: a.logSize}, nil
 }
 
 func (a *fakeApp) WaitUpdateInstalled(context.Context, string, time.Duration) error {
@@ -537,11 +595,18 @@ func (a *fakeApp) WaitUpdateInstalled(context.Context, string, time.Duration) er
 	a.bundle.Version, a.bundle.Build = "6.2", "62"
 	if a.updRelaunch {
 		a.running = true
+		if !a.relaunchSince.IsZero() {
+			a.since = a.relaunchSince
+		}
 	}
 	return nil
 }
 
-func (a *fakeApp) ActiveOrg(context.Context, compat.Signals, ids.AccountID) (ids.OrgID, bool, error) {
+func (a *fakeApp) ActiveOrg(_ context.Context, _ compat.Signals, _ ids.AccountID, since time.Time) (ids.OrgID, bool, error) {
+	a.orgSince = append(a.orgSince, since)
+	if a.org != "" {
+		return a.org, true, nil
+	}
 	return "", false, app.ErrSignalUnknown
 }
 

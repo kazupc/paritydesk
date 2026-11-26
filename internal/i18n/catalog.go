@@ -154,6 +154,13 @@ const (
 	Progress Msg = "progress"
 
 	// v0.2 anchor: busy
+	AskBusyStill       Msg = "ask.busy_still"
+	PlanBusyHeader     Msg = "plan.busy_header"
+	PlanBusyLine       Msg = "plan.busy_line"
+	PlanBusyLineNoTime Msg = "plan.busy_line_no_time"
+	PlanBusyStale      Msg = "plan.busy_stale"
+	PlanBusyTitles     Msg = "plan.busy_titles"
+	PlanBusyTitled     Msg = "plan.busy_titled"
 
 	// v0.2 anchor: fdscan
 
@@ -320,6 +327,13 @@ var catalog = map[Msg]string{
 	Progress: "%s %-4s %s",
 
 	// v0.2 anchor: busy
+	AskBusyStill:       "These sessions still look busy. Quit Claude now anyway? Claude asks before it quits a working session. [y/N] ",
+	PlanBusyHeader:     "Still working (%d): the switch waits up to %s, and Claude asks before it quits a working session",
+	PlanBusyLine:       "%s, working for %s",
+	PlanBusyLineNoTime: "%s, working",
+	PlanBusyStale:      "%d more session(s) look stuck and are not waited for",
+	PlanBusyTitles:     "Working sessions:",
+	PlanBusyTitled:     "%s (%s)",
 
 	// v0.2 anchor: fdscan
 
