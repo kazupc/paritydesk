@@ -1,0 +1,5 @@
+paritydesk: 計画による削除が、設定された上限を超えます。 (PD-E22)
+  sessions の削除 5 件が上限を超えます（上限 3 件、全 8 件中）。
+  現在の状態: 何も変更していません。
+  次の操作: paritydesk plan で確認し、意図どおりなら --allow-deletions=N を付けてください。
+  詳細: docs/if-something-goes-wrong.md#deletion-breaker

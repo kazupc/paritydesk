@@ -3,7 +3,6 @@ package orchestrator
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/kazupc/paritydesk/internal/app"
 	"github.com/kazupc/paritydesk/internal/compat"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/profile"
@@ -34,7 +34,7 @@ type ProfileStatus struct {
 	Account   string    `json:"account_masked,omitempty"`
 	Managed   bool      `json:"managed_by_org"`
 	BaseValid bool      `json:"base_valid"`
-	Problem   string    `json:"problem,omitempty"`
+	Problem   i18n.Text `json:"problem,omitzero"`
 }
 
 // Status is the output of `status`.
@@ -47,7 +47,7 @@ type Status struct {
 	Profiles     []ProfileStatus     `json:"profiles"`
 	LastVerify   *state.VerifyRecord `json:"last_verify,omitempty"`
 	Generations  int                 `json:"generations"`
-	Warnings     []string            `json:"warnings,omitempty"`
+	Warnings     []i18n.Text         `json:"warnings,omitempty"`
 	// AccountChanges and NativeMultiAccount are filled by the full status
 	// only (short status reads no log); nil means not checked.
 	AccountChanges     []AccountChangeView `json:"account_changes,omitempty"`
@@ -82,11 +82,11 @@ func (o *Orchestrator) Status(ctx context.Context, short bool) (*Status, error) 
 	st := &Status{Active: root.Active, Previous: root.Previous, LastVerify: root.LastVerify,
 		Generations: len(root.Generations), NeedsRecover: root.Run != nil}
 	if root.Run != nil {
-		st.Warnings = append(st.Warnings, "a run was interrupted; run paritydesk recover")
+		st.Warnings = append(st.Warnings, i18n.Tx(i18n.WarnRunInterrupted))
 	}
 	if pa := root.PendingAdd; pa != nil {
 		st.NeedsRecover = true
-		st.Warnings = append(st.Warnings, fmt.Sprintf("profile add of %s waits for its sign-in; after signing in, run paritydesk recover", pa.Alias))
+		st.Warnings = append(st.Warnings, i18n.Tx(i18n.WarnPendingAdd, pa.Alias))
 	}
 	names := folderNames(o.d.DataRoot)
 	for _, p := range o.d.Config.Profiles {
@@ -96,7 +96,7 @@ func (o *Orchestrator) Status(ctx context.Context, short bool) (*Status, error) 
 			ps.Folder = ids.DefaultFolder
 		}
 		if !names[ps.Folder] {
-			ps.Problem = "folder missing"
+			ps.Problem = i18n.Tx(i18n.ProfileProblemFolderMissing)
 		}
 		if s := root.Profiles[p.Alias]; s != nil {
 			ps.Account = ids.Mask(string(s.Replica.Account))
@@ -131,12 +131,12 @@ func (o *Orchestrator) statusDetails(ctx context.Context, root *state.Root, st *
 	}
 	folders, err := d.Folders.Scan(ctx)
 	if err != nil {
-		st.Warnings = append(st.Warnings, "the data folders could not be read")
+		st.Warnings = append(st.Warnings, i18n.Tx(i18n.WarnFoldersUnreadable))
 		return
 	}
 	res, err := d.Resolve(d.Config, root, folders, profile.Hints{})
 	if err != nil {
-		st.Warnings = append(st.Warnings, "profiles do not match their folders; run paritydesk doctor")
+		st.Warnings = append(st.Warnings, i18n.Tx(i18n.WarnProfilesMismatch))
 		return
 	}
 	for i := range st.Profiles {
@@ -149,7 +149,7 @@ func (o *Orchestrator) statusDetails(ctx context.Context, root *state.Root, st *
 			st.Profiles[i].Account = ids.Mask(string(b.Folder.Identity.Account))
 		}
 		if !b.BaseValid && b.BaseInvalidWhy != "" {
-			st.Profiles[i].Problem = b.BaseInvalidWhy
+			st.Profiles[i].Problem = i18n.Tx(b.BaseInvalidWhy)
 		}
 	}
 	o.statusAccounts(ctx, root, sig, res, st)
@@ -183,14 +183,19 @@ func hasBases(root *state.Root, a ids.Alias) bool {
 
 // Check is one doctor finding.
 type Check struct {
-	ID     string `json:"id"`
-	Status string `json:"status"` // "ok" | "warn" | "fail"
-	Detail string `json:"detail"`
+	ID     string    `json:"id"`
+	Status string    `json:"status"` // "ok" | "warn" | "fail"
+	Detail i18n.Text `json:"detail"`
 }
 
 // DoctorOptions are the flags of `doctor`.
 type DoctorOptions struct {
 	GrantAutomation bool
+	// Lang is the message language the CLI resolved; LangForced is set
+	// when it is not English but the terminal forces English (human
+	// output only).
+	Lang       i18n.Resolution
+	LangForced bool
 }
 
 // doctor collects checks.
@@ -201,7 +206,7 @@ type doctor struct {
 	busy doctorBusy
 }
 
-func (dr *doctor) add(id, status, detail string) {
+func (dr *doctor) add(id, status string, detail i18n.Text) {
 	dr.checks = append(dr.checks, Check{ID: id, Status: status, Detail: detail})
 }
 
@@ -213,25 +218,25 @@ func (dr *doctor) add(id, status, detail string) {
 func (o *Orchestrator) Doctor(ctx context.Context, opts DoctorOptions) ([]Check, error) {
 	d := o.d
 	dr := &doctor{o: o}
-	// v0.2 anchor: doctor i18n-ja
+	dr.langCheck(opts)
 
 	root, err := d.State.Load()
 	if err != nil || root == nil {
 		root = state.NewRoot(d.DataRoot)
 		if err != nil {
-			dr.add("state", "fail", "root.json is unreadable; run paritydesk recover")
+			dr.add("state", "fail", i18n.Tx(i18n.DoctorStateUnreadable))
 		}
 	}
 	ensureMaps(root)
 	dr.state(root)
 	folders, err := d.Folders.Scan(ctx)
 	if err != nil {
-		dr.add("folders", "fail", "the data folders could not be read")
+		dr.add("folders", "fail", i18n.Tx(i18n.DoctorFoldersUnreadable))
 	}
 	b, berr := d.App.Locate(ctx, d.Config.App.BundleID)
 	var m *compat.Manifest
 	if berr != nil {
-		dr.add("version", "fail", "Claude was not found")
+		dr.add("version", "fail", i18n.Tx(i18n.DoctorVersionNotFound))
 	} else {
 		m = dr.version(ctx, root, b, folders)
 	}
@@ -240,35 +245,29 @@ func (o *Orchestrator) Doctor(ctx context.Context, opts DoctorOptions) ([]Check,
 	if m != nil {
 		dr.unclassified(m)
 		if tools := o.foreignTools(m.Footprints); len(tools) > 0 {
-			dr.add("foreign-tools", "fail", "another account-switching tool was detected: "+strings.Join(tools, ", "))
+			dr.add("foreign-tools", "fail", i18n.Tx(i18n.DoctorForeignToolsFound, strings.Join(tools, ", ")))
 		} else {
-			dr.add("foreign-tools", "ok", "no other account-switching tool")
+			dr.add("foreign-tools", "ok", i18n.Tx(i18n.DoctorForeignToolsNone))
 		}
 	}
 	dr.automation(ctx, opts.GrantAutomation)
 	dr.update(ctx)
-	// v0.2 anchor: doctor fdscan
 	dr.fdscanChecks(ctx)
 
 	if m != nil {
 		dr.bridge(ctx, m.Signals)
 		dr.busyDetection(m)
 	}
-	// v0.2 anchor: doctor busy
 	dr.busyChecks(ctx, root, folders, m)
 
 	dr.managed()
 	dr.runnerJobs()
-	// v0.2 anchor: doctor scratch
 	dr.scratchChecks(ctx, m, root)
 
-	// v0.2 anchor: doctor pins
 	dr.pinsChecks(ctx, m, root)
 
-	// v0.2 anchor: doctor online
 	dr.onlineChecks(root, m)
 
-	// v0.2 anchor: doctor artifacts
 	dr.artifactsChecks(m)
 
 	return dr.checks, nil
@@ -277,11 +276,11 @@ func (o *Orchestrator) Doctor(ctx context.Context, opts DoctorOptions) ([]Check,
 func (dr *doctor) state(root *state.Root) {
 	switch {
 	case root.Run != nil:
-		dr.add("state", "fail", "a run was interrupted; run paritydesk recover")
+		dr.add("state", "fail", i18n.Tx(i18n.DoctorStateInterrupted))
 	case root.PendingAdd != nil:
-		dr.add("state", "warn", "profile add of "+string(root.PendingAdd.Alias)+" waits for its sign-in")
+		dr.add("state", "warn", i18n.Tx(i18n.DoctorStatePendingAdd, root.PendingAdd.Alias))
 	default:
-		dr.add("state", "ok", "no open run")
+		dr.add("state", "ok", i18n.Tx(i18n.DoctorStateOK))
 	}
 }
 
@@ -324,25 +323,53 @@ func (dr *doctor) version(ctx context.Context, root *state.Root, b app.BundleIde
 	case compat.ModeDegraded, compat.ModeFullWarn:
 		status = "warn"
 	}
-	t := "untested"
+	id := i18n.DoctorVersionUntested
 	if tested {
-		t = "tested"
+		id = i18n.DoctorVersionTested
 	}
-	dr.add("version", status, fmt.Sprintf("Claude %s (%s), mode %s", b.Version, t, dec.Mode))
+	dr.add("version", status, i18n.Tx(id, b.Version, dec.Mode))
 	for _, k := range m.DeprecatedKeys() {
-		dr.add("version", "warn", fmt.Sprintf(txtDoctorVersionDeprecatedKey, k))
+		dr.add("version", "warn", i18n.Tx(i18n.DoctorVersionDeprecatedKey, k))
 	}
 	for _, reason := range dec.Reasons {
-		dr.add("mode-reason", status, reason)
+		dr.add("mode-reason", status, modeReasonText(reason))
 	}
 	if len(dec.SkippedRows) > 0 {
 		names := make([]string, len(dec.SkippedRows))
 		for i, r := range dec.SkippedRows {
 			names[i] = string(r)
 		}
-		dr.add("skipped-rows", "warn", "a run would skip: "+strings.Join(names, ", "))
+		dr.add("skipped-rows", "warn", i18n.Tx(i18n.DoctorSkippedRows, strings.Join(names, ", ")))
 	}
 	return m
+}
+
+// modeReasons maps compat.Decide's reasons (English data) to catalog ids.
+var modeReasons = map[string]i18n.Msg{
+	"default folder identity unreadable":              i18n.DoctorModeReasonIdentity,
+	"app version is older than the last one seen":     i18n.DoctorModeReasonDowngraded,
+	"app version not tested":                          i18n.DoctorModeReasonUntested,
+	"some rows skipped":                               i18n.DoctorModeReasonRowsSkipped,
+	"no manifest covers the app version":              i18n.DoctorModeReasonNoManifest,
+	"app version is known bad":                        i18n.DoctorModeReasonKnownBad,
+	"Local Storage uses an unsupported backend":       i18n.DoctorModeReasonSQLite,
+	"Local Storage uses an unknown block compression": i18n.DoctorModeReasonCompression,
+	"the app's own multi-account mode is in use":      i18n.DoctorModeReasonNativeMulti,
+}
+
+// criticalProbePrefix starts the reason of a failed critical probe.
+const criticalProbePrefix = "critical probe failed: "
+
+// modeReasonText returns the catalog text of a mode reason; an unknown
+// reason is shown as it is.
+func modeReasonText(reason string) i18n.Text {
+	if id, ok := modeReasons[reason]; ok {
+		return i18n.Tx(id)
+	}
+	if probe, ok := strings.CutPrefix(reason, criticalProbePrefix); ok {
+		return i18n.Tx(i18n.DoctorModeReasonCriticalProbe, probe)
+	}
+	return i18n.Raw(reason)
 }
 
 // decideInput builds compat.Decide's inputs that come from one folder and
@@ -394,10 +421,10 @@ func (dr *doctor) org(ctx context.Context, root *state.Root, folders []profile.F
 		return false
 	}
 	if res.Active.Replica.Org == "" {
-		dr.add("org", "warn", "the active organization is unknown; per-organization rows are skipped (exit 32)")
+		dr.add("org", "warn", i18n.Tx(i18n.DoctorOrgUnknown))
 		return true
 	}
-	dr.add("org", "ok", "active organization "+ids.Mask(string(res.Active.Replica.Org)))
+	dr.add("org", "ok", i18n.Tx(i18n.DoctorOrgActive, ids.Mask(string(res.Active.Replica.Org))))
 	return false
 }
 
@@ -410,12 +437,12 @@ func (dr *doctor) probeFolder(ctx context.Context, m *compat.Manifest, f profile
 	}
 	ls, err := dr.o.lsReader(ctx, f.Path)
 	if err != nil {
-		dr.add("probes", "warn", f.Name+": Local Storage could not be read")
+		dr.add("probes", "warn", i18n.Tx(i18n.DoctorProbesLSUnreadable, f.Name))
 	}
 	defer closeReader(ls)
 	res, err := d.Compat.Probes(ctx, m, compat.ProbeEnv{Folder: f.Path, Replica: rep, LS: ls})
 	if err != nil {
-		dr.add("probes", "fail", f.Name+": probes could not run")
+		dr.add("probes", "fail", i18n.Tx(i18n.DoctorProbesNotRun, f.Name))
 		return nil
 	}
 	failed := 0
@@ -431,9 +458,9 @@ func (dr *doctor) probeFolder(ctx context.Context, m *compat.Manifest, f profile
 				names = append(names, p.ProbeID)
 			}
 		}
-		dr.add("probes", "warn", fmt.Sprintf("%s: %d of %d probes failed: %s", f.Name, failed, len(res), strings.Join(names, ", ")))
+		dr.add("probes", "warn", i18n.Tx(i18n.DoctorProbesFailed, f.Name, failed, len(res), strings.Join(names, ", ")))
 	} else {
-		dr.add("probes", "ok", fmt.Sprintf("%s: %d probes passed", f.Name, len(res)))
+		dr.add("probes", "ok", i18n.Tx(i18n.DoctorProbesPassed, f.Name, len(res)))
 	}
 	return res
 }
@@ -441,14 +468,15 @@ func (dr *doctor) probeFolder(ctx context.Context, m *compat.Manifest, f profile
 func (dr *doctor) identities(root *state.Root, folders []profile.Folder) {
 	for _, f := range folders {
 		if f.Identity == nil {
-			dr.add("identity", "warn", f.Name+": no account recorded")
+			dr.add("identity", "warn", i18n.Tx(i18n.DoctorIdentityNone, f.Name))
 			continue
 		}
 		owner := aliasOf(root, f.Identity.Account)
 		if owner == "" {
-			owner = "unregistered"
+			dr.add("identity", "ok", i18n.Tx(i18n.DoctorIdentityUnregistered, f.Name, ids.Mask(string(f.Identity.Account))))
+			continue
 		}
-		dr.add("identity", "ok", fmt.Sprintf("%s: account %s (%s)", f.Name, ids.Mask(string(f.Identity.Account)), owner))
+		dr.add("identity", "ok", i18n.Tx(i18n.DoctorIdentityOK, f.Name, ids.Mask(string(f.Identity.Account)), owner))
 	}
 }
 
@@ -461,11 +489,11 @@ func (dr *doctor) markers(root *state.Root, folders []profile.Folder) {
 		switch {
 		case owner == "":
 		case f.Marker == nil:
-			dr.add("marker", "warn", f.Name+": no marker; its bases are rebuilt on the next run")
+			dr.add("marker", "warn", i18n.Tx(i18n.DoctorMarkerNone, f.Name))
 		case f.Marker.Alias != owner:
-			dr.add("marker", "warn", f.Name+": the marker names another profile; its bases are invalid")
+			dr.add("marker", "warn", i18n.Tx(i18n.DoctorMarkerOther, f.Name))
 		default:
-			dr.add("marker", "ok", f.Name+": marker matches "+string(owner))
+			dr.add("marker", "ok", i18n.Tx(i18n.DoctorMarkerOK, f.Name, owner))
 		}
 	}
 }
@@ -488,24 +516,23 @@ func (dr *doctor) unclassified(m *compat.Manifest) {
 	}
 	if len(out) > 0 {
 		sort.Strings(out)
-		dr.add("unclassified", "warn", fmt.Sprintf("%d unclassified entries in Claude (never touched; add them to the compat manifest): %s",
-			len(out), strings.Join(out, ", ")))
+		dr.add("unclassified", "warn", i18n.Tx(i18n.DoctorUnclassifiedSome, len(out), strings.Join(out, ", ")))
 		return
 	}
-	dr.add("unclassified", "ok", "every entry in Claude is classified")
+	dr.add("unclassified", "ok", i18n.Tx(i18n.DoctorUnclassifiedNone))
 }
 
 func (dr *doctor) automation(ctx context.Context, grant bool) {
 	d := dr.o.d
 	if !grant {
-		dr.add("automation", "ok", "not checked; paritydesk doctor --grant-automation asks macOS for the permission")
+		dr.add("automation", "ok", i18n.Tx(i18n.DoctorAutomationNotChecked))
 		return
 	}
 	if err := d.App.ProbeAutomation(ctx, d.Config.App.BundleID); err != nil {
-		dr.add("automation", "fail", "Automation permission for Claude is missing; allow it in System Settings > Privacy & Security > Automation")
+		dr.add("automation", "fail", i18n.Tx(i18n.DoctorAutomationMissing))
 		return
 	}
-	dr.add("automation", "ok", "Automation permission for Claude is granted")
+	dr.add("automation", "ok", i18n.Tx(i18n.DoctorAutomationGranted))
 }
 
 func (dr *doctor) update(ctx context.Context) {
@@ -513,11 +540,11 @@ func (dr *doctor) update(ctx context.Context) {
 	staged, err := d.App.UpdateStaged(ctx, d.Config.App.BundleID)
 	switch {
 	case err != nil:
-		dr.add("update", "warn", "could not check for a staged update")
+		dr.add("update", "warn", i18n.Tx(i18n.DoctorUpdateUnreadable))
 	case staged:
-		dr.add("update", "warn", "a Claude update is staged; the next switch lets it install, then re-checks the new version")
+		dr.add("update", "warn", i18n.Tx(i18n.DoctorUpdateStaged))
 	default:
-		dr.add("update", "ok", "no staged update")
+		dr.add("update", "ok", i18n.Tx(i18n.DoctorUpdateNone))
 	}
 }
 
@@ -532,22 +559,21 @@ func (dr *doctor) bridge(ctx context.Context, sig compat.Signals) {
 	}
 	evs, _, err := d.App.LogEvents(ctx, from, sig, "")
 	if err != nil {
-		dr.add("chrome-bridge", "warn", "the Claude log could not be read")
+		dr.add("chrome-bridge", "warn", i18n.Tx(i18n.DoctorChromeBridgeUnreadable))
 		return
 	}
 	if sinceLastStart(evs, app.EvPairingDisabled) {
-		dr.add("chrome-bridge", "warn", txtDoctorChromeBridgePairingDisabled)
+		dr.add("chrome-bridge", "warn", i18n.Tx(i18n.DoctorChromeBridgePairingDisabled))
 	}
 	for _, e := range evs {
 		if e == app.EvBridgeConnected {
-			dr.add("chrome-bridge", "ok", "the recent Claude log shows a Claude in Chrome connection")
+			dr.add("chrome-bridge", "ok", i18n.Tx(i18n.DoctorChromeBridgeConnected))
 			return
 		}
 	}
 	// Claude in Chrome connects on first use, not at launch: a log with no
 	// connection line only means it was not used since the log's start.
-	dr.add("chrome-bridge", "ok", "Claude in Chrome was not used in the recent Claude log; it connects on first use. "+
-		"The extension follows the Chrome profile's sign-in, not the Claude folder: use one Chrome profile per account")
+	dr.add("chrome-bridge", "ok", i18n.Tx(i18n.DoctorChromeBridgeNotUsed))
 }
 
 func (dr *doctor) managed() {
@@ -558,10 +584,10 @@ func (dr *doctor) managed() {
 		}
 	}
 	if len(unmanaged) == 0 {
-		dr.add("managed", "ok", "every profile is marked managed_by_org")
+		dr.add("managed", "ok", i18n.Tx(i18n.DoctorManagedAll))
 		return
 	}
-	dr.add("managed", "ok", "if an account of "+strings.Join(unmanaged, ", ")+" belongs to an organization, set managed_by_org = true for it")
+	dr.add("managed", "ok", i18n.Tx(i18n.DoctorManagedHint, strings.Join(unmanaged, ", ")))
 }
 
 // runnerJobs reports runner plists without a result file that are older
@@ -570,7 +596,7 @@ func (dr *doctor) runnerJobs() {
 	dir := dr.o.d.Paths.RunDir
 	entries, err := os.ReadDir(dir)
 	if err != nil || dir == "" {
-		dr.add("runner", "ok", "no detached jobs")
+		dr.add("runner", "ok", i18n.Tx(i18n.DoctorRunnerNone))
 		return
 	}
 	results := map[string]bool{}
@@ -591,10 +617,10 @@ func (dr *doctor) runnerJobs() {
 		}
 	}
 	if stale > 0 {
-		dr.add("runner", "warn", fmt.Sprintf("%d detached job(s) never finished; they are removed on the next detached switch", stale))
+		dr.add("runner", "warn", i18n.Tx(i18n.DoctorRunnerStale, stale))
 		return
 	}
-	dr.add("runner", "ok", "no stale detached jobs")
+	dr.add("runner", "ok", i18n.Tx(i18n.DoctorRunnerNoStale))
 }
 
 // foreignTools matches the data root's entries (other than registered

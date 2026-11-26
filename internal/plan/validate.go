@@ -3,7 +3,6 @@ package plan
 import (
 	"bytes"
 	"encoding/hex"
-	"fmt"
 	"math"
 	"path"
 	"regexp"
@@ -11,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/kazupc/paritydesk/internal/denylist"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/localstorage"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -39,7 +39,7 @@ var tempNamePatterns = []string{
 // invalid returns an Internal validation error. msg names ops by index,
 // kind, row, path or key only; never content.
 func invalid(format string, args ...any) *pderr.Error {
-	return pderr.New(pderr.Internal, validateOp, fmt.Sprintf(format, args...))
+	return pderr.Bugf(validateOp, format, args...)
 }
 
 // Validate runs every check of phase P5: the denylist (manifest lists plus
@@ -342,11 +342,9 @@ func checkBreaker(in ValidateInput) error {
 		limit := max(minDel, int(math.Ceil(frac*float64(before))))
 		switch {
 		case deleted > limit:
-			return pderr.New(pderr.DeletionBreaker, validateOp,
-				fmt.Sprintf("%d deletions in %s exceed the limit (%d of %d items)", deleted, cat, limit, before))
+			return pderr.NewT(pderr.DeletionBreaker, validateOp, i18n.ErrValidateBreaker, deleted, cat, limit, before)
 		case before > 0 && before-deleted+additions[cat] <= 0:
-			return pderr.New(pderr.DeletionBreaker, validateOp,
-				fmt.Sprintf("%d deletions would leave %s empty (%d items before)", deleted, cat, before))
+			return pderr.NewT(pderr.DeletionBreaker, validateOp, i18n.ErrValidateBreakerEmpty, deleted, cat, before)
 		}
 	}
 	return nil
@@ -384,8 +382,7 @@ func checkWorktrees(in ValidateInput) error {
 		}
 	}
 	if n > 0 {
-		return pderr.New(pderr.WorktreeRisk, validateOp,
-			fmt.Sprintf("%d worktrees with uncommitted changes would lose their registration", n))
+		return pderr.NewT(pderr.WorktreeRisk, validateOp, i18n.ErrValidateWorktreeRisk, n)
 	}
 	return nil
 }

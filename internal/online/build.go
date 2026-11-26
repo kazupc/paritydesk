@@ -207,7 +207,7 @@ func Build(in BuildInput, ps []Provider) Draft {
 		steps, warns, err := p.Build(in)
 		d.Warnings = append(d.Warnings, warns...)
 		if err != nil {
-			d.Warnings = append(d.Warnings, Warning{Msg: string(i18n.OnlineWarnBuildFailed), Text: i18n.T(i18n.OnlineWarnBuildFailed)})
+			d.Warnings = append(d.Warnings, Warning{Msg: string(i18n.OnlineWarnBuildFailed), Text: i18n.Tx(i18n.OnlineWarnBuildFailed)})
 			continue
 		}
 		built = append(built, renumber(steps, counters)...)
@@ -217,7 +217,7 @@ func Build(in BuildInput, ps []Provider) Draft {
 	}
 	ps0, _, err := probe.Build(in)
 	if err != nil || len(ps0) != 1 {
-		d.Warnings = append(d.Warnings, Warning{Msg: string(i18n.OnlineWarnBuildFailed), Text: i18n.T(i18n.OnlineWarnBuildFailed)})
+		d.Warnings = append(d.Warnings, Warning{Msg: string(i18n.OnlineWarnBuildFailed), Text: i18n.Tx(i18n.OnlineWarnBuildFailed)})
 		return Draft{Warnings: d.Warnings}
 	}
 	steps := append(ps0, built...)
@@ -241,7 +241,7 @@ func Build(in BuildInput, ps []Provider) Draft {
 	}
 	q := &Queue{V: 1, ID: "draft", Phase: in.Phase, Steps: steps}
 	if err := q.Validate(Policies(ps), in.Spec.AlwaysDeny); err != nil {
-		d.Warnings = append(d.Warnings, Warning{Msg: string(i18n.OnlineWarnBuildFailed), Text: i18n.T(i18n.OnlineWarnBuildFailed)})
+		d.Warnings = append(d.Warnings, Warning{Msg: string(i18n.OnlineWarnBuildFailed), Text: i18n.Tx(i18n.OnlineWarnBuildFailed)})
 		return Draft{Warnings: d.Warnings}
 	}
 	d.Steps = steps

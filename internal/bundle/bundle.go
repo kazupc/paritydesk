@@ -288,6 +288,13 @@ func unclassifiedCount(detail string) string {
 	return fmt.Sprintf("%d unclassified entries in Claude (names left out of the bundle)", n)
 }
 
+// The support archive is read by maintainers and stays English
+// (spec-i18n-ja 4).
+const (
+	problemConfig    = "the config file could not be read or parsed; its content is not included"
+	problemManifests = "the compatibility manifests could not be loaded"
+)
+
 type configDoc struct {
 	Exists  bool           `json:"exists"`
 	Problem string         `json:"problem,omitempty"`
@@ -298,7 +305,7 @@ func (s *scrubber) configDoc(in Input) configDoc {
 	d := configDoc{Exists: in.ConfigExists}
 	switch {
 	case in.ConfigProblem:
-		d.Problem = "the config file could not be read or parsed; its content is not included"
+		d.Problem = problemConfig
 	case in.Config != nil:
 		d.Config = s.config(in.Config)
 	}
@@ -320,7 +327,7 @@ var (
 func (s *scrubber) manifests(in Input) manifestsDoc {
 	d := manifestsDoc{Manifests: []Manifest{}, Overrides: []Override{}}
 	if in.ManifestProblem {
-		d.Problem = "the compatibility manifests could not be loaded"
+		d.Problem = problemManifests
 	}
 	for _, m := range in.Manifests {
 		d.Manifests = append(d.Manifests, Manifest{

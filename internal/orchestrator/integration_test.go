@@ -17,6 +17,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/config"
 	"github.com/kazupc/paritydesk/internal/fsx"
 	"github.com/kazupc/paritydesk/internal/gen"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -404,7 +405,7 @@ func TestIntegrationRepeatedSwitchesKeepBases(t *testing.T) {
 		if err != nil {
 			t.Fatalf("switch %d to %s: %v", i+1, to, err)
 		}
-		for _, warn := range res.Warnings {
+		for _, warn := range i18n.Strings(i18n.English, (res.Warnings)) {
 			if strings.Contains(warn, "does not read back") {
 				t.Errorf("switch %d to %s: %s", i+1, to, warn)
 			}

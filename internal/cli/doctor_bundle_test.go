@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/orchestrator"
 )
 
@@ -85,8 +86,8 @@ exclude = ["~/clients/plantedclient/**", "local_` + uuid + `"]
 		t.Fatal(err)
 	}
 	h.svc.doctorChecks = []orchestrator.Check{
-		{ID: "identity", Status: "ok", Detail: "Claude-plantedfolder: account " + uuid + " (plantedhome)"},
-		{ID: "probes", Status: "warn", Detail: h.home + "/Library/Application Support/Claude: 1 of 9 probes failed"},
+		{ID: "identity", Status: "ok", Detail: i18n.Raw("Claude-plantedfolder: account " + uuid + " (plantedhome)")},
+		{ID: "probes", Status: "warn", Detail: i18n.Raw(h.home + "/Library/Application Support/Claude: 1 of 9 probes failed")},
 	}
 	return []string{"plantedwork", "plantedhome", "Planted Person", "plantedfolder", "plantedclient", "plantedrepo",
 		"Planted Title", uuid, h.home, "/Users/"}

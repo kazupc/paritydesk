@@ -2,9 +2,9 @@ package orchestrator
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/kazupc/paritydesk/internal/compat"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/rows"
@@ -45,7 +45,7 @@ func (o *Orchestrator) sidebarPolicy(ctx context.Context, r model.RowID, ad sour
 			return pderr.Wrap(pderr.Declined, "interrupted", ctx.Err())
 		}
 		ts = sources.TargetState{StoreMissing: true, Seeded: true}
-		o.progress(P2Preview, "warn", fmt.Sprintf("%s: the entering folder's state could not be read; the row is left unchanged", r))
+		o.progress(P2Preview, "warn", i18n.Tx(i18n.ProgressP2EnteringUnreadable, r))
 	}
 	pol.EnteringStoreMissing, pol.EnteringSeeded = ts.StoreMissing, ts.Seeded
 	return nil

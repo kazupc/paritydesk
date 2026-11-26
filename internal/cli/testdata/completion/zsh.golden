@@ -40,7 +40,7 @@ _paritydesk_flags() {
     ('uninstall') reply=('--keep-artifacts:keep the artifact archive (saved pages and their history)' '--keep-backups:keep backup generations' '--keep-state:keep the state directory as well' '--yes:do not ask') ;;
     (*) reply=() ;;
   esac
-  reply+=('--app-support-dir:paritydesk support directory' '--ascii:ASCII only' '--config:config file (also PARITYDESK_CONFIG)' '--json:print one JSON document' '--no-color:no colour (also NO_COLOR, TERM=dumb)' '--plain:plain lines, no tables or spinners' '--read-only:plan only; never write (also PARITYDESK_READONLY=1)' '--state-dir:state directory (also PARITYDESK_STATE_DIR)')
+  reply+=('--app-support-dir:paritydesk support directory' '--ascii:ASCII only' '--config:config file (also PARITYDESK_CONFIG)' '--json:print one JSON document' '--lang:message language: auto, en or ja (also PARITYDESK_LANG)' '--no-color:no colour (also NO_COLOR, TERM=dumb)' '--plain:plain lines, no tables or spinners' '--read-only:plan only; never write (also PARITYDESK_READONLY=1)' '--state-dir:state directory (also PARITYDESK_STATE_DIR)')
 }
 
 _paritydesk_value_flags() {
@@ -58,7 +58,7 @@ _paritydesk_value_flags() {
     ('sync') reply=(--allow-deletions) ;;
     (*) reply=() ;;
   esac
-  reply+=(--app-support-dir --config --state-dir)
+  reply+=(--app-support-dir --config --lang --state-dir)
 }
 
 _paritydesk_args() {
@@ -106,6 +106,7 @@ _paritydesk() {
         (--bundle|--config) _files ;;
         (--app-support-dir|--state-dir) _files -/ ;;
         (--only|--skip) compset -P '*,'; compadd -- sessions environments order sidebar pins prefs worktrees scratch window mcp ;;
+        (--lang) compadd -- auto en ja ;;
       esac
       return
     fi

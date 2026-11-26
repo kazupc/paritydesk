@@ -315,8 +315,8 @@ func (r *run) pinsSummary(pl *planned, s *online.Summary, in online.BuildInput, 
 	if info.Reason != "" {
 		s.PinsSource, s.PinsReason = string(online.PinsNone), string(info.Reason)
 		if !approximate {
-			r.warn(P5Harvest, i18n.T(i18n.OnlineWarnPinsUnreadable, string(info.Side)))
-			r.warn(P5Harvest, i18n.T(i18n.OnlineWarnPinsReason, pinsReasonText(info.Reason)))
+			r.warn(P5Harvest, i18n.Tx(i18n.OnlineWarnPinsUnreadable, string(info.Side)))
+			r.warn(P5Harvest, i18n.Tx(i18n.OnlineWarnPinsReason, pinsReasonText(info.Reason)))
 		}
 		return s
 	}
@@ -326,7 +326,7 @@ func (r *run) pinsSummary(pl *planned, s *online.Summary, in online.BuildInput, 
 	}
 	if !approximate {
 		for _, a := range info.Mirror {
-			r.warn(P5Harvest, i18n.T(i18n.OnlineWarnPinsMirror, string(a)))
+			r.warn(P5Harvest, i18n.Tx(i18n.OnlineWarnPinsMirror, string(a)))
 		}
 	}
 	return s
@@ -334,7 +334,7 @@ func (r *run) pinsSummary(pl *planned, s *online.Summary, in online.BuildInput, 
 
 // pinsReasonText is the fixed text of a reason (never built from error
 // strings).
-func pinsReasonText(r idb.Reason) string {
+func pinsReasonText(r idb.Reason) i18n.Text {
 	m := map[idb.Reason]i18n.Msg{
 		idb.ReasonDirAbsent: i18n.PinsReasonDirAbsent, idb.ReasonKeyAbsent: i18n.PinsReasonKeyAbsent,
 		idb.ReasonAmbiguous: i18n.PinsReasonAmbiguous, idb.ReasonUnsupported: i18n.PinsReasonUnsupported,
@@ -345,9 +345,9 @@ func pinsReasonText(r idb.Reason) string {
 		idb.ReasonStaleStore: i18n.PinsReasonStaleStore,
 	}
 	if id, ok := m[r]; ok {
-		return i18n.T(id)
+		return i18n.Tx(id)
 	}
-	return i18n.T(i18n.PinsReasonOther)
+	return i18n.Tx(i18n.PinsReasonOther)
 }
 
 // clearPinsProbe deletes a profile's freshness probe after a read of its

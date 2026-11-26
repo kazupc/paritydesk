@@ -310,13 +310,13 @@ func planPins(in BuildInput) (*pinsPlan, []Warning) {
 		p.capped = true
 	}
 	if p.blocked > 0 {
-		warns = append(warns, Warning{Msg: string(i18n.OnlineWarnPinsFamilyBlocked), Text: i18n.T(i18n.OnlineWarnPinsFamilyBlocked, p.blocked)})
+		warns = append(warns, Warning{Msg: string(i18n.OnlineWarnPinsFamilyBlocked), Text: i18n.Tx(i18n.OnlineWarnPinsFamilyBlocked, p.blocked)})
 	}
 	if p.hidden > 0 {
-		warns = append(warns, Warning{Msg: string(i18n.OnlineWarnPinsHidden), Text: i18n.T(i18n.OnlineWarnPinsHidden, p.hidden)})
+		warns = append(warns, Warning{Msg: string(i18n.OnlineWarnPinsHidden), Text: i18n.Tx(i18n.OnlineWarnPinsHidden, p.hidden)})
 	}
 	if p.capped {
-		warns = append(warns, Warning{Msg: string(i18n.OnlineWarnPinsCapped), Text: i18n.T(i18n.OnlineWarnPinsCapped, maxSteps)})
+		warns = append(warns, Warning{Msg: string(i18n.OnlineWarnPinsCapped), Text: i18n.Tx(i18n.OnlineWarnPinsCapped, maxSteps)})
 	}
 	return p, warns
 }
@@ -551,27 +551,27 @@ func (pinsProvider) Questions(q *Queue) []Question {
 	if !f.open || q.Decisions[QuestionPins] != "" || questionSkipped(f) {
 		return nil
 	}
-	text := i18n.T(i18n.OnlineQPinsText, string(q.From), f.adds, f.removes, f.cards)
+	text := i18n.Tx(i18n.OnlineQPinsText, string(q.From), f.adds, f.removes, f.cards)
 	if f.union {
-		text += " " + i18n.T(i18n.OnlineQPinsUnion)
+		text = i18n.Tx(i18n.WordSentences, text, i18n.Tx(i18n.OnlineQPinsUnion))
 	}
 	if f.keeps > 0 {
-		text += " " + i18n.T(i18n.OnlineQPinsKeep, f.keeps)
+		text = i18n.Tx(i18n.WordSentences, text, i18n.Tx(i18n.OnlineQPinsKeep, f.keeps))
 	}
 	if f.blocked > 0 {
-		text += " " + i18n.T(i18n.OnlineQPinsBlocked, f.blocked)
+		text = i18n.Tx(i18n.WordSentences, text, i18n.Tx(i18n.OnlineQPinsBlocked, f.blocked))
 	}
-	apply := Option{ID: OptionApply, Label: i18n.T(i18n.OnlineQPinsApply), Description: i18n.T(i18n.OnlineQPinsApplyDesc)}
-	skip := Option{ID: OptionSkip, Label: i18n.T(i18n.OnlineQPinsSkip), Description: i18n.T(i18n.OnlineQPinsSkipDesc)}
+	apply := Option{ID: OptionApply, Label: i18n.Tx(i18n.OnlineQPinsApply), Description: i18n.Tx(i18n.OnlineQPinsApplyDesc)}
+	skip := Option{ID: OptionSkip, Label: i18n.Tx(i18n.OnlineQPinsSkip), Description: i18n.Tx(i18n.OnlineQPinsSkipDesc)}
 	opts := []Option{apply, skip}
 	if f.breaker {
 		opts = []Option{
-			{ID: OptionAddOnly, Label: i18n.T(i18n.OnlineQPinsAddOnly), Description: i18n.T(i18n.OnlineQPinsAddOnlyDesc)},
-			{ID: OptionApply, Label: i18n.T(i18n.OnlineQPinsApplyAll), Description: i18n.T(i18n.OnlineQPinsApplyDesc)},
+			{ID: OptionAddOnly, Label: i18n.Tx(i18n.OnlineQPinsAddOnly), Description: i18n.Tx(i18n.OnlineQPinsAddOnlyDesc)},
+			{ID: OptionApply, Label: i18n.Tx(i18n.OnlineQPinsApplyAll), Description: i18n.Tx(i18n.OnlineQPinsApplyDesc)},
 			skip,
 		}
 	}
-	return []Question{{ID: QuestionPins, Header: i18n.T(i18n.OnlineQPinsHeader), Text: text, Options: opts}}
+	return []Question{{ID: QuestionPins, Header: i18n.Tx(i18n.OnlineQPinsHeader), Text: text, Options: opts}}
 }
 
 // questionSkipped: no step shows a card, the breaker did not trip and the

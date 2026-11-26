@@ -175,7 +175,7 @@ func TestSourceUnavailablePrintsNoGenericWarning(t *testing.T) {
 		t.Fatalf("skipped = %v", res.Plan.Skipped)
 	}
 	for _, ev := range e.ui.events {
-		if strings.Contains(ev.Message, reasonSourceUnavailable) {
+		if strings.Contains(ev.Message.English(), reasonSourceUnavailable) {
 			t.Errorf("generic skip warning printed: %+v", ev)
 		}
 	}

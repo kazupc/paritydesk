@@ -14,7 +14,6 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   a version 2 root: do not downgrade paritydesk, and never with an open
   run.
 
-<!-- v0.2 anchor: busy -->
 - Added: busy detection from Claude's log. `plan` lists the sessions
   still working (masked ids and ages; titles only in the `busy` member of
   `--json` and in the human output), a switch asks at P0 and waits for
@@ -50,7 +49,6 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   (turn clears, keep-awake release and uncounted lines, account change,
   pairing lines); release checklist step 4 confirms them.
 
-<!-- v0.2 anchor: fdscan -->
 - Added: a native open-file scan (libproc, no cgo) replaces `lsof` for
   the quiescence check; `lsof` stays as the fallback. New config key
   `app.open_file_scan` (`auto`, `native`, `lsof`) and doctor check
@@ -69,7 +67,6 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   read). It runs only on the CI runners; `paritydesk doctor` shows the
   counts on a Mac.
 
-<!-- v0.2 anchor: sidebar-offline -->
 - Added: collapsed sidebar groups and fork families carry between accounts
   (`sync.collapsed_groups`, on by default), written to Local Storage and
   checked after launch; groups of sessions or projects kept back by
@@ -87,7 +84,6 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   survives launch on 7.x (release checklist SO-1). If it does not, the
   release ships `sync.collapsed_groups = false` and says so here.
 
-<!-- v0.2 anchor: scratch -->
 - Added: scratch workspaces ("Start without a folder" sessions) are
   carried with sessions on Claude 7.x (row `scratch`, ADR 0008). The
   workspace is mirrored at the same path in the entering folder, so the
@@ -105,7 +101,6 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   on the other account (release checklist S-1), and which previews work
   there (S-5, S-6).
 
-<!-- v0.2 anchor: online -->
 - Added: changes that only Claude's own tools can make are queued at the
   switch and applied in the next Code session by the new
   `/paritydesk:reconcile` skill: the sidebar's whole-list and section
@@ -143,7 +138,6 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   whether every launch logs the account and organization (release
   checklist R-ON-1 to R-ON-9). 6.x gets no online steps.
 
-<!-- v0.2 anchor: pins -->
 - Added: row `pins` carries which Code sessions are pinned. paritydesk
   reads the pin list read-only from Claude's IndexedDB (a private per-file
   clone, pure Go, no database open) and, when that cannot be read, from
@@ -171,7 +165,6 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   the hidden-section deferral, a clean read right after Claude quits, and
   the backup list's time stamp (release checklist R-PIN-1 to R-PIN-5).
 
-<!-- v0.2 anchor: artifacts -->
 - Added: artifact sync, **capture only (beta)**: `/paritydesk:artifacts`
   saves the claude.ai artifacts of the account Claude is on into
   paritydesk's archive (`<SupportDir>/artifacts`), newest change winning
@@ -196,7 +189,6 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   the outbox grant and publish path, refusal texts and the account check
   after an in-app account change (release checklist R-AR-1 to R-AR-10).
 
-<!-- v0.2 anchor: legacy-adopt -->
 - Added: hidden `profile adopt --from-legacy` for people coming from an
   earlier folder-swap script; see docs/migration-from-legacy.md. A dry run
   by default; `--apply` registers every `Claude-<Name>` folder (names
@@ -212,8 +204,38 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 - Do not downgrade paritydesk while a `legacy-quarantine` run is open: an
   older binary cannot recover it, and every command that takes the run
   lock exits 41 until a newer binary runs `paritydesk recover`.
-
-<!-- v0.2 anchor: i18n-ja -->
+- Added: Japanese messages. The language is chosen by `--lang`
+  (`auto`, `en`, `ja`), `PARITYDESK_LANG`, `[ui] lang` in the config file,
+  the locale (`LC_ALL`, `LC_MESSAGES`, `LANG`), then `[ui] fallback_lang`
+  (used only where no locale is set). Human output is Japanese only in a
+  UTF-8 terminal; `--ascii`, `TERM=dumb` and a non-UTF-8 locale keep it
+  English (with one warning for an explicit `--lang ja`).
+- Added: the global flag `--lang` and the config keys `[ui] lang` and
+  `[ui] fallback_lang` (both `auto` by default). `init` in a Japanese
+  terminal (or with `PARITYDESK_LANG=ja`) writes `fallback_lang = "ja"`, so
+  the plan summaries the Claude Code plugin shows are Japanese too; it
+  never writes `lang`.
+- Added: `--json` stays English. When the message language is not
+  English, the documents that carry `lines` (`plan`, `switch`, `sync`,
+  `online` and `artifacts` documents) add `"lang"` and `"display_lines"`
+  (the same lines in that language), and `question` objects add
+  `display_header`, `display_text` and, per option, `display_label` and
+  `display_description`. With English, the JSON is byte-identical to
+  before. The plugin's skills show `display_lines` when present.
+- Added: `doctor` reports the message language and where it came from
+  (check `lang`, first in the list).
+- Changed: tables measure East Asian wide characters as two columns, and
+  the `DETAIL` column of `doctor` is never cut.
+- Changed: answers to `[y/N]` typed in full width (for example with a
+  Japanese input method) count as `y`/`yes`.
+- Changed: any v0.2 config write (`init`, `profile add`, `rename`,
+  `remove`, `recover`) adds `[ui]`, and an older v0.1 binary then rejects
+  the config file (its decoding is strict). Do not downgrade paritydesk
+  after running v0.2.
+- Not yet confirmed on a real Mac: whether Code sessions started from the
+  Dock see no `LANG` (the `[ui]` keys cover it either way); the Japanese
+  wording needs a native review before the release (release checklist).
+  Notifications of the detached switch stay English.
 
 ### Added
 
@@ -514,25 +536,25 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 
 ### Deferred to v0.2
 
-- Artifact sync (beta) and `/paritydesk:artifacts`. Spike S5 showed that
-  hooks fire for the tools the app injects, so nothing blocks them now.
-- Pins through the app's own tools: v0.1 carries pin order offline.
-- The in-app write path for sections and group-by, online reconcile, the
-  capture phase, and the PreToolUse and PostToolUse hooks (unblocked by
-  spike S5).
-- Collapsed sidebar groups: device-local and carryable offline (second S1
-  round), not yet built.
-- Seed-only legacy sidebar keys.
-- A native file-descriptor scan; v0.1 uses `lsof` with fixed arguments.
-- `profile adopt --from-legacy` and legacy archive import.
-- Scratch workspaces for worktrees.
-- A native multi-account signal from the app's log; v0.1 relies on the
-  folder's account history.
-- The pinned pairing organization in `doctor`; v0.1 reports the active
-  organization only.
-- Japanese messages and README.
-- Buttons (Switch / Cancel) for the confirmation that `/paritydesk:switch`
-  asks; it asks in plain text for now.
+Every item below landed in v0.2 (see "v0.2 (in progress)" above).
+
+- Done in v0.2: artifact sync (beta) and `/paritydesk:artifacts`. Spike S5
+  showed that hooks fire for the tools the app injects.
+- Done in v0.2: pins through the app's own tools (v0.1 carried pin order
+  offline only).
+- Done in v0.2: the in-app write path for sections and group-by, online
+  reconcile, the capture phase, and the PreToolUse and PostToolUse hooks.
+- Done in v0.2: collapsed sidebar groups, carried offline.
+- Done in v0.2: seed-only legacy sidebar keys.
+- Done in v0.2: a native file-descriptor scan (`lsof` stays the fallback).
+- Done in v0.2: `profile adopt --from-legacy` and legacy archive import.
+- Done in v0.2: scratch workspaces for worktrees.
+- Done in v0.2: a native multi-account signal from the app's log.
+- Done in v0.2: the pairing organization in `doctor`.
+- Done in v0.2: Japanese messages; the Japanese README follows with the
+  README rewrite.
+- Done in v0.2: buttons (Switch / Cancel) for the confirmation that
+  `/paritydesk:switch` asks.
 
 ### Removed
 

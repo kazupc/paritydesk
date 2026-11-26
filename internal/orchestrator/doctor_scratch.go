@@ -47,16 +47,16 @@ type scratchWorkspace struct {
 func (dr *doctor) scratchChecks(ctx context.Context, m *compat.Manifest, root *state.Root) {
 	sc := scratchSpec(m)
 	if sc == nil {
-		dr.add("scratch", "ok", i18n.T(i18n.DoctorScratchUnsupported))
-		dr.add("scratch-orphans", "ok", i18n.T(i18n.DoctorScratchOrphansNA))
+		dr.add("scratch", "ok", i18n.Tx(i18n.DoctorScratchUnsupported))
+		dr.add("scratch-orphans", "ok", i18n.Tx(i18n.DoctorScratchOrphansNA))
 		dr.scratchKept()
 		return
 	}
 	claude := dr.o.claudePath()
 	rootDir := filepath.Join(claude, sc.Root)
 	if fi, err := os.Lstat(rootDir); err == nil && !fi.IsDir() {
-		dr.add("scratch", "warn", i18n.T(i18n.DoctorScratchRootNotDir))
-		dr.add("scratch-orphans", "ok", i18n.T(i18n.DoctorScratchOrphansNA))
+		dr.add("scratch", "warn", i18n.Tx(i18n.DoctorScratchRootNotDir))
+		dr.add("scratch-orphans", "ok", i18n.Tx(i18n.DoctorScratchOrphansNA))
 		dr.scratchKept()
 		return
 	}
@@ -75,13 +75,13 @@ func (dr *doctor) scratchChecks(ctx context.Context, m *compat.Manifest, root *s
 			mirrors = append(mirrors, w)
 		}
 	}
-	size := render.Bytes(total)
+	size := i18n.Raw(render.Bytes(total))
 	if capped {
-		size = i18n.T(i18n.DoctorScratchSizeMore, size)
+		size = i18n.Tx(i18n.DoctorScratchSizeMore, size)
 	}
-	detail := i18n.T(i18n.DoctorScratch, len(mine), len(mirrors), size)
+	detail := i18n.Tx(i18n.DoctorScratch, len(mine), len(mirrors), size)
 	if len(mirrors) > 0 {
-		detail += " " + i18n.T(i18n.DoctorScratchLimits)
+		detail = i18n.Tx(i18n.WordSentences, detail, i18n.Tx(i18n.DoctorScratchLimits))
 	}
 	dr.add("scratch", "ok", detail)
 	dr.scratchOrphans(ctx, m, claude, sc, mirrors)
@@ -151,12 +151,12 @@ func dirSizeCapped(dir string, budget int) (int64, int) {
 // the active folder names. Nothing is removed.
 func (dr *doctor) scratchOrphans(ctx context.Context, m *compat.Manifest, claude string, sc *compat.ScratchSpec, mirrors []scratchWorkspace) {
 	if len(mirrors) == 0 {
-		dr.add("scratch-orphans", "ok", i18n.T(i18n.DoctorScratchOrphansNone))
+		dr.add("scratch-orphans", "ok", i18n.Tx(i18n.DoctorScratchOrphansNone))
 		return
 	}
 	named, err := scratchNamed(ctx, m, claude, sc, dr.o.d.DataRoot)
 	if err != nil {
-		dr.add("scratch-orphans", "warn", i18n.T(i18n.DoctorScratchOrphansUnread))
+		dr.add("scratch-orphans", "warn", i18n.Tx(i18n.DoctorScratchOrphansUnread))
 		return
 	}
 	var orphans []scratchWorkspace
@@ -166,19 +166,19 @@ func (dr *doctor) scratchOrphans(ctx context.Context, m *compat.Manifest, claude
 		}
 	}
 	if len(orphans) == 0 {
-		dr.add("scratch-orphans", "ok", i18n.T(i18n.DoctorScratchOrphansUsed))
+		dr.add("scratch-orphans", "ok", i18n.Tx(i18n.DoctorScratchOrphansUsed))
 		return
 	}
 	sort.Slice(orphans, func(i, j int) bool { return orphans[i].key < orphans[j].key })
-	var parts []string
+	var parts i18n.CommaList
 	for i, w := range orphans {
 		if i == doctorOrphansShown {
-			parts = append(parts, i18n.T(i18n.DoctorScratchOrphansMore, len(orphans)-doctorOrphansShown))
+			parts = append(parts, i18n.Tx(i18n.DoctorScratchOrphansMore, len(orphans)-doctorOrphansShown))
 			break
 		}
-		parts = append(parts, render.ScratchKey(w.key)+" "+render.Bytes(w.size))
+		parts = append(parts, i18n.Raw(render.ScratchKey(w.key)+" "+render.Bytes(w.size)))
 	}
-	dr.add("scratch-orphans", "ok", i18n.T(i18n.DoctorScratchOrphans, len(orphans), strings.Join(parts, ", ")))
+	dr.add("scratch-orphans", "ok", i18n.Tx(i18n.DoctorScratchOrphans, len(orphans), parts))
 }
 
 // scratchNamed returns the workspace keys any session record of any
@@ -215,21 +215,21 @@ func scratchNamed(ctx context.Context, m *compat.Manifest, folder string, sc *co
 func (dr *doctor) scratchKept() {
 	k, ok := dr.o.d.Gens.(scratchKeeper)
 	if !ok {
-		dr.add("scratch-kept", "ok", i18n.T(i18n.DoctorScratchKeptNone))
+		dr.add("scratch-kept", "ok", i18n.Tx(i18n.DoctorScratchKeptNone))
 		return
 	}
 	sets, err := k.ScratchKept()
 	if err != nil {
-		dr.add("scratch-kept", "warn", i18n.T(i18n.DoctorScratchKeptUnreadable))
+		dr.add("scratch-kept", "warn", i18n.Tx(i18n.DoctorScratchKeptUnreadable))
 		return
 	}
 	if len(sets) == 0 {
-		dr.add("scratch-kept", "ok", i18n.T(i18n.DoctorScratchKeptNone))
+		dr.add("scratch-kept", "ok", i18n.Tx(i18n.DoctorScratchKeptNone))
 		return
 	}
 	var total int64
 	for _, s := range sets {
 		total += s.Bytes
 	}
-	dr.add("scratch-kept", "ok", i18n.T(i18n.DoctorScratchKept, len(sets), render.Bytes(total), redact.Redactor{Home: dr.o.d.Home}.Path(k.ScratchKeptPath())))
+	dr.add("scratch-kept", "ok", i18n.Tx(i18n.DoctorScratchKept, len(sets), render.Bytes(total), redact.Redactor{Home: dr.o.d.Home}.Path(k.ScratchKeptPath())))
 }

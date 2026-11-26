@@ -153,7 +153,6 @@ const (
 
 	Progress Msg = "progress"
 
-	// v0.2 anchor: busy
 	AskBusyStill       Msg = "ask.busy_still"
 	PlanBusyHeader     Msg = "plan.busy_header"
 	PlanBusyLine       Msg = "plan.busy_line"
@@ -162,7 +161,6 @@ const (
 	PlanBusyTitles     Msg = "plan.busy_titles"
 	PlanBusyTitled     Msg = "plan.busy_titled"
 
-	// v0.2 anchor: fdscan
 	DoctorFDScanNative       Msg = "doctor.fdscan_native"
 	DoctorFDScanLsofConfig   Msg = "doctor.fdscan_lsof_config"
 	DoctorFDScanFallback     Msg = "doctor.fdscan_fallback"
@@ -172,10 +170,8 @@ const (
 	DoctorFDScanBlind        Msg = "doctor.fdscan_blind"
 	DoctorFDScanPartial      Msg = "doctor.fdscan_partial"
 
-	// v0.2 anchor: sidebar-offline
 	VerifyUnverified Msg = "verify.unverified"
 
-	// v0.2 anchor: scratch
 	// Scratch workspaces: plan notices (render.ScratchNotices) and the
 	// run's progress warnings.
 	ScratchOversize         Msg = "scratch.oversize"
@@ -224,7 +220,6 @@ const (
 	DoctorScratchKeptNone       Msg = "doctor.scratch_kept_none"
 	DoctorScratchKeptUnreadable Msg = "doctor.scratch_kept_unreadable"
 
-	// v0.2 anchor: online
 	HookOnlinePrompt             Msg = "hook.online_prompt"
 	HookOnlineAuto               Msg = "hook.online_auto"
 	GuardDenyFloor               Msg = "guard.deny_floor"
@@ -275,7 +270,6 @@ const (
 	DoctorOnlineQueue            Msg = "doctor.online_queue"
 	DoctorOnlineOff              Msg = "doctor.online_off"
 
-	// v0.2 anchor: pins
 	OnlineQPinsKeep                   Msg = "online.q_pins_keep"
 	OnlineQPinsUnion                  Msg = "online.q_pins_union"
 	OnlineQPinsBlocked                Msg = "online.q_pins_blocked"
@@ -306,7 +300,6 @@ const (
 	PinsReasonStaleStore              Msg = "pins.reason.stale_store"
 	PinsReasonOther                   Msg = "pins.reason.other"
 
-	// v0.2 anchor: artifacts
 	ArtifactsOff                  Msg = "artifacts.off"
 	ArtifactsErrOutsideApp        Msg = "artifacts.err_outside_app"
 	ArtifactsErrTerminalOnly      Msg = "artifacts.err_terminal_only"
@@ -382,7 +375,6 @@ const (
 	DoctorArtifactsGrantEachSync  Msg = "doctor.artifacts_publishing_grant"
 	DoctorArtifactsCaptureOnly    Msg = "doctor.artifacts_publishing_off"
 
-	// v0.2 anchor: legacy-adopt
 	LegacyHeaderDry                  Msg = "legacy.header.dry"
 	LegacyHeaderApply                Msg = "legacy.header.apply"
 	LegacyFolderAdopt                Msg = "legacy.folder.adopt"
@@ -487,8 +479,628 @@ const (
 	BackupsPinnedWarn                Msg = "backups.pinned_warn"
 	RollbackQuarantineLine           Msg = "rollback.quarantine_line"
 
-	// v0.2 anchor: i18n-ja
-
+	// Language choice (i18n-ja).
+	FlagLang                    Msg = "flag.lang"
+	UsageLang                   Msg = "usage.lang"
+	LangInvalidEnv              Msg = "lang.invalid_env"
+	LangNeedsUTF8               Msg = "lang.needs_utf8"
+	InitLangSaved               Msg = "init.lang_saved"
+	InitLangHint                Msg = "init.lang_hint"
+	DoctorLang                  Msg = "doctor.lang"
+	DoctorLangEnvInvalid        Msg = "doctor.lang_env_invalid"
+	DoctorLangASCII             Msg = "doctor.lang_ascii"
+	ConfigInvalidUILang         Msg = "config.invalid.ui_lang"
+	ConfigInvalidUIFallbackLang Msg = "config.invalid.ui_fallback_lang"
+	WordListSep                 Msg = "word.list_sep"
+	// Notifications of the detached job (English-only, i18n.EnglishOnly).
+	NotifySwitched Msg = "notify.switched"
+	NotifyFinished Msg = "notify.finished"
+	NotifyCheck    Msg = "notify.check"
+	NotifyStopped  Msg = "notify.stopped"
+	// Log signals (busy detection, account changes, Chrome pairing org); moved from orchestrator/busytext.go.
+	ConfirmBusyLine                   Msg = "confirm.busy_line"
+	ConfirmBusyLineNoTime             Msg = "confirm.busy_line_no_time"
+	ConfirmBusyUntitled               Msg = "confirm.busy_untitled"
+	ConfirmBusyWaited                 Msg = "confirm.busy_waited"
+	ProgressP3BusyWait                Msg = "progress.p3.busy_wait"
+	WarnBusyStale                     Msg = "warn.busy_stale"
+	WarnBusyPreview                   Msg = "warn.busy_preview"
+	WarnBusyTruncated                 Msg = "warn.busy_truncated"
+	WarnBusyLogUnreadable             Msg = "warn.busy_log_unreadable"
+	WarnAccountWindow                 Msg = "warn.account_window"
+	WarnAccountChange                 Msg = "warn.account_change"
+	WarnInFolderSignIn                Msg = "warn.in_folder_sign_in"
+	WarnNativeMulti                   Msg = "warn.native_multi"
+	WarnSwapOnlyNativeLog             Msg = "warn.swap_only_native_log"
+	WarnSwapOnlyNativeHistory         Msg = "warn.swap_only_native_history"
+	ErrSyncSwapOnlyNativeLog          Msg = "err.sync.swap_only_native_log"
+	ErrSyncSwapOnlyNativeHistory      Msg = "err.sync.swap_only_native_history"
+	ErrResolveInFolderSignIn          Msg = "err.resolve.in_folder_sign_in"
+	DoctorBusyDetectionOK             Msg = "doctor.busy_detection.ok"
+	DoctorBusyDetectionRecord         Msg = "doctor.busy_detection.record"
+	DoctorBusyDetectionPartial        Msg = "doctor.busy_detection.partial"
+	DoctorBusyDetectionUnavailable    Msg = "doctor.busy_detection.unavailable"
+	DoctorBusyNowAppStopped           Msg = "doctor.busy_now.app_stopped"
+	DoctorBusyNowNone                 Msg = "doctor.busy_now.none"
+	DoctorBusyNowSome                 Msg = "doctor.busy_now.some"
+	DoctorBusyNowNoSignals            Msg = "doctor.busy_now.no_signals"
+	DoctorBusyNowUnreadable           Msg = "doctor.busy_now.unreadable"
+	DoctorBusyNowRecords              Msg = "doctor.busy_now.records"
+	DoctorBusyNowStale                Msg = "doctor.busy_now.stale"
+	DoctorBusyNowTruncated            Msg = "doctor.busy_now.truncated"
+	DoctorAccountChangeUnavailable    Msg = "doctor.account_change.unavailable"
+	DoctorAccountChangeNone           Msg = "doctor.account_change.none"
+	DoctorAccountChangeOne            Msg = "doctor.account_change.one"
+	DoctorAccountChangeUnknown        Msg = "doctor.account_change.unknown"
+	DoctorAccountChangeInFolder       Msg = "doctor.account_change.in_folder"
+	DoctorAccountChangeNativeLog      Msg = "doctor.account_change.native_log"
+	DoctorAccountChangeNativeHistory  Msg = "doctor.account_change.native_history"
+	DoctorAccountChangeUnknownTime    Msg = "doctor.account_change.unknown_time"
+	DoctorChromePairingOrgKnown       Msg = "doctor.chrome_pairing_org.known"
+	DoctorChromePairingOrgUnknown     Msg = "doctor.chrome_pairing_org.unknown"
+	DoctorChromePairingOrgState       Msg = "doctor.chrome_pairing_org.state"
+	DoctorChromeBridgePairingDisabled Msg = "doctor.chrome_bridge.pairing_disabled"
+	DoctorVersionDeprecatedKey        Msg = "doctor.version.deprecated_key"
+	// Orchestrator progress, warnings, doctor details and recover actions (migrated literals).
+	ProgressP5FinalPlan                Msg = "progress.p5.final_plan"
+	ProgressP6BackingUp                Msg = "progress.p6.backing_up"
+	ProgressP7Applying                 Msg = "progress.p7.applying"
+	WarnEnteringInUseNotRestored       Msg = "warn.entering_in_use_not_restored"
+	WarnEnteringNotFullyRestored       Msg = "warn.entering_not_fully_restored"
+	ProgressP8SwappingFolders          Msg = "progress.p8.swapping_folders"
+	WarnPostSwapCheckNotRun            Msg = "warn.post_swap_check_not_run"
+	ProgressP9Parking                  Msg = "progress.p9.parking"
+	WarnLeavingMarkerNotWritten        Msg = "warn.leaving_marker_not_written"
+	WarnRunInterrupted                 Msg = "warn.run_interrupted"
+	ProfileProblemFolderMissing        Msg = "profile.problem.folder_missing"
+	WarnFoldersUnreadable              Msg = "warn.folders_unreadable"
+	WarnProfilesMismatch               Msg = "warn.profiles_mismatch"
+	DoctorStateUnreadable              Msg = "doctor.state.unreadable"
+	DoctorFoldersUnreadable            Msg = "doctor.folders.unreadable"
+	DoctorVersionNotFound              Msg = "doctor.version.not_found"
+	DoctorForeignToolsNone             Msg = "doctor.foreign_tools.none"
+	DoctorStateInterrupted             Msg = "doctor.state.interrupted"
+	DoctorStateOK                      Msg = "doctor.state.ok"
+	DoctorOrgUnknown                   Msg = "doctor.org.unknown"
+	DoctorUnclassifiedNone             Msg = "doctor.unclassified.none"
+	DoctorAutomationNotChecked         Msg = "doctor.automation.not_checked"
+	DoctorAutomationMissing            Msg = "doctor.automation.missing"
+	DoctorAutomationGranted            Msg = "doctor.automation.granted"
+	DoctorUpdateUnreadable             Msg = "doctor.update.unreadable"
+	DoctorUpdateStaged                 Msg = "doctor.update.staged"
+	DoctorUpdateNone                   Msg = "doctor.update.none"
+	DoctorChromeBridgeUnreadable       Msg = "doctor.chrome_bridge.unreadable"
+	DoctorChromeBridgeConnected        Msg = "doctor.chrome_bridge.connected"
+	DoctorManagedAll                   Msg = "doctor.managed.all"
+	DoctorRunnerNone                   Msg = "doctor.runner.none"
+	DoctorRunnerNoStale                Msg = "doctor.runner.no_stale"
+	ProgressP0AutomationMissing        Msg = "progress.p0.automation_missing"
+	ProgressP0AutomationGranted        Msg = "progress.p0.automation_granted"
+	ProgressP11LaunchFailedSignIn      Msg = "progress.p11.launch_failed_sign_in"
+	ProgressP10ObjectsNotRemoved       Msg = "progress.p10.objects_not_removed"
+	ProgressP11RelaunchedClaude        Msg = "progress.p11.relaunched_claude"
+	ProgressP12NotSettled              Msg = "progress.p12.not_settled"
+	WarnAccountChangedOutside          Msg = "warn.account_changed_outside"
+	ProgressP10Recording               Msg = "progress.p10.recording"
+	WarnEnteringNotReread              Msg = "warn.entering_not_reread"
+	WarnObjectsNotRemoved              Msg = "warn.objects_not_removed"
+	WarnGenerationsNotPruned           Msg = "warn.generations_not_pruned"
+	ProgressP11Launching               Msg = "progress.p11.launching"
+	ProgressP11NotLaunched             Msg = "progress.p11.not_launched"
+	ProgressP11NotRunningBefore        Msg = "progress.p11.not_running_before"
+	WarnLaunchNoProfile                Msg = "warn.launch_no_profile"
+	WarnLaunchFailed                   Msg = "warn.launch_failed"
+	WarnInvokingNotInProfile           Msg = "warn.invoking_not_in_profile"
+	WarnInvokingNotReopened            Msg = "warn.invoking_not_reopened"
+	ProgressP12BackgroundCheck         Msg = "progress.p12.background_check"
+	ProgressP12Verifying               Msg = "progress.p12.verifying"
+	ProgressP10EmptyGenerationKept     Msg = "progress.p10.empty_generation_kept"
+	ProgressP10OnlineNotQueued         Msg = "progress.p10.online_not_queued"
+	WarnOnlineLeaseNotRemoved          Msg = "warn.online_lease_not_removed"
+	ProgressP2AcksUnreadable           Msg = "progress.p2.acks_unreadable"
+	RecoverNothing                     Msg = "recover.nothing"
+	RecoverRelaunched                  Msg = "recover.relaunched"
+	RecoverPutBack                     Msg = "recover.put_back"
+	RecoverRemovedGeneration           Msg = "recover.removed_generation"
+	RecoverMovedEntering               Msg = "recover.moved_entering"
+	RecoverEnteringBasesInvalid        Msg = "recover.entering_bases_invalid"
+	RecoverOnlineRequeued              Msg = "recover.online_requeued"
+	RecoverLaunchedForSignIn           Msg = "recover.launched_for_sign_in"
+	RecoverLeftPendingAdd              Msg = "recover.left_pending_add"
+	RecoverNoJournal                   Msg = "recover.no_journal"
+	ProgressP11RelaunchNoProfile       Msg = "progress.p11.relaunch_no_profile"
+	ProgressP11LaunchFailed            Msg = "progress.p11.launch_failed"
+	ProgressP0Checking                 Msg = "progress.p0.checking"
+	WarnUpdateUnreadable               Msg = "warn.update_unreadable"
+	WarnUpdateStaged                   Msg = "warn.update_staged"
+	ProgressP0UpdateWait               Msg = "progress.p0.update_wait"
+	WarnDegraded                       Msg = "warn.degraded"
+	WarnAppleEventTimeout              Msg = "warn.apple_event_timeout"
+	WarnInvokingNotFound               Msg = "warn.invoking_not_found"
+	ProgressP2Planning                 Msg = "progress.p2.planning"
+	ProgressP3Quitting                 Msg = "progress.p3.quitting"
+	WarnInvokingTurnNotEnded           Msg = "warn.invoking_turn_not_ended"
+	ProgressP3QuitDialog               Msg = "progress.p3.quit_dialog"
+	ProgressP3LateQuitWatch            Msg = "progress.p3.late_quit_watch"
+	WarnReadOnlyHolder                 Msg = "warn.read_only_holder"
+	ProgressP4Waiting                  Msg = "progress.p4.waiting"
+	ProgressP2ReadOnly                 Msg = "progress.p2.read_only"
+	ProgressP0Detached                 Msg = "progress.p0.detached"
+	WordCommaSep                       Msg = "word.comma_sep"
+	WordList                           Msg = "word.list"
+	WarnSwapOnly                       Msg = "warn.swap_only"
+	ConfirmOutsideSwitchLine           Msg = "confirm.outside_switch_line"
+	ProgressP11Relaunched              Msg = "progress.p11.relaunched"
+	ProgressP0Updated                  Msg = "progress.p0.updated"
+	ConfirmDeletionLine                Msg = "confirm.deletion_line"
+	ErrPreflightSessionsBusy           Msg = "err.preflight.sessions_busy"
+	ErrQuitSessionsBusy                Msg = "err.quit.sessions_busy"
+	WarnPendingAdd                     Msg = "warn.pending_add"
+	DoctorForeignToolsFound            Msg = "doctor.foreign_tools.found"
+	DoctorStatePendingAdd              Msg = "doctor.state.pending_add"
+	DoctorVersionTested                Msg = "doctor.version.tested"
+	DoctorVersionUntested              Msg = "doctor.version.untested"
+	DoctorSkippedRows                  Msg = "doctor.skipped_rows"
+	DoctorOrgActive                    Msg = "doctor.org.active"
+	DoctorProbesLSUnreadable           Msg = "doctor.probes.ls_unreadable"
+	DoctorProbesNotRun                 Msg = "doctor.probes.not_run"
+	DoctorProbesFailed                 Msg = "doctor.probes.failed"
+	DoctorProbesPassed                 Msg = "doctor.probes.passed"
+	DoctorIdentityNone                 Msg = "doctor.identity.none"
+	DoctorIdentityOK                   Msg = "doctor.identity.ok"
+	DoctorIdentityUnregistered         Msg = "doctor.identity.unregistered"
+	DoctorMarkerNone                   Msg = "doctor.marker.none"
+	DoctorMarkerOther                  Msg = "doctor.marker.other"
+	DoctorMarkerOK                     Msg = "doctor.marker.ok"
+	DoctorUnclassifiedSome             Msg = "doctor.unclassified.some"
+	DoctorChromeBridgeNotUsed          Msg = "doctor.chrome_bridge.not_used"
+	DoctorManagedHint                  Msg = "doctor.managed.hint"
+	DoctorRunnerStale                  Msg = "doctor.runner.stale"
+	ProgressP0ChromeNote               Msg = "progress.p0.chrome_note"
+	ProgressP0InitAdd                  Msg = "progress.p0.init_add"
+	ProgressP0UnregisteredFolder       Msg = "progress.p0.unregistered_folder"
+	ProgressP0ForeignTool              Msg = "progress.p0.foreign_tool"
+	ProgressP11AddSignIn               Msg = "progress.p11.add_sign_in"
+	ProgressP10Removed                 Msg = "progress.p10.removed"
+	ConfirmRollbackLine                Msg = "confirm.rollback_line"
+	ConfirmRollbackPropagate           Msg = "confirm.rollback_propagate"
+	DoctorAccountChangeToProfile       Msg = "doctor.account_change.to_profile"
+	WordSentences                      Msg = "word.sentences"
+	ProfileWhyNoState                  Msg = "profile.why.no_state"
+	ProfileWhyFolderMissing            Msg = "profile.why.folder_missing"
+	ProfileWhyIdentityUnknown          Msg = "profile.why.identity_unknown"
+	ProfileWhyNoMarker                 Msg = "profile.why.no_marker"
+	ProfileWhyMarkerAlias              Msg = "profile.why.marker_alias"
+	ProfileWhyMarkerReplica            Msg = "profile.why.marker_replica"
+	ProfileWhyMarkerBase               Msg = "profile.why.marker_base"
+	ProfileWhyFolderID                 Msg = "profile.why.folder_id"
+	ProfileWhyReplicaChanged           Msg = "profile.why.replica_changed"
+	ErrResolveMismatch                 Msg = "err.resolve.mismatch"
+	WarnRowNotReadBack                 Msg = "warn.row_not_read_back"
+	ProgressP10Registered              Msg = "progress.p10.registered"
+	RecoverLeftoversMoved              Msg = "recover.leftovers_moved"
+	ProgressP2BaseUnreadable           Msg = "progress.p2.base_unreadable"
+	ProgressP2PresetsDiffer            Msg = "progress.p2.presets_differ"
+	ProgressP2StaleValues              Msg = "progress.p2.stale_values"
+	ProgressP2EnteringUnreadable       Msg = "progress.p2.entering_unreadable"
+	ProgressP12LSUnreadable            Msg = "progress.p12.ls_unreadable"
+	ProgressP12LSRowUnreadable         Msg = "progress.p12.ls_row_unreadable"
+	RecoverMovedLeaving                Msg = "recover.moved_leaving"
+	RecoverConflictsLeft               Msg = "recover.conflicts_left"
+	RecoverRollbackFinished            Msg = "recover.rollback_finished"
+	RecoverPutBackAdd                  Msg = "recover.put_back_add"
+	RecoverAddWaits                    Msg = "recover.add_waits"
+	ConfirmAddBindLine                 Msg = "confirm.add_bind_line"
+	RecoverAddDropped                  Msg = "recover.add_dropped"
+	RecoverRegistered                  Msg = "recover.registered"
+	ConfirmFoldersMismatch             Msg = "confirm.folders_mismatch"
+	ErrRecoverMismatchClaude           Msg = "err.recover.mismatch_claude"
+	ConfirmMoveFolder                  Msg = "confirm.move_folder"
+	RecoverMoved                       Msg = "recover.moved"
+	ErrRecoverMismatchNoMove           Msg = "err.recover.mismatch_no_move"
+	ConfirmNoJournal                   Msg = "confirm.no_journal"
+	ConfirmMoveRecent                  Msg = "confirm.move_recent"
+	RecoverFolderUnidentified          Msg = "recover.folder_unidentified"
+	RecoverFolderAccount               Msg = "recover.folder_account"
+	RecoverFolderUnregistered          Msg = "recover.folder_unregistered"
+	RecoverNoFolders                   Msg = "recover.no_folders"
+	RecoverRolledBack                  Msg = "recover.rolled_back"
+	RecoverCompleted                   Msg = "recover.completed"
+	RecoverClosedLeftoversUnmoved      Msg = "recover.closed_leftovers_unmoved"
+	RecoverClosedLeftoversGenRemoved   Msg = "recover.closed_leftovers_gen_removed"
+	RecoverClosedLeftovers             Msg = "recover.closed_leftovers"
+	RecoverClosedSwitch                Msg = "recover.closed_switch"
+	RecoverClosedRunUnchanged          Msg = "recover.closed_run_unchanged"
+	RecoverClosedSync                  Msg = "recover.closed_sync"
+	RecoverRestoredActive              Msg = "recover.restored_active"
+	RecoverClosedRollbackUnrestored    Msg = "recover.closed_rollback_unrestored"
+	RecoverClosedRollback              Msg = "recover.closed_rollback"
+	RecoverClosedAddUnmoved            Msg = "recover.closed_add_unmoved"
+	RecoverClosedAdd                   Msg = "recover.closed_add"
+	RecoverClosedRun                   Msg = "recover.closed_run"
+	ErrInterrupted                     Msg = "err.interrupted"
+	ErrArtifactsUnknownQuestion        Msg = "err.artifacts.unknown_question"
+	ErrArtifactsUnknownDecision        Msg = "err.artifacts.unknown_decision"
+	ErrArtifactsProfileNamesProfile    Msg = "err.artifacts.profile_names_profile"
+	ErrArtifactsCopyNotOtherOrg        Msg = "err.artifacts.copy_not_other_org"
+	ErrAppUpdateNotInstalled           Msg = "err.app.update_not_installed"
+	ErrAppTurnNotEnded                 Msg = "err.app.turn_not_ended"
+	ErrPlansHashInvalid                Msg = "err.plans.hash_invalid"
+	ErrPlansNotFound                   Msg = "err.plans.not_found"
+	ErrPlansUnreadable                 Msg = "err.plans.unreadable"
+	ErrPlansHashMismatch               Msg = "err.plans.hash_mismatch"
+	ErrInterruptedFirst                Msg = "err.interrupted_first"
+	ErrPendingAddFirst                 Msg = "err.pending_add_first"
+	ErrLogNoLog                        Msg = "err.log.no_log"
+	ErrStateLockBusy                   Msg = "err.state.lock_busy"
+	ErrOnlineUnknownAnswer             Msg = "err.online.unknown_answer"
+	ErrOnlineNoQuestion                Msg = "err.online.no_question"
+	ErrPreflightInterrupted            Msg = "err.preflight.interrupted"
+	ErrPendingAdd                      Msg = "err.pending_add"
+	ErrResolveNoActiveProfile          Msg = "err.resolve.no_active_profile"
+	ErrSwitchNoOtherProfile            Msg = "err.switch.no_other_profile"
+	ErrCompatRefused                   Msg = "err.compat.refused"
+	ErrCompatUntested                  Msg = "err.compat.untested"
+	ErrCompatSyncSwapOnly              Msg = "err.compat.sync_swap_only"
+	ErrPreflightDiskSpace              Msg = "err.preflight.disk_space"
+	ErrPreflightAutomationMissing      Msg = "err.preflight.automation_missing"
+	ErrConfirmedPlanFirstSync          Msg = "err.confirmed_plan.first_sync"
+	ErrPlanFirstSync                   Msg = "err.plan.first_sync"
+	ErrQuiescenceInUse                 Msg = "err.quiescence.in_use"
+	ErrLegacyDegraded                  Msg = "err.legacy.degraded"
+	ErrSwitchDetachedNeedsConfirmation Msg = "err.switch.detached_needs_confirmation"
+	ErrSyncInsideClaude                Msg = "err.sync.inside_claude"
+	ErrRollbackReadOnly                Msg = "err.rollback.read_only"
+	ErrRunOpen                         Msg = "err.run_open"
+	ErrRollbackNoGeneration            Msg = "err.rollback.no_generation"
+	ErrRollbackNotQuit                 Msg = "err.rollback.not_quit"
+	ErrRebaseReadOnly                  Msg = "err.rebase.read_only"
+	ErrOnlineDoneReadOnly              Msg = "err.online.done_read_only"
+	ErrConfirmNoTTY                    Msg = "err.confirm.no_tty"
+	ErrConfirmDeclined                 Msg = "err.confirm.declined"
+	ErrStateOtherDataRoot              Msg = "err.state.other_data_root"
+	ErrSwitchSwapOnly                  Msg = "err.switch.swap_only"
+	ErrSwitchDegraded                  Msg = "err.switch.degraded"
+	ErrHarvestAppChanged               Msg = "err.harvest.app_changed"
+	ErrQuiescenceOpened                Msg = "err.quiescence.opened"
+	ErrSwapInterrupted                 Msg = "err.swap.interrupted"
+	ErrSwapProcessStarted              Msg = "err.swap.process_started"
+	ErrSwapFoldersOpened               Msg = "err.swap.folders_opened"
+	ErrSwapBackFailed                  Msg = "err.swap.back_failed"
+	ErrSwapUndone                      Msg = "err.swap.undone"
+	ErrVerifyNoActive                  Msg = "err.verify.no_active"
+	ErrVerifyNoManifest                Msg = "err.verify.no_manifest"
+	ErrVerifyDrift                     Msg = "err.verify.drift"
+	ErrRecoverReadOnly                 Msg = "err.recover.read_only"
+	ErrRecoverAppNotFound              Msg = "err.recover.app_not_found"
+	ErrRecoverQuitFirst                Msg = "err.recover.quit_first"
+	ErrRecoverInUse                    Msg = "err.recover.in_use"
+	ErrRecoverNoJournal                Msg = "err.recover.no_journal"
+	ErrInitNoAccount                   Msg = "err.init.no_account"
+	ErrProfileRemoveActive             Msg = "err.profile_remove.active"
+	ErrApplyInUse                      Msg = "err.apply.in_use"
+	ErrApplyChanged                    Msg = "err.apply.changed"
+	ErrApplyCopySourceChanged          Msg = "err.apply.copy_source_changed"
+	ErrOpenFilesNativeUnavailable      Msg = "err.open_files.native_unavailable"
+	ErrValidateBreaker                 Msg = "err.validate.breaker"
+	ErrValidateBreakerEmpty            Msg = "err.validate.breaker_empty"
+	ErrValidateWorktreeRisk            Msg = "err.validate.worktree_risk"
+	ErrForeignTool                     Msg = "err.foreign_tool"
+	ErrLegacyAliasNotFolder            Msg = "err.legacy.alias_not_folder"
+	ErrLegacyExcludeNotFolder          Msg = "err.legacy.exclude_not_folder"
+	ErrLegacyState                     Msg = "err.legacy.state"
+	ErrSwitchNoPrevious                Msg = "err.switch.no_previous"
+	ErrSwitchUnknownProfile            Msg = "err.switch.unknown_profile"
+	ErrSwitchAlreadyActive             Msg = "err.switch.already_active"
+	ErrSwitchFolderMissing             Msg = "err.switch.folder_missing"
+	ErrPreflightParkTaken              Msg = "err.preflight.park_taken"
+	ErrConfirmedPlanNewDestructive     Msg = "err.confirmed_plan.new_destructive"
+	ErrRollbackNoProfile               Msg = "err.rollback.no_profile"
+	ErrRollbackOtherAccount            Msg = "err.rollback.other_account"
+	ErrRollbackFolderAccount           Msg = "err.rollback.folder_account"
+	ErrRollbackInUse                   Msg = "err.rollback.in_use"
+	ErrHarvestNewDestructive           Msg = "err.harvest.new_destructive"
+	ErrParkTaken                       Msg = "err.park.taken"
+	ErrVerifyIdentity                  Msg = "err.verify.identity"
+	ErrVerifySignIn                    Msg = "err.verify.sign_in"
+	ErrVerifyDriftNotRecorded          Msg = "err.verify.drift_not_recorded"
+	ErrRecoverParkTaken                Msg = "err.recover.park_taken"
+	ErrRecoverNameTaken                Msg = "err.recover.name_taken"
+	ErrReadOnlyWrites                  Msg = "err.read_only_writes"
+	ErrProfileExists                   Msg = "err.profile.exists"
+	ErrInitRegistered                  Msg = "err.init.registered"
+	ErrProfileAdoptNotFound            Msg = "err.profile_adopt.not_found"
+	ErrProfileAdoptNoAccount           Msg = "err.profile_adopt.no_account"
+	ErrProfileAdoptRegistered          Msg = "err.profile_adopt.registered"
+	ErrProfileAddTaken                 Msg = "err.profile_add.taken"
+	// Command-line errors (usageError).
+	UsageProfileFlag           Msg = "usage.profile_flag"
+	UsageProfileNoneActive     Msg = "usage.profile_none_active"
+	UsageAllowOneOf            Msg = "usage.allow_one_of"
+	UsageAllowRoundtripNoID    Msg = "usage.allow_roundtrip_no_id"
+	UsageAllowNeedsID          Msg = "usage.allow_needs_id"
+	UsageImportLegacyFrom      Msg = "usage.import_legacy_from"
+	UsageMapSyntax             Msg = "usage.map_syntax"
+	UsageUnavailableSyntax     Msg = "usage.unavailable_syntax"
+	UsageRefusedSyntax         Msg = "usage.refused_syntax"
+	UsageQuestionAnswer        Msg = "usage.question_answer"
+	UsageMissingCommand        Msg = "usage.missing_command"
+	UsageUnknownCommand        Msg = "usage.unknown_command"
+	UsageSyntax                Msg = "usage.syntax"
+	UsageUnknownShell          Msg = "usage.unknown_shell"
+	UsageOutOfRange            Msg = "usage.out_of_range"
+	UsageFlagValue             Msg = "usage.flag_value"
+	UsageFaultAfter            Msg = "usage.fault_after"
+	UsageFaultPausePhase       Msg = "usage.fault_pause_phase"
+	UsageFaultPauseRefused     Msg = "usage.fault_pause_refused"
+	UsageFaultUnknown          Msg = "usage.fault_unknown"
+	UsageCategoryArtifacts     Msg = "usage.category_artifacts"
+	UsageUnknownCategory       Msg = "usage.unknown_category"
+	UsageCategoryTwice         Msg = "usage.category_twice"
+	UsageCategoryOnlyAndSkip   Msg = "usage.category_only_and_skip"
+	UsageBadAlias              Msg = "usage.bad_alias"
+	UsageBadGeneration         Msg = "usage.bad_generation"
+	UsageSessionUuid           Msg = "usage.session_uuid"
+	UsageNegative              Msg = "usage.negative"
+	UsagePlanHash              Msg = "usage.plan_hash"
+	UsageAbsolutePath          Msg = "usage.absolute_path"
+	UsageLegacyAliasSyntax     Msg = "usage.legacy_alias_syntax"
+	UsageLegacyAliasTwice      Msg = "usage.legacy_alias_twice"
+	UsageLegacyExcludeSyntax   Msg = "usage.legacy_exclude_syntax"
+	UsageLegacyPlanHash        Msg = "usage.legacy_plan_hash"
+	UsageManagedBoth           Msg = "usage.managed_both"
+	UsageLegacyManagedBoth     Msg = "usage.legacy_managed_both"
+	UsageLegacyManagedRequired Msg = "usage.legacy_managed_required"
+	UsageLegacyManagedUnknown  Msg = "usage.legacy_managed_unknown"
+	UsageLegacyAliasRequired   Msg = "usage.legacy_alias_required"
+	UsageOlderThan             Msg = "usage.older_than"
+	UsageRunFlag               Msg = "usage.run_flag"
+	UsageSessionFlag           Msg = "usage.session_flag"
+	UsageTokenFlag             Msg = "usage.token_flag"
+	UsageBadRunID              Msg = "usage.bad_run_id"
+	UsageLegacyNoArgs          Msg = "usage.legacy_no_args"
+	UsageNeedsFlag             Msg = "usage.needs_flag"
+	UsageBadFolder             Msg = "usage.bad_folder"
+	UsageManagedRequired       Msg = "usage.managed_required"
+	UsageAliasRequired         Msg = "usage.alias_required"
+	UsageLabelTooLong          Msg = "usage.label_too_long"
+	UsageFlag                  Msg = "usage.flag"
+	// Help: command short texts (help.<path>) and the help frame.
+	HelpUsage                 Msg = "help.usage"
+	HelpCommands              Msg = "help.commands"
+	HelpFlags                 Msg = "help.flags"
+	HelpGlobalFlags           Msg = "help.global_flags"
+	HelpDefault               Msg = "help.default"
+	HelpRoot                  Msg = "help.root"
+	HelpInit                  Msg = "help.init"
+	HelpProfile               Msg = "help.profile"
+	HelpProfileList           Msg = "help.profile.list"
+	HelpProfileAdopt          Msg = "help.profile.adopt"
+	HelpProfileAdd            Msg = "help.profile.add"
+	HelpProfileRename         Msg = "help.profile.rename"
+	HelpProfileRemove         Msg = "help.profile.remove"
+	HelpStatus                Msg = "help.status"
+	HelpPlan                  Msg = "help.plan"
+	HelpSwitch                Msg = "help.switch"
+	HelpSync                  Msg = "help.sync"
+	HelpVerify                Msg = "help.verify"
+	HelpRecover               Msg = "help.recover"
+	HelpRollback              Msg = "help.rollback"
+	HelpRebase                Msg = "help.rebase"
+	HelpGenerations           Msg = "help.generations"
+	HelpGenerationsList       Msg = "help.generations.list"
+	HelpGenerationsShow       Msg = "help.generations.show"
+	HelpBackups               Msg = "help.backups"
+	HelpBackupsPrune          Msg = "help.backups.prune"
+	HelpBackupsPurge          Msg = "help.backups.purge"
+	HelpDoctor                Msg = "help.doctor"
+	HelpLog                   Msg = "help.log"
+	HelpHistory               Msg = "help.history"
+	HelpConfig                Msg = "help.config"
+	HelpConfigPath            Msg = "help.config.path"
+	HelpConfigShow            Msg = "help.config.show"
+	HelpConfigValidate        Msg = "help.config.validate"
+	HelpOnline                Msg = "help.online"
+	HelpOnlineStatus          Msg = "help.online.status"
+	HelpOnlineCancel          Msg = "help.online.cancel"
+	HelpOnlineCapture         Msg = "help.online.capture"
+	HelpOnlineNext            Msg = "help.online.next"
+	HelpOnlineDecide          Msg = "help.online.decide"
+	HelpOnlineRetry           Msg = "help.online.retry"
+	HelpOnlineDone            Msg = "help.online.done"
+	HelpArtifacts             Msg = "help.artifacts"
+	HelpArtifactsStatus       Msg = "help.artifacts.status"
+	HelpArtifactsPlan         Msg = "help.artifacts.plan"
+	HelpArtifactsIngest       Msg = "help.artifacts.ingest"
+	HelpArtifactsAllow        Msg = "help.artifacts.allow"
+	HelpArtifactsSkip         Msg = "help.artifacts.skip"
+	HelpArtifactsForget       Msg = "help.artifacts.forget"
+	HelpArtifactsImportLegacy Msg = "help.artifacts.import-legacy"
+	HelpArtifactsNext         Msg = "help.artifacts.next"
+	HelpArtifactsDecide       Msg = "help.artifacts.decide"
+	HelpArtifactsPause        Msg = "help.artifacts.pause"
+	HelpArtifactsDone         Msg = "help.artifacts.done"
+	HelpUninstall             Msg = "help.uninstall"
+	HelpHook                  Msg = "help.hook"
+	HelpHookSessionStart      Msg = "help.hook.session-start"
+	HelpHookPreToolUse        Msg = "help.hook.pre-tool-use"
+	HelpHookPostToolUse       Msg = "help.hook.post-tool-use"
+	HelpCompletion            Msg = "help.completion"
+	HelpAliases               Msg = "help.__aliases"
+	HelpHelp                  Msg = "help.help"
+	HelpVersion               Msg = "help.version"
+	// Help: flag usage texts (flag.<name>; flag.<command path>.<name> for a different text).
+	FlagAppSupportDir                 Msg = "flag.app-support-dir"
+	FlagASCII                         Msg = "flag.ascii"
+	FlagConfig                        Msg = "flag.config"
+	FlagJSON                          Msg = "flag.json"
+	FlagNoColor                       Msg = "flag.no-color"
+	FlagPlain                         Msg = "flag.plain"
+	FlagReadOnly                      Msg = "flag.read-only"
+	FlagStateDir                      Msg = "flag.state-dir"
+	FlagAlias                         Msg = "flag.alias"
+	FlagLabel                         Msg = "flag.label"
+	FlagManaged                       Msg = "flag.managed"
+	FlagUnmanaged                     Msg = "flag.unmanaged"
+	FlagProfileAdoptApply             Msg = "flag.profile.adopt.apply"
+	FlagFromLegacy                    Msg = "flag.from-legacy"
+	FlagLegacyAlias                   Msg = "flag.legacy-alias"
+	FlagLegacyExclude                 Msg = "flag.legacy-exclude"
+	FlagLegacyManaged                 Msg = "flag.legacy-managed"
+	FlagLegacyNoSeed                  Msg = "flag.legacy-no-seed"
+	FlagLegacyPlan                    Msg = "flag.legacy-plan"
+	FlagLegacyState                   Msg = "flag.legacy-state"
+	FlagQuarantine                    Msg = "flag.quarantine"
+	FlagShort                         Msg = "flag.short"
+	FlagInvokingSession               Msg = "flag.invoking-session"
+	FlagOnly                          Msg = "flag.only"
+	FlagSkip                          Msg = "flag.skip"
+	FlagAcceptWorktreeRisk            Msg = "flag.accept-worktree-risk"
+	FlagAllowDeletions                Msg = "flag.allow-deletions"
+	FlagConfirmFirstSync              Msg = "flag.confirm-first-sync"
+	FlagConfirmedPlan                 Msg = "flag.confirmed-plan"
+	FlagDetach                        Msg = "flag.detach"
+	FlagFromRunner                    Msg = "flag.from-runner"
+	FlagJSONProgress                  Msg = "flag.json-progress"
+	FlagLogInode                      Msg = "flag.log-inode"
+	FlagLogOffset                     Msg = "flag.log-offset"
+	FlagNoLaunch                      Msg = "flag.no-launch"
+	FlagNoReopen                      Msg = "flag.no-reopen"
+	FlagReopenSession                 Msg = "flag.reopen-session"
+	FlagSwitchYes                     Msg = "flag.switch.yes"
+	FlagYes                           Msg = "flag.yes"
+	FlagAfterRun                      Msg = "flag.after-run"
+	FlagRollback                      Msg = "flag.rollback"
+	FlagPropagate                     Msg = "flag.propagate"
+	FlagOlderThan                     Msg = "flag.older-than"
+	FlagScratch                       Msg = "flag.scratch"
+	FlagBundle                        Msg = "flag.bundle"
+	FlagBundleLogs                    Msg = "flag.bundle-logs"
+	FlagGrantAutomation               Msg = "flag.grant-automation"
+	FlagRun                           Msg = "flag.run"
+	FlagFinish                        Msg = "flag.finish"
+	FlagSession                       Msg = "flag.session"
+	FlagToken                         Msg = "flag.token"
+	FlagUnavailable                   Msg = "flag.unavailable"
+	FlagWait                          Msg = "flag.wait"
+	FlagAnswer                        Msg = "flag.answer"
+	FlagQuestion                      Msg = "flag.question"
+	FlagAll                           Msg = "flag.all"
+	FlagProfile                       Msg = "flag.profile"
+	FlagTitles                        Msg = "flag.titles"
+	FlagCapabilities                  Msg = "flag.capabilities"
+	FlagCreate                        Msg = "flag.create"
+	FlagPublic                        Msg = "flag.public"
+	FlagRehome                        Msg = "flag.rehome"
+	FlagRestore                       Msg = "flag.restore"
+	FlagResume                        Msg = "flag.resume"
+	FlagRoundtrip                     Msg = "flag.roundtrip"
+	FlagShared                        Msg = "flag.shared"
+	FlagApply                         Msg = "flag.apply"
+	FlagFrom                          Msg = "flag.from"
+	FlagMap                           Msg = "flag.map"
+	FlagRefused                       Msg = "flag.refused"
+	FlagKeepArtifacts                 Msg = "flag.keep-artifacts"
+	FlagKeepBackups                   Msg = "flag.keep-backups"
+	FlagKeepState                     Msg = "flag.keep-state"
+	FlagHookSessionStartPluginVersion Msg = "flag.hook.session-start.plugin-version"
+	FlagPluginVersion                 Msg = "flag.plugin-version"
+	// Config validation (config.invalid.*).
+	ConfigInvalid                         Msg = "config.invalid"
+	ConfigInvalidVersion                  Msg = "config.invalid.version"
+	ConfigInvalidAppBundleID              Msg = "config.invalid.app_bundle_id"
+	ConfigInvalidAppDataRoot              Msg = "config.invalid.app_data_root"
+	ConfigInvalidAppQuitTimeout           Msg = "config.invalid.app_quit_timeout"
+	ConfigInvalidAppLateQuitWatch         Msg = "config.invalid.app_late_quit_watch"
+	ConfigInvalidAppOpenFileScan          Msg = "config.invalid.app_open_file_scan"
+	ConfigInvalidDurationRange            Msg = "config.invalid.duration_range"
+	ConfigInvalidOnlineReconcile          Msg = "config.invalid.online_reconcile"
+	ConfigInvalidOnlineGuard              Msg = "config.invalid.online_guard"
+	ConfigInvalidArtifactsVerify          Msg = "config.invalid.artifacts_verify"
+	ConfigInvalidArtifactsHistoryKeep     Msg = "config.invalid.artifacts_history_keep"
+	ConfigInvalidIntRange                 Msg = "config.invalid.int_range"
+	ConfigInvalidScratchMaxWorkspaceBytes Msg = "config.invalid.scratch_max_workspace_bytes"
+	ConfigInvalidScratchMaxDeleteFraction Msg = "config.invalid.scratch_max_delete_fraction"
+	ConfigInvalidScratchMaxDeleteMin      Msg = "config.invalid.scratch_max_delete_min"
+	ConfigInvalidScratchExclude           Msg = "config.invalid.scratch_exclude"
+	ConfigInvalidScratchCacheDirs         Msg = "config.invalid.scratch_cache_dirs"
+	ConfigInvalidSize                     Msg = "config.invalid.size"
+	ConfigInvalidSizeRange                Msg = "config.invalid.size_range"
+	ConfigInvalidProfileAlias             Msg = "config.invalid.profile_alias"
+	ConfigInvalidProfileAliasTwice        Msg = "config.invalid.profile_alias_twice"
+	ConfigInvalidProfileLabel             Msg = "config.invalid.profile_label"
+	ConfigInvalidProfileFolderDefault     Msg = "config.invalid.profile_folder_default"
+	ConfigInvalidProfileFolderPattern     Msg = "config.invalid.profile_folder_pattern"
+	ConfigInvalidProfileFolderUsed        Msg = "config.invalid.profile_folder_used"
+	ConfigInvalidSyncTombstones           Msg = "config.invalid.sync_tombstones"
+	ConfigInvalidSyncSecrets              Msg = "config.invalid.sync_secrets"
+	ConfigInvalidSyncExclude              Msg = "config.invalid.sync_exclude"
+	ConfigInvalidSyncAppPrefsUnknown      Msg = "config.invalid.sync_app_prefs_unknown"
+	ConfigInvalidSyncAppPrefsTagged       Msg = "config.invalid.sync_app_prefs_tagged"
+	ConfigInvalidSyncAppPrefsTwice        Msg = "config.invalid.sync_app_prefs_twice"
+	ConfigInvalidSyncSecretsAllow         Msg = "config.invalid.sync_secrets_allow"
+	ConfigInvalidBoundaryAlias            Msg = "config.invalid.boundary_alias"
+	ConfigInvalidBoundaryCategory         Msg = "config.invalid.boundary_category"
+	ConfigInvalidLimitsMaxDeleteFraction  Msg = "config.invalid.limits_max_delete_fraction"
+	ConfigInvalidLimitsMaxDeleteMin       Msg = "config.invalid.limits_max_delete_min"
+	ConfigInvalidBackupsKeep              Msg = "config.invalid.backups_keep"
+	ConfigInvalidBackupsLeveldbClonesKeep Msg = "config.invalid.backups_leveldb_clones_keep"
+	ConfigInvalidBackupsMaxSize           Msg = "config.invalid.backups_max_size"
+	ErrConfigNoConfig                     Msg = "err.config.no_config"
+	ErrIDsAlias                           Msg = "err.ids.alias"
+	ErrIDsFolderPattern                   Msg = "err.ids.folder_pattern"
+	ErrIDsFolderReserved                  Msg = "err.ids.folder_reserved"
+	ErrStateNewerRoot                     Msg = "err.state.newer_root"
+	ErrStateNewerRootVersion              Msg = "err.state.newer_root_version"
+	ErrApplyHolderCheck                   Msg = "err.apply.holder_check"
+	ErrApplyLSLocked                      Msg = "err.apply.ls_locked"
+	ErrApplyLSCompression                 Msg = "err.apply.ls_compression"
+	ErrApplyLSJournal                     Msg = "err.apply.ls_journal"
+	ErrApplyLSOpen                        Msg = "err.apply.ls_open"
+	ErrApplyReadFailed                    Msg = "err.apply.read_failed"
+	ErrApplyRolledBackWritten             Msg = "err.apply.rolled_back_written"
+	ErrApplyRolledBackNone                Msg = "err.apply.rolled_back_none"
+	ErrApplyFullSync                      Msg = "err.apply.full_sync"
+	ErrApplyChangedDuring                 Msg = "err.apply.changed_during"
+	ErrApplyModeFailed                    Msg = "err.apply.mode_failed"
+	ErrApplyWriteFailed                   Msg = "err.apply.write_failed"
+	ErrApplyReadBackFailed                Msg = "err.apply.read_back_failed"
+	ErrApplyReadBackMismatch              Msg = "err.apply.read_back_mismatch"
+	ErrApplyEncodeFailed                  Msg = "err.apply.encode_failed"
+	ErrApplyLSWrite                       Msg = "err.apply.ls_write"
+	ErrApplyLSClose                       Msg = "err.apply.ls_close"
+	ErrOpenFilesBlind                     Msg = "err.open_files.blind"
+	ErrOpenFilesSelfCheck                 Msg = "err.open_files.self_check"
+	ErrOpenFilesNativeFailed              Msg = "err.open_files.native_failed"
+	ErrOpenFilesPartial                   Msg = "err.open_files.partial"
+	ErrAppQuitTimeout                     Msg = "err.app.quit_timeout"
+	ErrAppQuitRefused                     Msg = "err.app.quit_refused"
+	ErrAppQuitNoReply                     Msg = "err.app.quit_no_reply"
+	ErrQuitLate                           Msg = "err.quit.late"
+	ErrQuitAsking                         Msg = "err.quit.asking"
+	ErrQuitStillRunning                   Msg = "err.quit.still_running"
+	ErrQuitFailed                         Msg = "err.quit.failed"
+	ErrQuitOSAStatus                      Msg = "err.quit.osa_status"
+	ErrQuitRefused                        Msg = "err.quit.refused"
+	ErrQuitTimedOut                       Msg = "err.quit.timed_out"
+	ErrQuitSandboxed                      Msg = "err.quit.sandboxed"
+	ErrQuitNotDelivered                   Msg = "err.quit.not_delivered"
+	ErrQuitNotQuit                        Msg = "err.quit.not_quit"
+	ErrApplyEnteringInUse                 Msg = "err.apply.entering_in_use"
+	ErrApplyEnteringNotRestored           Msg = "err.apply.entering_not_restored"
+	ErrApplyLSLockedRecover               Msg = "err.apply.ls_locked_recover"
+	ErrApplyLSReopen                      Msg = "err.apply.ls_reopen"
+	DoctorModeReasonIdentity              Msg = "doctor.mode_reason.identity"
+	DoctorModeReasonDowngraded            Msg = "doctor.mode_reason.downgraded"
+	DoctorModeReasonUntested              Msg = "doctor.mode_reason.untested"
+	DoctorModeReasonRowsSkipped           Msg = "doctor.mode_reason.rows_skipped"
+	DoctorModeReasonNoManifest            Msg = "doctor.mode_reason.no_manifest"
+	DoctorModeReasonKnownBad              Msg = "doctor.mode_reason.known_bad"
+	DoctorModeReasonSQLite                Msg = "doctor.mode_reason.sqlite"
+	DoctorModeReasonCompression           Msg = "doctor.mode_reason.compression"
+	DoctorModeReasonNativeMulti           Msg = "doctor.mode_reason.native_multi"
+	DoctorModeReasonCriticalProbe         Msg = "doctor.mode_reason.critical_probe"
+	ArtifactsPlanDue                      Msg = "artifacts.plan_due"
 )
 
 // catalog is the English text of every message id above.
@@ -637,7 +1249,6 @@ var catalog = map[Msg]string{
 
 	Progress: "%s %-4s %s",
 
-	// v0.2 anchor: busy
 	AskBusyStill:       "These sessions still look busy. Quit Claude now anyway? Claude asks before it quits a working session. [y/N] ",
 	PlanBusyHeader:     "Still working (%d): the switch waits up to %s, and Claude asks before it quits a working session",
 	PlanBusyLine:       "%s, working for %s",
@@ -646,7 +1257,6 @@ var catalog = map[Msg]string{
 	PlanBusyTitles:     "Working sessions:",
 	PlanBusyTitled:     "%s (%s)",
 
-	// v0.2 anchor: fdscan
 	DoctorFDScanNative:       "Open files: checked with macOS's process information interface (libproc).",
 	DoctorFDScanLsofConfig:   `Open files: checked with lsof, as app.open_file_scan = "lsof" asks.`,
 	DoctorFDScanFallback:     "Open files: the native check is not available here, so lsof is used. Switches still work; please report this with paritydesk doctor --bundle.",
@@ -656,10 +1266,8 @@ var catalog = map[Msg]string{
 	DoctorFDScanBlind:        "Open files: paritydesk cannot read other processes' open files here (is it running inside a sandbox?), so switches stop before writing anything. Run paritydesk from Terminal.",
 	DoctorFDScanPartial:      "Open files: %d process(es) could not be read and %d only in part, so lsof is used for those checks. Switches still work.",
 
-	// v0.2 anchor: sidebar-offline
 	VerifyUnverified: "Verify: these could not be read back while Claude runs; they are checked at the next switch: %s",
 
-	// v0.2 anchor: scratch
 	ScratchOversize:         "Scratch workspace %s was not carried: it is over the limit of %d files or %s. Raise the limit in [scratch], or tidy the workspace.",
 	ScratchBudget:           "%d scratch workspaces were not carried this time: together they exceed the per-switch limit (%s or %d files).",
 	ScratchRootLink:         "Scratch workspace %s was not carried: its folder path contains a symbolic link.",
@@ -706,7 +1314,6 @@ var catalog = map[Msg]string{
 	DoctorScratchKeptNone:       "no scratch files are kept",
 	DoctorScratchKeptUnreadable: "the kept scratch files could not be listed",
 
-	// v0.2 anchor: online
 	HookOnlinePrompt:             "paritydesk: some changes for this profile can only be made through Claude's own tools. Tell the user and offer to run /paritydesk:reconcile.",
 	HookOnlineAuto:               "paritydesk: some changes for this profile can only be made through Claude's own tools. Run /paritydesk:reconcile before other work, unless the user asked for something else.",
 	GuardDenyFloor:               "paritydesk: this tool is blocked while paritydesk applies changes in this session. Nothing was changed.",
@@ -757,7 +1364,6 @@ var catalog = map[Msg]string{
 	DoctorOnlineQueue:            "Waiting changes in Claude: %s",
 	DoctorOnlineOff:              "Changes inside Claude are off (online.reconcile = \"off\", or this Claude version has no online support)",
 
-	// v0.2 anchor: pins
 	OnlineQPinsKeep:                   "Unpinning a session can also unpin the sessions under it; paritydesk then pins %d of them again.",
 	OnlineQPinsUnion:                  "This is the first time pins are carried between these profiles: the pins of both are combined, and nothing is unpinned.",
 	OnlineQPinsBlocked:                "%d session(s) stay pinned here this time; see the warning in the plan.",
@@ -788,7 +1394,6 @@ var catalog = map[Msg]string{
 	PinsReasonStaleStore:              "Claude no longer saves pins where paritydesk reads them",
 	PinsReasonOther:                   "it could not be read",
 
-	// v0.2 anchor: artifacts
 	ArtifactsOff:                  "Artifact sync is off (sync.artifacts in the config, or not supported on this Claude version).",
 	ArtifactsErrOutsideApp:        "Artifact sync runs inside Claude: use /paritydesk:artifacts in a Code session.",
 	ArtifactsErrTerminalOnly:      "Run this in Terminal: decisions about artifacts are not taken inside Claude.",
@@ -864,7 +1469,6 @@ var catalog = map[Msg]string{
 	DoctorArtifactsGrantEachSync:  "available (grant needed each sync)",
 	DoctorArtifactsCaptureOnly:    "off (capture only)",
 
-	// v0.2 anchor: legacy-adopt
 	LegacyHeaderDry:                  "Folders next to Claude (dry run; nothing is changed):",
 	LegacyHeaderApply:                "Adopting folders next to Claude:",
 	LegacyFolderAdopt:                "  %s -> profile %s (account %s, org %s)",
@@ -969,6 +1573,626 @@ var catalog = map[Msg]string{
 	BackupsPinnedWarn:                "%d generation(s) hold directories moved aside by profile adopt --from-legacy; removing them deletes those directories for good.",
 	RollbackQuarantineLine:           "Put back %d directories that profile adopt --from-legacy moved aside from %s; directories recreated since are left as they are.",
 
-	// v0.2 anchor: i18n-ja
-
+	// Language choice (i18n-ja).
+	FlagLang:                    "message language: auto, en or ja (also PARITYDESK_LANG)",
+	UsageLang:                   "--lang must be auto, en or ja",
+	LangInvalidEnv:              "PARITYDESK_LANG=%s is not auto, en or ja; it was ignored",
+	LangNeedsUTF8:               "Japanese messages need a UTF-8 locale (for example LANG=ja_JP.UTF-8); showing English",
+	InitLangSaved:               "Messages are shown in Japanese, also where no locale is set, such as the plan summaries the Claude Code plugin shows. To change this, edit fallback_lang under [ui] in the config file.",
+	InitLangHint:                "To show Japanese without --lang, set lang = \"ja\" under [ui] in the config file.",
+	DoctorLang:                  "Messages: %s (from %s)",
+	DoctorLangEnvInvalid:        "PARITYDESK_LANG holds an invalid value and is ignored",
+	DoctorLangASCII:             "Japanese was chosen, but this terminal is not UTF-8, so messages are English",
+	ConfigInvalidUILang:         "ui.lang: must be auto, en or ja",
+	ConfigInvalidUIFallbackLang: "ui.fallback_lang: must be auto, en or ja",
+	WordListSep:                 "; ",
+	// Notifications of the detached job (English-only, i18n.EnglishOnly).
+	NotifySwitched: "The switch finished. Claude is open on the other account.",
+	NotifyFinished: "The switch finished.",
+	NotifyCheck:    "The switch finished, but the check after launch found a problem. Run paritydesk status in Terminal.",
+	NotifyStopped:  "The switch did not finish. Run paritydesk status in Terminal.",
+	// Log signals (busy detection, account changes, Chrome pairing org); moved from orchestrator/busytext.go.
+	ConfirmBusyLine:                   "%s (%s), working for %s",
+	ConfirmBusyLineNoTime:             "%s (%s)",
+	ConfirmBusyUntitled:               "untitled session",
+	ConfirmBusyWaited:                 "waited %s",
+	ProgressP3BusyWait:                "waiting for %d session(s) to finish (Ctrl-C stops without changes)",
+	WarnBusyStale:                     "%d session(s) started a turn more than %s ago and show no end in Claude's log; they are not waited for, and Claude asks before it quits if one is still working",
+	WarnBusyPreview:                   "%d session(s) are still working; the switch waits up to %s for them before it quits Claude",
+	WarnBusyTruncated:                 "Claude's log is large; sessions that started long ago may not be listed",
+	WarnBusyLogUnreadable:             "Claude's log could not be read, so working sessions are not listed; only Claude's own quit dialog protects them",
+	WarnAccountWindow:                 "Claude's log since the last switch is larger than paritydesk reads; older account changes are not seen",
+	WarnAccountChange:                 "the folder of %s was signed in to another account (%s) in Claude since the last switch; run paritydesk doctor",
+	WarnInFolderSignIn:                "the folder of %s holds the account of %s: it was signed in to that account in Claude; run paritydesk doctor",
+	WarnNativeMulti:                   "Claude's own multi-account mode looks active in the folder of %s; the next switch only swaps folders",
+	WarnSwapOnlyNativeLog:             "swap-only mode: the folder of %s changed accounts %d times in Claude since the last switch, so the switch will not carry anything",
+	WarnSwapOnlyNativeHistory:         "swap-only mode: the folder of %s has held several accounts, so the switch will not carry anything",
+	ErrSyncSwapOnlyNativeLog:          "sync is not possible in swap-only mode: the folder of %s changed accounts %d times in Claude since the last switch",
+	ErrSyncSwapOnlyNativeHistory:      "sync is not possible in swap-only mode: the folder of %s has held several accounts",
+	ErrResolveInFolderSignIn:          "the folder of %s was signed in to the account of %s in Claude; nothing was changed. In Claude, switch back to the account of %s, then run the command again; see paritydesk doctor",
+	DoctorBusyDetectionOK:             "working sessions are found in Claude's log (turn start, end, interrupt and stop lines, and Claude's keep-awake hold for Code sessions); Claude's own quit dialog stays the last guard",
+	DoctorBusyDetectionRecord:         "working Code sessions are detected from their records before Claude quits",
+	DoctorBusyDetectionPartial:        "turn starts and ends are found in Claude's log, but not every way a turn can end; such a session can look busy for up to %s",
+	DoctorBusyDetectionUnavailable:    "busy detection unavailable: this Claude version has no confirmed busy signal, so only Claude's own quit dialog protects a working Code session",
+	DoctorBusyNowAppStopped:           "Claude is not running, so no session is working",
+	DoctorBusyNowNone:                 "Claude's log shows no session working now",
+	DoctorBusyNowSome:                 "Claude's log shows %d session(s) working now: %s (this includes the session running doctor, if any)",
+	DoctorBusyNowNoSignals:            "this Claude version has no busy signal in its log, so working sessions cannot be listed; only Claude's own quit dialog protects them",
+	DoctorBusyNowUnreadable:           "Claude's log could not be read, so working sessions cannot be listed; only Claude's own quit dialog protects them",
+	DoctorBusyNowRecords:              "%d session(s) working now by their records: %s (this includes the session running doctor, if any)",
+	DoctorBusyNowStale:                "%d more session(s) started a turn long ago with no end in the log",
+	DoctorBusyNowTruncated:            "Claude's log is large; sessions that started long ago may not be listed",
+	DoctorAccountChangeUnavailable:    "this Claude version has no known log line for an account change; paritydesk relies on the accounts and markers it recorded for each folder",
+	DoctorAccountChangeNone:           "no account change inside a data folder in the recent Claude log",
+	DoctorAccountChangeOne:            "the folder of %s (account %s) was signed in to %s at %s (from the Claude log)",
+	DoctorAccountChangeUnknown:        "a folder that held account %s, which no profile registers, was signed in to %s at %s (from the Claude log)",
+	DoctorAccountChangeInFolder:       "Claude holds the folder of %s, signed in to the account of %s; paritydesk refuses to run until Claude uses the account of %s in that folder again",
+	DoctorAccountChangeNativeLog:      "the folder of %s changed accounts %d times since the last switch: Claude's own multi-account mode looks active, so the next switch only swaps folders and carries nothing",
+	DoctorAccountChangeNativeHistory:  "the folder of %s has held several accounts (recorded history): switches only swap folders and carry nothing",
+	DoctorAccountChangeUnknownTime:    "an unknown time",
+	DoctorChromePairingOrgKnown:       "Claude in Chrome pairs with the organization active in Claude (%s, from the Claude log; an organization override set by an administrator would win) and pairs again when the account or organization changes; no other organization stays pinned. Use one Chrome profile per account",
+	DoctorChromePairingOrgUnknown:     "the active organization is not in Claude's log for this launch, so it cannot be shown; Claude in Chrome always pairs with the organization active in Claude",
+	DoctorChromePairingOrgState:       "the last local pairing state Claude logged since it started: %s",
+	DoctorChromeBridgePairingDisabled: "Claude turned off Claude in Chrome's local pairing for its last launch because its data folder was not in the usual place; paritydesk never moves it, so another tool may have started Claude with a different folder",
+	DoctorVersionDeprecatedKey:        "a compatibility manifest override sets %s, which paritydesk no longer uses; remove it from the override",
+	// Orchestrator progress, warnings, doctor details and recover actions (migrated literals).
+	ProgressP5FinalPlan:                "final plan",
+	ProgressP6BackingUp:                "backing up",
+	ProgressP7Applying:                 "applying",
+	WarnEnteringInUseNotRestored:       "the entering folder is in use, so it was not restored; quit Claude, then run paritydesk recover",
+	WarnEnteringNotFullyRestored:       "the entering folder could not be fully restored; run paritydesk recover",
+	ProgressP8SwappingFolders:          "swapping folders",
+	WarnPostSwapCheckNotRun:            "the post-swap check could not run",
+	ProgressP9Parking:                  "parking",
+	WarnLeavingMarkerNotWritten:        "the leaving folder's marker could not be written; the next switch back merges without deleting",
+	WarnRunInterrupted:                 "a run was interrupted; run paritydesk recover",
+	ProfileProblemFolderMissing:        "folder missing",
+	WarnFoldersUnreadable:              "the data folders could not be read",
+	WarnProfilesMismatch:               "profiles do not match their folders; run paritydesk doctor",
+	DoctorStateUnreadable:              "root.json is unreadable; run paritydesk recover",
+	DoctorFoldersUnreadable:            "the data folders could not be read",
+	DoctorVersionNotFound:              "Claude was not found",
+	DoctorForeignToolsNone:             "no other account-switching tool",
+	DoctorStateInterrupted:             "a run was interrupted; run paritydesk recover",
+	DoctorStateOK:                      "no open run",
+	DoctorOrgUnknown:                   "the active organization is unknown; per-organization rows are skipped (exit 32)",
+	DoctorUnclassifiedNone:             "every entry in Claude is classified",
+	DoctorAutomationNotChecked:         "not checked; paritydesk doctor --grant-automation asks macOS for the permission",
+	DoctorAutomationMissing:            "Automation permission for Claude is missing; allow it in System Settings > Privacy & Security > Automation",
+	DoctorAutomationGranted:            "Automation permission for Claude is granted",
+	DoctorUpdateUnreadable:             "could not check for a staged update",
+	DoctorUpdateStaged:                 "a Claude update is staged; the next switch lets it install, then re-checks the new version",
+	DoctorUpdateNone:                   "no staged update",
+	DoctorChromeBridgeUnreadable:       "the Claude log could not be read",
+	DoctorChromeBridgeConnected:        "the recent Claude log shows a Claude in Chrome connection",
+	DoctorManagedAll:                   "every profile is marked managed_by_org",
+	DoctorRunnerNone:                   "no detached jobs",
+	DoctorRunnerNoStale:                "no stale detached jobs",
+	ProgressP0AutomationMissing:        "Automation permission for Claude is missing; paritydesk doctor --grant-automation asks again",
+	ProgressP0AutomationGranted:        "Automation permission for Claude is granted",
+	ProgressP11LaunchFailedSignIn:      "Claude could not be launched; open it manually to sign in",
+	ProgressP10ObjectsNotRemoved:       "unreferenced state objects could not be removed",
+	ProgressP11RelaunchedClaude:        "relaunched Claude",
+	ProgressP12NotSettled:              "Claude did not settle in time; verifying what is there",
+	WarnAccountChangedOutside:          "the active account changed outside paritydesk; paritydesk sync re-applies the shared state",
+	ProgressP10Recording:               "recording",
+	WarnEnteringNotReread:              "the entering folder could not be re-read; its bases are invalid until the next run",
+	WarnObjectsNotRemoved:              "unreferenced state objects could not be removed",
+	WarnGenerationsNotPruned:           "old backup generations could not be pruned",
+	ProgressP11Launching:               "launching",
+	ProgressP11NotLaunched:             "not launched (--no-launch)",
+	ProgressP11NotRunningBefore:        "Claude was not running before; not launched",
+	WarnLaunchNoProfile:                "Claude was not launched: the active folder holds no registered profile",
+	WarnLaunchFailed:                   "Claude could not be launched; open it manually",
+	WarnInvokingNotInProfile:           "the invoking session is not in the entering profile; it was not reopened",
+	WarnInvokingNotReopened:            "the invoking session could not be reopened",
+	ProgressP12BackgroundCheck:         "Claude is up; the values are checked in the background (paritydesk verify shows the result)",
+	ProgressP12Verifying:               "verifying",
+	ProgressP10EmptyGenerationKept:     "an empty backup generation could not be removed",
+	ProgressP10OnlineNotQueued:         "the changes for inside Claude could not be queued; the next switch plans them again",
+	WarnOnlineLeaseNotRemoved:          "the lease of the changes waiting for inside Claude could not be removed",
+	ProgressP2AcksUnreadable:           "permission acknowledgements of the entering folder could not be read",
+	RecoverNothing:                     "nothing to recover",
+	RecoverRelaunched:                  "relaunched Claude",
+	RecoverPutBack:                     "put the leaving profile back into Claude",
+	RecoverRemovedGeneration:           "removed the incomplete backup generation",
+	RecoverMovedEntering:               "moved the entering profile into Claude",
+	RecoverEnteringBasesInvalid:        "the entering profile's bases are invalid; the next run is a first sync for it",
+	RecoverOnlineRequeued:              "the changes for inside Claude are queued again",
+	RecoverLaunchedForSignIn:           "launched Claude for the sign-in",
+	RecoverLeftPendingAdd:              "left the pending profile add as it is",
+	RecoverNoJournal:                   "no journal; Claude is in place, nothing to move",
+	ProgressP11RelaunchNoProfile:       "Claude was not relaunched: the active folder holds no registered profile",
+	ProgressP11LaunchFailed:            "Claude could not be launched; open it manually",
+	ProgressP0Checking:                 "checking",
+	WarnUpdateUnreadable:               "could not check for a staged Claude update",
+	WarnUpdateStaged:                   "a Claude update is staged; it will install when Claude quits",
+	ProgressP0UpdateWait:               "waiting for the Claude update to install",
+	WarnDegraded:                       "degraded mode: some rows are skipped",
+	WarnAppleEventTimeout:              "Claude did not answer an Apple Event in time (AppleScript error -1712); if macOS asks whether paritydesk may control Claude, allow it",
+	WarnInvokingNotFound:               "the invoking session was not found; it will not be reopened",
+	ProgressP2Planning:                 "planning",
+	ProgressP3Quitting:                 "quitting Claude",
+	WarnInvokingTurnNotEnded:           "the invoking session's turn did not end in time; Claude may ask before quitting",
+	ProgressP3QuitDialog:               "Claude asks whether to quit while work is running; choose Wait for Claude to let the switch continue, or Cancel",
+	ProgressP3LateQuitWatch:            "Claude did not quit in time; watching for a late quit",
+	WarnReadOnlyHolder:                 "a read-only process (indexing or backup) has a file open; continuing",
+	ProgressP4Waiting:                  "waiting for files to close",
+	ProgressP2ReadOnly:                 "read-only mode: nothing was changed",
+	ProgressP0Detached:                 "the switch continues in the background",
+	WordCommaSep:                       ", ",
+	WordList:                           "%s",
+	WarnSwapOnly:                       "swap-only mode: the switch will not carry anything",
+	ConfirmOutsideSwitchLine:           "The active account changed outside paritydesk. paritydesk sync can re-apply the shared state; continue with the switch?",
+	ProgressP11Relaunched:              "relaunched %s",
+	ProgressP0Updated:                  "Claude updated to %s",
+	ConfirmDeletionLine:                "%s: %s",
+	ErrPreflightSessionsBusy:           "%d Code session(s) are still working",
+	ErrQuitSessionsBusy:                "%d Code session(s) are still working; Claude was not asked to quit",
+	WarnPendingAdd:                     "profile add of %s waits for its sign-in; after signing in, run paritydesk recover",
+	DoctorForeignToolsFound:            "another account-switching tool was detected: %s",
+	DoctorStatePendingAdd:              "profile add of %s waits for its sign-in",
+	DoctorVersionTested:                "Claude %s (tested), mode %s",
+	DoctorVersionUntested:              "Claude %s (untested), mode %s",
+	DoctorSkippedRows:                  "a run would skip: %s",
+	DoctorOrgActive:                    "active organization %s",
+	DoctorProbesLSUnreadable:           "%s: Local Storage could not be read",
+	DoctorProbesNotRun:                 "%s: probes could not run",
+	DoctorProbesFailed:                 "%s: %d of %d probes failed: %s",
+	DoctorProbesPassed:                 "%s: %d probes passed",
+	DoctorIdentityNone:                 "%s: no account recorded",
+	DoctorIdentityOK:                   "%s: account %s (%s)",
+	DoctorIdentityUnregistered:         "%s: account %s (unregistered)",
+	DoctorMarkerNone:                   "%s: no marker; its bases are rebuilt on the next run",
+	DoctorMarkerOther:                  "%s: the marker names another profile; its bases are invalid",
+	DoctorMarkerOK:                     "%s: marker matches %s",
+	DoctorUnclassifiedSome:             "%d unclassified entries in Claude (never touched; add them to the compat manifest): %s",
+	DoctorChromeBridgeNotUsed:          "Claude in Chrome was not used in the recent Claude log; it connects on first use. The extension follows the Chrome profile's sign-in, not the Claude folder: use one Chrome profile per account",
+	DoctorManagedHint:                  "if an account of %s belongs to an organization, set managed_by_org = true for it",
+	DoctorRunnerStale:                  "%d detached job(s) never finished; they are removed on the next detached switch",
+	ProgressP0ChromeNote:               "Claude in Chrome follows the Chrome profile's sign-in, not the Claude folder: use one Chrome profile per account",
+	ProgressP0InitAdd:                  "config: add profile %s (account %s)",
+	ProgressP0UnregisteredFolder:       "%s holds a signed-in account that no profile registers; register it with paritydesk profile adopt <alias> %s instead of profile add, or adopt every such folder at once as described in docs/migration-from-legacy.md",
+	ProgressP0ForeignTool:              "another account-switching tool was detected: %s",
+	ProgressP11AddSignIn:               "sign in to the new account in Claude, then run paritydesk recover to register it as %s",
+	ProgressP10Removed:                 "removed %s; its folder was left as it is",
+	ConfirmRollbackLine:                "Restore generation %d of %s (%d item(s)); items changed since are left as they are.",
+	ConfirmRollbackPropagate:           "Propagate the restored values to other profiles: %s.",
+	DoctorAccountChangeToProfile:       "%s (account %s)",
+	WordSentences:                      "%s %s",
+	ProfileWhyNoState:                  "no recorded state for this profile",
+	ProfileWhyFolderMissing:            "the profile's folder is missing",
+	ProfileWhyIdentityUnknown:          "the folder's account could not be read",
+	ProfileWhyNoMarker:                 "the folder has no marker",
+	ProfileWhyMarkerAlias:              "the folder's marker names another profile",
+	ProfileWhyMarkerReplica:            "the folder's marker names another account or org",
+	ProfileWhyMarkerBase:               "the folder's marker does not match the recorded bases",
+	ProfileWhyFolderID:                 "the folder is not the recorded folder (device, inode or birth time differ)",
+	ProfileWhyReplicaChanged:           "the profile's account or org changed since the bases were recorded",
+	ErrResolveMismatch:                 "folder %s holds a different account than profile %s expects",
+	WarnRowNotReadBack:                 "%s: the entering folder does not read back as planned; its base is invalid",
+	ProgressP10Registered:              "registered %d profile(s)",
+	RecoverLeftoversMoved:              "%d of %d leftover directories were moved into backup generation %d; paritydesk rollback %d puts them back",
+	ProgressP2BaseUnreadable:           "%s: the base of %s is unreadable and is treated as invalid",
+	ProgressP2PresetsDiffer:            "%s: %d preset(s) differ between Local Storage and ccd-session-presets.json; presets are not written until they agree",
+	ProgressP2StaleValues:              "%s: %d stale Local Storage value(s) ignored; the config mirror wins",
+	ProgressP2EnteringUnreadable:       "%s: the entering folder's state could not be read; the row is left unchanged",
+	ProgressP12LSUnreadable:            "Local Storage could not be read back while Claude runs; checked at the next switch: %s",
+	ProgressP12LSRowUnreadable:         "%s: Local Storage could not be read back while Claude runs; checked at the next switch",
+	RecoverMovedLeaving:                "moved the leaving profile's folder to %s",
+	RecoverConflictsLeft:               "%d item(s) changed since the run were left as they are",
+	RecoverRollbackFinished:            "finished restoring generation %d (%d restored, %d left as they are)",
+	RecoverPutBackAdd:                  "put %s back into Claude; run paritydesk profile add again",
+	RecoverAddWaits:                    "the profile add waits for the sign-in of %s",
+	ConfirmAddBindLine:                 "Claude now holds account %s; register it as %s?",
+	RecoverAddDropped:                  "Claude already holds profile %s; the pending profile add of %s was dropped",
+	RecoverRegistered:                  "registered the new account as %s",
+	ConfirmFoldersMismatch:             "The folders do not match the interrupted run: %s",
+	ErrRecoverMismatchClaude:           "The folders do not match the interrupted run: %s; nothing was moved; see paritydesk doctor",
+	ConfirmMoveFolder:                  "Move %s (profile %s) into Claude?",
+	RecoverMoved:                       "moved %s into Claude",
+	ErrRecoverMismatchNoMove:           "The folders do not match the interrupted run: %s; no folder can be moved safely",
+	ConfirmNoJournal:                   "No journal was found and Claude is missing.",
+	ConfirmMoveRecent:                  "Move %s (the most recently used profile folder) into Claude?",
+	RecoverFolderUnidentified:          "%s: unidentified",
+	RecoverFolderAccount:               "%s: account %s (%s)",
+	RecoverFolderUnregistered:          "%s: account %s (unregistered)",
+	RecoverNoFolders:                   "no data folders",
+	RecoverRolledBack:                  "rolled back %s from the generation",
+	RecoverCompleted:                   "completed the interrupted run; %s is active",
+	RecoverClosedLeftoversUnmoved:      "closed the interrupted move of leftovers; nothing was moved",
+	RecoverClosedLeftoversGenRemoved:   "closed the interrupted move of leftovers; nothing was moved and its empty backup generation was removed",
+	RecoverClosedLeftovers:             "closed the interrupted move of leftovers",
+	RecoverClosedSwitch:                "closed the interrupted switch; nothing was changed in the folders",
+	RecoverClosedRunUnchanged:          "closed the interrupted run; the folders were not changed",
+	RecoverClosedSync:                  "closed the interrupted sync; nothing was changed",
+	RecoverRestoredActive:              "restored the active profile from the generation",
+	RecoverClosedRollbackUnrestored:    "closed the interrupted rollback; nothing was restored",
+	RecoverClosedRollback:              "closed the rollback",
+	RecoverClosedAddUnmoved:            "closed the interrupted profile add; nothing was moved",
+	RecoverClosedAdd:                   "closed the interrupted profile add",
+	RecoverClosedRun:                   "closed the interrupted run",
+	ErrInterrupted:                     "a run was interrupted; run paritydesk recover",
+	ErrArtifactsUnknownQuestion:        "unknown question or answer",
+	ErrArtifactsUnknownDecision:        "unknown decision",
+	ErrArtifactsProfileNamesProfile:    "--profile names the profile",
+	ErrArtifactsCopyNotOtherOrg:        "the copy on that profile is not in another organization",
+	ErrAppUpdateNotInstalled:           "the staged update did not finish installing in time",
+	ErrAppTurnNotEnded:                 "the session's turn did not end in time",
+	ErrPlansHashInvalid:                "the confirmed plan hash is not valid",
+	ErrPlansNotFound:                   "the confirmed plan was not found; run paritydesk plan again",
+	ErrPlansUnreadable:                 "the confirmed plan is unreadable",
+	ErrPlansHashMismatch:               "the confirmed plan does not match its hash",
+	ErrInterruptedFirst:                "a run was interrupted; run paritydesk recover first",
+	ErrPendingAddFirst:                 "a profile add is waiting for its sign-in; run paritydesk recover first",
+	ErrLogNoLog:                        "no log for that run",
+	ErrStateLockBusy:                   "another paritydesk run holds the lock for this data root",
+	ErrOnlineUnknownAnswer:             "unknown answer for this question",
+	ErrOnlineNoQuestion:                "no such question is open",
+	ErrPreflightInterrupted:            "a previous run was interrupted; run paritydesk recover",
+	ErrPendingAdd:                      "a profile add is waiting for its sign-in; run paritydesk recover",
+	ErrResolveNoActiveProfile:          "the active folder holds no registered profile",
+	ErrSwitchNoOtherProfile:            "no other profile to switch to; register one with paritydesk profile add or profile adopt",
+	ErrCompatRefused:                   "this Claude version or folder layout cannot be handled safely",
+	ErrCompatUntested:                  "this Claude version is untested and require_tested is set; only plan works",
+	ErrCompatSyncSwapOnly:              "sync is not possible in swap-only mode",
+	ErrPreflightDiskSpace:              "not enough free disk space for the backup generation",
+	ErrPreflightAutomationMissing:      "Automation permission for Claude is missing",
+	ErrConfirmedPlanFirstSync:          "the confirmed plan was not a first sync, but this run is; run paritydesk plan again",
+	ErrPlanFirstSync:                   "a first-sync union needs confirmation",
+	ErrQuiescenceInUse:                 "files in the data folders are still in use",
+	ErrLegacyDegraded:                  "registration is complete, but some leftovers were kept for now or a marker could not be written",
+	ErrSwitchDetachedNeedsConfirmation: "a detached switch needs --confirmed-plan or --yes",
+	ErrSyncInsideClaude:                "sync quits Claude; run it from Terminal, not from inside Claude",
+	ErrRollbackReadOnly:                "rollback writes; it cannot run in read-only mode",
+	ErrRunOpen:                         "a run is open; run paritydesk recover first",
+	ErrRollbackNoGeneration:            "there is no generation to roll back",
+	ErrRollbackNotQuit:                 "Claude did not quit; nothing was restored",
+	ErrRebaseReadOnly:                  "rebase writes; it cannot run in read-only mode",
+	ErrOnlineDoneReadOnly:              "online done writes; it cannot run in read-only mode",
+	ErrConfirmNoTTY:                    "a confirmation is needed; run in a terminal or pass --yes",
+	ErrConfirmDeclined:                 "declined",
+	ErrStateOtherDataRoot:              "the state belongs to a different data root; pass the matching --state-dir",
+	ErrSwitchSwapOnly:                  "switched without syncing (swap-only mode)",
+	ErrSwitchDegraded:                  "some rows were skipped",
+	ErrHarvestAppChanged:               "Claude changed during the run (an update installed?)",
+	ErrQuiescenceOpened:                "Claude or another process opened the data folders during the run; nothing was changed",
+	ErrSwapInterrupted:                 "the folder swap was interrupted; run paritydesk recover",
+	ErrSwapProcessStarted:              "a process started during the folder swap; quit Claude, then run paritydesk recover",
+	ErrSwapFoldersOpened:               "a process opened the data folders during the swap; quit it, then run paritydesk recover",
+	ErrSwapBackFailed:                  "swapping back failed; run paritydesk recover",
+	ErrSwapUndone:                      "a process started during the swap; the switch was undone",
+	ErrVerifyNoActive:                  "no active profile; run paritydesk init",
+	ErrVerifyNoManifest:                "no compatibility manifest covers this Claude version",
+	ErrVerifyDrift:                     "some values differ from what was written; the drift is recorded",
+	ErrRecoverReadOnly:                 "recover writes; it cannot run in read-only mode",
+	ErrRecoverAppNotFound:              "Claude could not be found, so recover cannot tell whether it is running; quit Claude, make sure it is in Applications, then run paritydesk recover again",
+	ErrRecoverQuitFirst:                "quit Claude, then run paritydesk recover again",
+	ErrRecoverInUse:                    "a process still uses the data folders; quit Claude (and any copy started with --user-data-dir), then run paritydesk recover again",
+	ErrRecoverNoJournal:                "no journal and no profile folder to move into place",
+	ErrInitNoAccount:                   "Claude holds no signed-in account; open Claude and sign in first",
+	ErrProfileRemoveActive:             "the active profile cannot be removed; switch to another profile first",
+	ErrApplyInUse:                      "the folder is in use: %s",
+	ErrApplyChanged:                    "%s changed since the plan was made",
+	ErrApplyCopySourceChanged:          "the copy source of %s changed since the plan was made",
+	ErrOpenFilesNativeUnavailable:      "the native open-file scan is not available here; set app.open_file_scan to \"auto\" or \"lsof\"",
+	ErrValidateBreaker:                 "%d deletions in %s exceed the limit (%d of %d items)",
+	ErrValidateBreakerEmpty:            "%d deletions would leave %s empty (%d items before)",
+	ErrValidateWorktreeRisk:            "%d worktrees with uncommitted changes would lose their registration",
+	ErrForeignTool:                     "another account-switching tool was detected: %s",
+	ErrLegacyAliasNotFolder:            "--legacy-alias names %s, which is not a folder next to Claude",
+	ErrLegacyExcludeNotFolder:          "--legacy-exclude names %s, which is not a folder next to Claude",
+	ErrLegacyState:                     "--legacy-state: %s",
+	ErrSwitchNoPrevious:                "no previous profile; name the profile to switch to: %s",
+	ErrSwitchUnknownProfile:            "unknown profile %s",
+	ErrSwitchAlreadyActive:             "%s is already active; use paritydesk sync to re-apply",
+	ErrSwitchFolderMissing:             "the folder of %s is missing",
+	ErrPreflightParkTaken:              "%s already exists, so %s cannot be parked there; nothing was changed; see paritydesk doctor",
+	ErrConfirmedPlanNewDestructive:     "the plan now deletes %d item(s) the confirmed plan did not; run paritydesk plan again",
+	ErrRollbackNoProfile:               "generation %d belongs to no registered profile",
+	ErrRollbackOtherAccount:            "generation %d was taken from another account than %s holds now",
+	ErrRollbackFolderAccount:           "%s does not hold the account of %s; nothing was restored",
+	ErrRollbackInUse:                   "a process still uses the data folder; quit Claude (and any copy started with --user-data-dir), then run the rollback again; nothing was restored",
+	ErrHarvestNewDestructive:           "the final plan deletes %d item(s) the preview did not; nothing was changed",
+	ErrParkTaken:                       "%s already exists; folders hold accounts %s and %s",
+	ErrVerifyIdentity:                  "the active folder does not hold %s's account",
+	ErrVerifySignIn:                    "sign in with %s's account only; every other account stays signed in",
+	ErrVerifyDriftNotRecorded:          "some values differ from the last run's bases; nothing was recorded, because a later difference may be your own edit",
+	ErrRecoverParkTaken:                "%s already exists, so the leaving profile cannot be parked; run paritydesk recover --rollback to undo the switch; folders: %s",
+	ErrRecoverNameTaken:                "%s already exists; folders: %s",
+	ErrReadOnlyWrites:                  "%s writes; it cannot run in read-only mode",
+	ErrProfileExists:                   "profile %s already exists",
+	ErrInitRegistered:                  "the active account is already registered as %s",
+	ErrProfileAdoptNotFound:            "folder %s was not found",
+	ErrProfileAdoptNoAccount:           "%s holds no signed-in account",
+	ErrProfileAdoptRegistered:          "%s holds the account of profile %s",
+	ErrProfileAddTaken:                 "%s already exists; nothing was moved",
+	// Command-line errors (usageError).
+	UsageProfileFlag:           "--profile: %v",
+	UsageProfileNoneActive:     "--profile names the profile (no profile is active)",
+	UsageAllowOneOf:            "artifacts allow takes exactly one of --%s",
+	UsageAllowRoundtripNoID:    "artifacts allow --roundtrip takes no id",
+	UsageAllowNeedsID:          "artifacts allow <id> --%s",
+	UsageImportLegacyFrom:      "artifacts import-legacy needs --from <folder>",
+	UsageMapSyntax:             "--map takes <account-uuid>=<alias>",
+	UsageUnavailableSyntax:     "--unavailable takes tool names",
+	UsageRefusedSyntax:         "--refused takes step ids such as a001",
+	UsageQuestionAnswer:        "--question and --answer take ids",
+	UsageMissingCommand:        "missing command; run paritydesk help %s",
+	UsageUnknownCommand:        "unknown command %q",
+	UsageSyntax:                "%s %s",
+	UsageUnknownShell:          "unknown shell %q (one of %s)",
+	UsageOutOfRange:            "--%s must be between 0 and %d",
+	UsageFlagValue:             "--%s: %v",
+	UsageFaultAfter:            "%s=after:%s: that phase has no intent to stop after; use one of %s",
+	UsageFaultPausePhase:       "%s=pause:%s: only pause:%s is supported",
+	UsageFaultPauseRefused:     "%s=pause:%s is refused: %v",
+	UsageFaultUnknown:          "%s=%q is not understood; use after:<phase> or pause:%s",
+	UsageCategoryArtifacts:     "--%s: artifacts are synced by /paritydesk:artifacts, not by switch",
+	UsageUnknownCategory:       "--%s: unknown category %q (one of %s)",
+	UsageCategoryTwice:         "--%s: category %q given twice",
+	UsageCategoryOnlyAndSkip:   "category %q is in both --only and --skip",
+	UsageBadAlias:              "%q is not a profile alias (a-z, 0-9 and -, starting with a letter or digit)",
+	UsageBadGeneration:         "%q is not a generation number",
+	UsageSessionUuid:           "--%s must be a session UUID",
+	UsageNegative:              "--%s must not be negative",
+	UsagePlanHash:              "--%s must be the plan_hash printed by paritydesk plan --json",
+	UsageAbsolutePath:          "--%s must be an absolute path",
+	UsageLegacyAliasSyntax:     "--%s takes <folder>=<alias>, where <folder> is Claude or a Claude-<name> folder",
+	UsageLegacyAliasTwice:      "--%s names %s twice",
+	UsageLegacyExcludeSyntax:   "--%s takes Claude or a Claude-<name> folder",
+	UsageLegacyPlanHash:        "--%s must be the plan hash the dry run printed",
+	UsageManagedBoth:           "--managed and --unmanaged exclude each other",
+	UsageLegacyManagedBoth:     "--%s excludes --managed and --unmanaged",
+	UsageLegacyManagedRequired: "--managed or --unmanaged is required when there is no terminal to ask (or --%s)",
+	UsageLegacyManagedUnknown:  "--%s: %s is not a profile this run creates",
+	UsageLegacyAliasRequired:   "pass --%s Claude=<alias> when there is no terminal to ask",
+	UsageOlderThan:             "--%s takes a number of days and needs --%s",
+	UsageRunFlag:               "--run: not a run id",
+	UsageSessionFlag:           "--session must be a session UUID",
+	UsageTokenFlag:             "--token must be 32 lower-case hex digits",
+	UsageBadRunID:              "--%s is not a run id",
+	UsageLegacyNoArgs:          "profile adopt --from-legacy takes no arguments",
+	UsageNeedsFlag:             "--%s needs --%s",
+	UsageBadFolder:             "%q is not a parked folder name (Claude-<name>)",
+	UsageManagedRequired:       "--managed or --unmanaged is required when there is no terminal to ask",
+	UsageAliasRequired:         "--alias is required when there is no terminal to ask",
+	UsageLabelTooLong:          "--label: at most %d printable characters",
+	UsageFlag:                  "%s",
+	// Help: command short texts (help.<path>) and the help frame.
+	HelpUsage:                 "usage: %s %s",
+	HelpCommands:              "commands:",
+	HelpFlags:                 "flags",
+	HelpGlobalFlags:           "global flags",
+	HelpDefault:               "(default %s)",
+	HelpRoot:                  "Switch the Claude desktop app between accounts and keep everything else in step.",
+	HelpInit:                  "Set up paritydesk for the account in the app now",
+	HelpProfile:               "Manage profiles",
+	HelpProfileList:           "List profiles",
+	HelpProfileAdopt:          "Register a parked folder after checking its identity",
+	HelpProfileAdd:            "Add an account without signing out of any other",
+	HelpProfileRename:         "Rename a profile",
+	HelpProfileRemove:         "Unregister a profile; its folder is kept",
+	HelpStatus:                "Show the active profile and anything pending",
+	HelpPlan:                  "Preview what a switch would change (approximate)",
+	HelpSwitch:                "Switch to another profile",
+	HelpSync:                  "Re-apply the shared state to the active profile",
+	HelpVerify:                "Check that the app kept what the last run wrote",
+	HelpRecover:               "Finish or undo an interrupted run",
+	HelpRollback:              "Restore a generation without overwriting newer work",
+	HelpRebase:                "Forget every sync base; the next run is a first sync",
+	HelpGenerations:           "List or show backup generations",
+	HelpGenerationsList:       "List generations",
+	HelpGenerationsShow:       "Show one generation",
+	HelpBackups:               "Prune or purge backup generations",
+	HelpBackupsPrune:          "Apply the retention policy",
+	HelpBackupsPurge:          "Remove every generation",
+	HelpDoctor:                "Check the installation, folders and app compatibility",
+	HelpLog:                   "Show the log of a run",
+	HelpHistory:               "List past runs",
+	HelpConfig:                "Show, locate or validate the config file",
+	HelpConfigPath:            "Print the config file path",
+	HelpConfigShow:            "Print the effective config",
+	HelpConfigValidate:        "Validate the config file",
+	HelpOnline:                "Show or drop changes waiting to be applied in Claude",
+	HelpOnlineStatus:          "Show the changes waiting to be applied in Claude",
+	HelpOnlineCancel:          "Drop the waiting changes; nothing in Claude changes",
+	HelpOnlineCapture:         "Internal: read-only calls before a switch (used by /paritydesk:switch)",
+	HelpOnlineNext:            "Internal: the next calls to make (used by /paritydesk:reconcile)",
+	HelpOnlineDecide:          "Internal: record an answer (used by /paritydesk:reconcile)",
+	HelpOnlineRetry:           "Internal: offer the changes that were not applied once more",
+	HelpOnlineDone:            "Internal: finish applying changes (used by /paritydesk:reconcile)",
+	HelpArtifacts:             "Keep claude.ai artifacts the same on every profile (beta)",
+	HelpArtifactsStatus:       "Show the artifact archive",
+	HelpArtifactsPlan:         "Preview what a sync on a profile would do (approximate)",
+	HelpArtifactsIngest:       "Record a finished sync round now",
+	HelpArtifactsAllow:        "Decide about one artifact (Terminal only)",
+	HelpArtifactsSkip:         "Stop syncing an artifact (it stays in the archive)",
+	HelpArtifactsForget:       "Stop tracking an artifact (Terminal only)",
+	HelpArtifactsImportLegacy: "Import the artifact archive of an earlier folder-swap script",
+	HelpArtifactsNext:         "Internal: the next calls of an artifact sync (used by /paritydesk:artifacts)",
+	HelpArtifactsDecide:       "Internal: record an answer (used by /paritydesk:artifacts)",
+	HelpArtifactsPause:        "Internal: stop an artifact sync for now",
+	HelpArtifactsDone:         "Internal: finish an artifact sync (used by /paritydesk:artifacts)",
+	HelpUninstall:             "Remove paritydesk's state; every data folder is kept",
+	HelpHook:                  "Internal: entry point of the plugin's hooks",
+	HelpHookSessionStart:      "SessionStart hook",
+	HelpHookPreToolUse:        "PreToolUse hook",
+	HelpHookPostToolUse:       "PostToolUse hook",
+	HelpCompletion:            "Print a shell completion script",
+	HelpAliases:               "Internal: list profile aliases for completion",
+	HelpHelp:                  "Show help for a command",
+	HelpVersion:               "Print the version",
+	// Help: flag usage texts (flag.<name>; flag.<command path>.<name> for a different text).
+	FlagAppSupportDir:                 "paritydesk support directory",
+	FlagASCII:                         "ASCII only",
+	FlagConfig:                        "config file (also PARITYDESK_CONFIG)",
+	FlagJSON:                          "print one JSON document",
+	FlagNoColor:                       "no colour (also NO_COLOR, TERM=dumb)",
+	FlagPlain:                         "plain lines, no tables or spinners",
+	FlagReadOnly:                      "plan only; never write (also PARITYDESK_READONLY=1)",
+	FlagStateDir:                      "state directory (also PARITYDESK_STATE_DIR)",
+	FlagAlias:                         "alias for the account in Claude now (asked when missing)",
+	FlagLabel:                         "display label for the profile",
+	FlagManaged:                       "the account is managed by an employer or client",
+	FlagUnmanaged:                     "the account is not managed by an employer or client",
+	FlagProfileAdoptApply:             "(hidden) make the changes (default: dry run)",
+	FlagFromLegacy:                    "(hidden) adopt every folder an earlier folder-swap script left next to Claude",
+	FlagLegacyAlias:                   "(hidden) <folder>=<alias>; may be repeated",
+	FlagLegacyExclude:                 "(hidden) leave this folder out; may be repeated",
+	FlagLegacyManaged:                 "(hidden) comma list of new aliases that are managed; every other new profile is unmanaged",
+	FlagLegacyNoSeed:                  "(hidden) register only; seed no sync bases",
+	FlagLegacyPlan:                    "(hidden) plan hash printed by the dry run",
+	FlagLegacyState:                   "(hidden) absolute path of the earlier script's state file (a hint only)",
+	FlagQuarantine:                    "(hidden) with --apply: move other accounts' leftovers into a backup generation (needs a terminal)",
+	FlagShort:                         "one line; never opens Local Storage",
+	FlagInvokingSession:               "the Claude Code session running this command, left out of the busy list",
+	FlagOnly:                          "categories to carry, comma-separated: %s",
+	FlagSkip:                          "categories to leave alone, comma-separated",
+	FlagAcceptWorktreeRisk:            "switch even if a worktree with uncommitted changes loses its registration",
+	FlagAllowDeletions:                "allow up to N deletions per category past the breaker",
+	FlagConfirmFirstSync:              "confirm the first-sync union that the confirmed plan showed",
+	FlagConfirmedPlan:                 "hash of the plan you confirmed (printed by paritydesk plan --json)",
+	FlagDetach:                        "run as a detached launchd job",
+	FlagFromRunner:                    "internal: this process is the detached job",
+	FlagJSONProgress:                  "NDJSON progress on stderr",
+	FlagLogInode:                      "internal: inode of the main.log the offset belongs to",
+	FlagLogOffset:                     "internal: main.log offset recorded before the hand-off",
+	FlagNoLaunch:                      "do not relaunch Claude",
+	FlagNoReopen:                      "do not reopen the invoking session",
+	FlagReopenSession:                 "Claude Code session id of the invoking session (set by the plugin; empty: no reopen)",
+	FlagSwitchYes:                     "do not ask (destructive differences after the preview still ask)",
+	FlagYes:                           "do not ask",
+	FlagAfterRun:                      "run id a background check verifies (set by paritydesk)",
+	FlagRollback:                      "undo the interrupted run instead of completing it",
+	FlagPropagate:                     "carry the restored values to other profiles on the next switch",
+	FlagOlderThan:                     "with --scratch: only sets older than this many days",
+	FlagScratch:                       "remove the kept sets of scratch files removed by earlier switches (asks first)",
+	FlagBundle:                        "write a redacted support archive (tar.gz) to this new file",
+	FlagBundleLogs:                    "newest run logs to put in the archive",
+	FlagGrantAutomation:               "ask macOS for Automation permission now",
+	FlagRun:                           "run id (default: the last run)",
+	FlagFinish:                        "close the capture",
+	FlagSession:                       "the Claude Code session running this command",
+	FlagToken:                         "the token of the first online next answer",
+	FlagUnavailable:                   "tools the session could not load, comma-separated",
+	FlagWait:                          "wait until the next calls can be made (at most 60 s)",
+	FlagAnswer:                        "option id",
+	FlagQuestion:                      "question id",
+	FlagAll:                           "include forgotten and ignored artifacts",
+	FlagProfile:                       "profile alias (default: the active profile)",
+	FlagTitles:                        "include titles in --json output",
+	FlagCapabilities:                  "sync it although it declares capabilities",
+	FlagCreate:                        "create it on a profile although the title is taken there",
+	FlagPublic:                        "publish to public copies (implies --shared)",
+	FlagRehome:                        "stop tracking a copy in an organization the profile no longer uses",
+	FlagRestore:                       "create it again on a profile where it was deleted",
+	FlagResume:                        "sync a skipped or ignored artifact again",
+	FlagRoundtrip:                     "allow publishing again after a page read back differently",
+	FlagShared:                        "publish to copies shared with other people",
+	FlagApply:                         "import (default: dry run; Terminal only)",
+	FlagFrom:                          "absolute path of the old archive folder (required)",
+	FlagMap:                           "<account-uuid>=<alias>; may be repeated",
+	FlagRefused:                       "step ids whose call was declined, comma-separated",
+	FlagKeepArtifacts:                 "keep the artifact archive (saved pages and their history)",
+	FlagKeepBackups:                   "keep backup generations",
+	FlagKeepState:                     "keep the state directory as well",
+	FlagHookSessionStartPluginVersion: "version of the calling plugin (silent on version skew)",
+	FlagPluginVersion:                 "version of the calling plugin",
+	// Config validation (config.invalid.*).
+	ConfigInvalid:                         "invalid config: %s",
+	ConfigInvalidVersion:                  "version: must be %d",
+	ConfigInvalidAppBundleID:              "app.bundle_id: not a bundle id",
+	ConfigInvalidAppDataRoot:              "app.data_root: must be absolute or start with ~/",
+	ConfigInvalidAppQuitTimeout:           "app.quit_timeout: must be between %s and %s",
+	ConfigInvalidAppLateQuitWatch:         "app.late_quit_watch: must be between 0s and %s",
+	ConfigInvalidAppOpenFileScan:          "app.open_file_scan: must be %s, %s or %s",
+	ConfigInvalidDurationRange:            "%s: must be between %s and %s",
+	ConfigInvalidOnlineReconcile:          "online.reconcile: must be %s, %s or %s",
+	ConfigInvalidOnlineGuard:              "online.guard: must be %s or %s",
+	ConfigInvalidArtifactsVerify:          "artifacts.verify: must be %s or %s",
+	ConfigInvalidArtifactsHistoryKeep:     "artifacts.history_keep: must be between %d and %d",
+	ConfigInvalidIntRange:                 "%s: must be between %d and %d",
+	ConfigInvalidScratchMaxWorkspaceBytes: "scratch.max_workspace_bytes: must not be larger than scratch.max_run_bytes",
+	ConfigInvalidScratchMaxDeleteFraction: "scratch.max_delete_fraction: must be greater than 0 and at most 1",
+	ConfigInvalidScratchMaxDeleteMin:      "scratch.max_delete_min: must not be negative",
+	ConfigInvalidScratchExclude:           "scratch.exclude[%d]: not a relative slash-separated pattern without ..",
+	ConfigInvalidScratchCacheDirs:         "scratch.cache_dirs[%d]: must be one folder name",
+	ConfigInvalidSize:                     "%s: %v",
+	ConfigInvalidSizeRange:                "%s: must be between 1MiB and 1TiB",
+	ConfigInvalidProfileAlias:             "profile[%d].alias: must match ^[a-z0-9][a-z0-9-]{0,31}$",
+	ConfigInvalidProfileAliasTwice:        "profile[%d].alias: %s is used twice",
+	ConfigInvalidProfileLabel:             "profile[%d].label: at most %d printable characters",
+	ConfigInvalidProfileFolderDefault:     "profile[%d].folder: must differ from %s",
+	ConfigInvalidProfileFolderPattern:     "profile[%d].folder: must match ^Claude-[A-Za-z0-9._-]{1,48}$ and not be a reserved name",
+	ConfigInvalidProfileFolderUsed:        "profile[%d].folder: used by another profile (names compare without case)",
+	ConfigInvalidSyncTombstones:           "sync.tombstones: must be %q or %q",
+	ConfigInvalidSyncSecrets:              "sync.secrets: must be %q or %q",
+	ConfigInvalidSyncExclude:              "sync.exclude[%d]: not a valid pattern",
+	ConfigInvalidSyncAppPrefsUnknown:      "sync.app_prefs[%d]: unknown preference",
+	ConfigInvalidSyncAppPrefsTagged:       "sync.app_prefs[%d]: preference tagged %q cannot be synced",
+	ConfigInvalidSyncAppPrefsTwice:        "sync.app_prefs[%d]: listed twice",
+	ConfigInvalidSyncSecretsAllow:         "sync.secrets_allow[%d]: empty or not printable",
+	ConfigInvalidBoundaryAlias:            "%s: %q is not a profile alias",
+	ConfigInvalidBoundaryCategory:         "%s.%s: %q is not a category",
+	ConfigInvalidLimitsMaxDeleteFraction:  "limits.max_delete_fraction: must be greater than 0 and at most 1",
+	ConfigInvalidLimitsMaxDeleteMin:       "limits.max_delete_min: must not be negative",
+	ConfigInvalidBackupsKeep:              "backups.keep: must be at least 1",
+	ConfigInvalidBackupsLeveldbClonesKeep: "backups.leveldb_clones_keep: must not be negative",
+	ConfigInvalidBackupsMaxSize:           "backups.max_size: %v",
+	ErrConfigNoConfig:                     "config: no config file; run paritydesk init",
+	ErrIDsAlias:                           "ids: alias must match [a-z0-9][a-z0-9-]{0,31}",
+	ErrIDsFolderPattern:                   "ids: folder must match ^Claude-[A-Za-z0-9._-]{1,48}$",
+	ErrIDsFolderReserved:                  "ids: folder name is reserved",
+	ErrStateNewerRoot:                     "state: root.json was written by a newer paritydesk; upgrade paritydesk before running it again",
+	ErrStateNewerRootVersion:              "state: root.json was written by a newer paritydesk; upgrade paritydesk before running it again (found version %d, this binary supports %d)",
+	ErrApplyHolderCheck:                   "holder check failed",
+	ErrApplyLSLocked:                      "the folder is in use: another process holds the Local Storage lock",
+	ErrApplyLSCompression:                 "Local Storage uses an unknown block compression",
+	ErrApplyLSJournal:                     "Local Storage holds journal batches out of order",
+	ErrApplyLSOpen:                        "opening Local Storage failed",
+	ErrApplyReadFailed:                    "reading %s failed",
+	ErrApplyRolledBackWritten:             "%s (files already written: %s)",
+	ErrApplyRolledBackNone:                "%s (no files written yet)",
+	ErrApplyFullSync:                      "full sync of the folder failed",
+	ErrApplyChangedDuring:                 "%s changed during apply",
+	ErrApplyModeFailed:                    "reading the mode of %s failed",
+	ErrApplyWriteFailed:                   "writing %s failed",
+	ErrApplyReadBackFailed:                "reading back %s failed",
+	ErrApplyReadBackMismatch:              "read-back mismatch for %s",
+	ErrApplyEncodeFailed:                  "encoding %s failed",
+	ErrApplyLSWrite:                       "Local Storage write failed",
+	ErrApplyLSClose:                       "closing Local Storage failed",
+	ErrOpenFilesBlind:                     "paritydesk cannot read other processes' open files here (is it running inside a sandbox?); run it from Terminal",
+	ErrOpenFilesSelfCheck:                 "the native open-file scan failed its self-check; set app.open_file_scan to \"auto\" or \"lsof\"",
+	ErrOpenFilesNativeFailed:              "the native open-file scan failed",
+	ErrOpenFilesPartial:                   "the native open-file scan could not read every process; set app.open_file_scan to \"auto\"",
+	ErrAppQuitTimeout:                     "the app did not quit before the timeout",
+	ErrAppQuitRefused:                     "the app refused to quit and did not quit before the timeout",
+	ErrAppQuitNoReply:                     "the quit event got no reply in time and the app did not quit before the timeout",
+	ErrQuitLate:                           "Claude quit late; relaunched %s",
+	ErrQuitAsking:                         "Claude is still asking whether to quit; your answer there decides",
+	ErrQuitStillRunning:                   "%s; it is still running and nothing was changed",
+	ErrQuitFailed:                         "%s; nothing was changed",
+	ErrQuitOSAStatus:                      " (AppleScript error %d)",
+	ErrQuitRefused:                        "Claude refused to quit%s",
+	ErrQuitTimedOut:                       "Claude did not answer the quit event in time%s; if macOS asked whether paritydesk may control Claude, allow it (paritydesk doctor --grant-automation)",
+	ErrQuitSandboxed:                      "macOS refused to send the quit event to Claude%s, as it does for a sandboxed process; run paritydesk outside any sandbox, for example from Terminal",
+	ErrQuitNotDelivered:                   "the quit event to Claude failed%s",
+	ErrQuitNotQuit:                        "Claude did not quit%s",
+	ErrApplyEnteringInUse:                 "the entering folder is in use; run paritydesk recover",
+	ErrApplyEnteringNotRestored:           "the entering folder could not be fully restored; run paritydesk recover",
+	ErrApplyLSLockedRecover:               "another process holds the Local Storage lock; quit Claude (and any copy started with --user-data-dir), then run paritydesk recover",
+	ErrApplyLSReopen:                      "reopening Local Storage failed",
+	DoctorModeReasonIdentity:              "default folder identity unreadable",
+	DoctorModeReasonDowngraded:            "app version is older than the last one seen",
+	DoctorModeReasonUntested:              "app version not tested",
+	DoctorModeReasonRowsSkipped:           "some rows skipped",
+	DoctorModeReasonNoManifest:            "no manifest covers the app version",
+	DoctorModeReasonKnownBad:              "app version is known bad",
+	DoctorModeReasonSQLite:                "Local Storage uses an unsupported backend",
+	DoctorModeReasonCompression:           "Local Storage uses an unknown block compression",
+	DoctorModeReasonNativeMulti:           "the app's own multi-account mode is in use",
+	DoctorModeReasonCriticalProbe:         "critical probe failed: %s",
+	ArtifactsPlanDue:                      "artifacts     %d to publish on %s (run /paritydesk:artifacts after the switch)",
 }

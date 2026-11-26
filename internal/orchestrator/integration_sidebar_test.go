@@ -13,6 +13,7 @@ import (
 
 	"github.com/kazupc/paritydesk/internal/app"
 	"github.com/kazupc/paritydesk/internal/config"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/jsonx"
 	"github.com/kazupc/paritydesk/internal/model"
@@ -64,7 +65,7 @@ func (w *realWorld) switch7Code(opts SwitchOptions, want pderr.Code) *Result {
 	if res.Code != want {
 		w.t.Fatalf("switch to %s: code %d", opts.To, res.Code)
 	}
-	for _, warn := range res.Warnings {
+	for _, warn := range i18n.Strings(i18n.English, (res.Warnings)) {
 		if strings.Contains(warn, "does not read back") {
 			w.t.Errorf("switch to %s: %s", opts.To, warn)
 		}

@@ -86,7 +86,7 @@ func groupByLocation(edits []Edit) ([]group, error) {
 // *pderr.Error with code Internal and never contain content.
 func Compose(edits []Edit, src Source) ([]Op, error) {
 	if src == nil {
-		return nil, pderr.New(pderr.Internal, composeOp, "no source")
+		return nil, pderr.Bug(composeOp, "no source")
 	}
 	groups, err := groupByLocation(edits)
 	if err != nil {

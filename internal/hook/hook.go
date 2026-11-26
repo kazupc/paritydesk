@@ -143,14 +143,14 @@ func sessionLine(root *state.Root, p SessionStartInput, d Deps) string {
 			if id == i18n.HookOnlineAuto && !attendedModes[p.PermissionMode] {
 				id = i18n.HookOnlinePrompt
 			}
-			return i18n.T(id)
+			return i18n.En(id)
 		}
 		id, _ = pendingItem(root, nil, d.Mode)
 	}
 	// Item 4b: artifacts from another profile wait (after the online
 	// line, before drift).
 	if (id == "" || id == i18n.HookDrift) && artifactsDue(root, p, d, max) {
-		return i18n.T(i18n.HookArtifactsDue)
+		return i18n.En(i18n.HookArtifactsDue)
 	}
 	return msgText(id)
 }
@@ -174,7 +174,7 @@ func msgText(id i18n.Msg) string {
 	if id == "" {
 		return ""
 	}
-	return i18n.T(id)
+	return i18n.En(id)
 }
 
 // ReadPayload reads and validates the payload: at most MaxPayload bytes

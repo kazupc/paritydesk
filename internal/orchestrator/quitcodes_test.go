@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/kazupc/paritydesk/internal/app"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/pderr"
 )
@@ -114,10 +115,10 @@ func TestPreflightProbeTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 	found := false
-	for _, w := range res.Warnings {
+	for _, w := range i18n.Strings(i18n.English, (res.Warnings)) {
 		found = found || strings.Contains(w, "-1712")
 	}
 	if !found {
-		t.Errorf("no warning about the unanswered probe: %v", res.Warnings)
+		t.Errorf("no warning about the unanswered probe: %v", i18n.Strings(i18n.English, res.Warnings))
 	}
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/kazupc/paritydesk/internal/clock"
 	"github.com/kazupc/paritydesk/internal/compat"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -201,14 +202,14 @@ func (p *Platform) QuitAndWait(ctx context.Context, bundleID, bundlePath string,
 		}
 		if res.Elapsed >= timeout {
 			res.Pending = res.Vetoed || res.Refused || res.NoReply
-			e := &pderr.Error{Code: pderr.AppDidNotQuit, Op: "app/quit", Msg: "the app did not quit before the timeout", Err: cause}
+			id := i18n.ErrAppQuitTimeout
 			switch {
 			case res.Refused:
-				e.Msg = "the app refused to quit and did not quit before the timeout"
+				id = i18n.ErrAppQuitRefused
 			case res.NoReply:
-				e.Msg = "the quit event got no reply in time and the app did not quit before the timeout"
+				id = i18n.ErrAppQuitNoReply
 			}
-			return res, e
+			return res, pderr.WrapT(pderr.AppDidNotQuit, "app/quit", id, cause)
 		}
 		if err := clk.Sleep(ctx, pollInterval); err != nil {
 			return res, err
@@ -246,7 +247,7 @@ func (p *Platform) WaitTurnEnded(ctx context.Context, from LogCursor, sig compat
 			return clk.Sleep(ctx, turnSettle)
 		}
 		if clk.Now().Sub(start) >= timeout {
-			return pderr.New(pderr.SessionsBusy, "app/turn-wait", "the session's turn did not end in time")
+			return pderr.NewT(pderr.SessionsBusy, "app/turn-wait", i18n.ErrAppTurnNotEnded)
 		}
 		if err := clk.Sleep(ctx, pollInterval); err != nil {
 			return err

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/kazupc/paritydesk/internal/clock"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/pderr"
 )
 
@@ -301,7 +302,7 @@ func (b *plistBundle) WaitUpdateInstalled(ctx context.Context, bundleID string, 
 			return nil
 		}
 		if b.clock.Now().Sub(start) >= timeout {
-			return pderr.New(pderr.UpdatePending, "app/update", "the staged update did not finish installing in time")
+			return pderr.NewT(pderr.UpdatePending, "app/update", i18n.ErrAppUpdateNotInstalled)
 		}
 		if err := b.clock.Sleep(ctx, pollInterval); err != nil {
 			return err

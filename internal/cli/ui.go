@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/text/width"
+
 	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/orchestrator"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -55,7 +57,7 @@ func (e *env) stdinReader() *bufio.Reader {
 
 // Progress prints one event.
 func (u *termUI) Progress(ev orchestrator.Event) {
-	ev.Message = render.Sanitize(ev.Message, 200)
+	ev.Message = sanitizeText(ev.Message, 200)
 	u.events = append(u.events, loggedEvent{At: u.now(), Event: ev})
 	switch {
 	case u.jsonProgress:
@@ -65,7 +67,7 @@ func (u *termUI) Progress(ev orchestrator.Event) {
 	case u.quiet, ev.Status == orchestrator.StatusInfo:
 		// Kept in the run log only.
 	default:
-		u.p.Line("%s", i18n.T(i18n.Progress, render.Sanitize(string(ev.Phase), 8), render.Sanitize(ev.Status, 8), ev.Message))
+		u.p.Msg(i18n.Progress, render.Sanitize(string(ev.Phase), 8), render.Sanitize(ev.Status, 8), ev.Message)
 	}
 }
 
@@ -91,7 +93,7 @@ func (u *termUI) Confirm(ctx context.Context, c orchestrator.Confirmation) (bool
 		}
 		u.p.Lines(render.PlanLines(v))
 	}
-	u.p.Lines(c.Lines)
+	u.p.Texts(c.Lines)
 	q := questionFor(c.Kind)
 	if c.Kind == orchestrator.ConfirmBaseInvalid && c.Plan != nil && c.Plan.Seeded {
 		q = i18n.T(i18n.AskFirstSyncSeeded)
@@ -110,9 +112,14 @@ func (u *termUI) ask(ctx context.Context, question string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	a := strings.ToLower(strings.TrimSpace(line))
+	a := strings.ToLower(foldAnswer(line))
 	return a == "y" || a == "yes", nil
 }
+
+// foldAnswer folds an answer typed with a Japanese input method to ASCII
+// (full-width letters and the ideographic space become ASCII) and trims
+// it, so "y" typed in full width is accepted; anything else is still no.
+func foldAnswer(s string) string { return strings.TrimSpace(width.Fold.String(s)) }
 
 // readLine reads one line from stdin, giving up when ctx ends.
 func (u *termUI) readLine(ctx context.Context) (string, error) {
@@ -158,7 +165,7 @@ func questionFor(k orchestrator.ConfirmKind) string {
 
 // errNoTerminal is returned when a question cannot be asked.
 func errNoTerminal() error {
-	return pderr.New(pderr.Usage, "confirm", i18n.T(i18n.ConfirmNoTTY))
+	return pderr.NewT(pderr.Usage, "confirm", i18n.ConfirmNoTTY)
 }
 
 // confirmLocal asks a question for a command that the CLI runs itself
@@ -177,7 +184,7 @@ func (e *env) confirmLocal(ctx context.Context, yes bool, id i18n.Msg) error {
 		return err
 	}
 	if !ok {
-		return pderr.New(pderr.Declined, "confirm", i18n.T(i18n.Declined))
+		return pderr.NewT(pderr.Declined, "confirm", i18n.Declined)
 	}
 	return nil
 }

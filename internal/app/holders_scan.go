@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kazupc/paritydesk/internal/fdscan"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/pderr"
 )
 
@@ -19,7 +20,7 @@ const opOpenFiles = "app/open-files"
 
 // blindMsg is the message of a blind scan, in every mode: lsof, started
 // as a child, inherits the same restriction and would report nothing.
-const blindMsg = "paritydesk cannot read other processes' open files here (is it running inside a sandbox?); run it from Terminal"
+const blindMsg = i18n.ErrOpenFilesBlind
 
 // scanHolders finds holders with the native scan (internal/fdscan) and
 // uses the fixed-argv lsof as the fallback in auto mode. Both backends
@@ -67,7 +68,7 @@ func callerContextErr(ctx context.Context, err error) bool {
 
 // blindErr is the error of a blind scan.
 func blindErr(err error) error {
-	return &pderr.Error{Code: pderr.Internal, Op: opOpenFiles, Msg: blindMsg, Err: err}
+	return pderr.WrapT(pderr.Internal, opOpenFiles, blindMsg, err)
 }
 
 // Holders lists processes holding a path at or under one of prefixes. The
@@ -76,7 +77,7 @@ func blindErr(err error) error {
 func (h *scanHolders) Holders(ctx context.Context, prefixes []string) ([]Holder, error) {
 	if h.mode == ScanLsof || h.native == nil {
 		if h.mode == ScanNative {
-			return nil, pderr.New(pderr.Internal, opOpenFiles, `the native open-file scan is not available here; set app.open_file_scan to "auto" or "lsof"`)
+			return nil, pderr.NewT(pderr.Internal, opOpenFiles, i18n.ErrOpenFilesNativeUnavailable)
 		}
 		return h.lsof.Holders(ctx, prefixes)
 	}
@@ -87,8 +88,7 @@ func (h *scanHolders) Holders(ctx context.Context, prefixes []string) ([]Holder,
 		case errors.Is(err, fdscan.ErrBlind):
 			return nil, blindErr(err)
 		case h.mode == ScanNative:
-			return nil, &pderr.Error{Code: pderr.Internal, Op: opOpenFiles,
-				Msg: `the native open-file scan failed its self-check; set app.open_file_scan to "auto" or "lsof"`, Err: err}
+			return nil, pderr.WrapT(pderr.Internal, opOpenFiles, i18n.ErrOpenFilesSelfCheck, err)
 		}
 		return h.lsof.Holders(ctx, prefixes)
 	}
@@ -101,11 +101,11 @@ func (h *scanHolders) Holders(ctx context.Context, prefixes []string) ([]Holder,
 		case errors.Is(err, fdscan.ErrBlind):
 			return nil, blindErr(err)
 		case h.mode == ScanNative:
-			msg := "the native open-file scan failed"
+			msg := i18n.ErrOpenFilesNativeFailed
 			if errors.Is(err, fdscan.ErrPartial) {
-				msg = `the native open-file scan could not read every process; set app.open_file_scan to "auto"`
+				msg = i18n.ErrOpenFilesPartial
 			}
-			return nil, &pderr.Error{Code: pderr.Internal, Op: opOpenFiles, Msg: msg, Err: err}
+			return nil, pderr.WrapT(pderr.Internal, opOpenFiles, msg, err)
 		}
 		// ErrPartial, ErrLayout, ErrListPIDs, ErrProcInfo, ErrTooLarge:
 		// lsof for this call (v0.1's answer).

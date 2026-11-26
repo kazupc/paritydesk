@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kazupc/paritydesk/internal/e2e"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/orchestrator"
 	"github.com/kazupc/paritydesk/internal/pderr"
 )
@@ -91,17 +92,17 @@ func parseFaults(fe faultEnv) (faults, error) {
 				return faults{crash: crashAt(phase, fe.ui)}, nil
 			}
 		}
-		return faults{}, usageErrorf("%s=after:%s: that phase has no intent to stop after; use one of %s", envFault, arg, phaseList(crashPhases))
+		return faults{}, usageError(i18n.UsageFaultAfter, envFault, arg, phaseList(crashPhases))
 	case "pause":
 		if phase != orchestrator.P7Apply {
-			return faults{}, usageErrorf("%s=pause:%s: only pause:%s is supported", envFault, arg, orchestrator.P7Apply)
+			return faults{}, usageError(i18n.UsageFaultPausePhase, envFault, arg, orchestrator.P7Apply)
 		}
 		if err := e2eGuard(fe); err != nil {
-			return faults{}, usageErrorf("%s=pause:%s is refused: %v", envFault, arg, err)
+			return faults{}, usageError(i18n.UsageFaultPauseRefused, envFault, arg, err)
 		}
 		return faults{afterFirstWrite: pauseHook(fe)}, nil
 	}
-	return faults{}, usageErrorf("%s=%q is not understood; use after:<phase> or pause:%s", envFault, v, orchestrator.P7Apply)
+	return faults{}, usageError(i18n.UsageFaultUnknown, envFault, v, orchestrator.P7Apply)
 }
 
 // crashAt is Deps.Crash for after:<phase>: it stops the run after that
@@ -119,8 +120,8 @@ func crashAt(phase orchestrator.Phase, ui orchestrator.UI) func(orchestrator.Pha
 		}
 		if ui != nil {
 			ui.Progress(orchestrator.Event{Phase: orchestrator.P10Commit, Status: "warn",
-				Message: fmt.Sprintf("fault injection: this run skipped %s, so %s=after:%s stops it before %s instead",
-					phase, envFault, phase, orchestrator.P10Commit)})
+				Message: i18n.Raw(fmt.Sprintf("fault injection: this run skipped %s, so %s=after:%s stops it before %s instead",
+					phase, envFault, phase, orchestrator.P10Commit))})
 		}
 		return true
 	}
@@ -197,12 +198,12 @@ func pauseHook(fe faultEnv) func() {
 		once.Do(func() {
 			if fe.ui != nil {
 				fe.ui.Progress(orchestrator.Event{Phase: orchestrator.P7Apply, Status: PausedStatus,
-					Message: "fault injection: paused after the first write; waiting to be killed"})
+					Message: i18n.Raw("fault injection: paused after the first write; waiting to be killed")})
 			}
 			sleep(pauseLimit)
 			if fe.ui != nil {
 				fe.ui.Progress(orchestrator.Event{Phase: orchestrator.P7Apply, Status: "fail",
-					Message: "fault injection: the paused run was not killed; exiting without cleanup"})
+					Message: i18n.Raw("fault injection: the paused run was not killed; exiting without cleanup")})
 			}
 			exit(int(pderr.Internal))
 		})

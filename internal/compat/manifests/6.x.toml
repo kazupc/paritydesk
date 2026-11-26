@@ -224,10 +224,6 @@ run_state = ["leasedBy", "leaseCleared"]
 # replaces the target's own entry.
 worktree_path = ["path"]
 
-# v0.2 anchor: rows scratch
-
-# v0.2 anchor: rows sidebar-offline
-
 [[row]]
 row = "sidebar-collapse"
 write_path = "off-verify"
@@ -270,7 +266,6 @@ row = "sidebar-seed"
 # item): not carried in this version.
 write_path = "none"
 
-# v0.2 anchor: rows pins
 [[row]]
 row = "pins"
 # Where 6.x keeps pins is not verified: not carried in this version.
@@ -509,10 +504,6 @@ target = "window-state.json"
 path = []
 type = "object"
 
-# v0.2 anchor: probes scratch
-
-# v0.2 anchor: probes sidebar-offline
-
 [[probe]]
 id = "collapse-groups-shape"
 row = "sidebar-collapse"
@@ -716,20 +707,14 @@ account_changed_hint = []
 # detects no other tool. init lists parked Claude-* folders that hold an
 # account no profile registers and suggests profile adopt for them.
 
-# v0.2 anchor: tables online
-
 # The online layer is not confirmed on 6.x: no online steps.
 [online]
 enabled = false
 
-# v0.2 anchor: tables pins
-
-# v0.2 anchor: tables artifacts
 # Artifact sync is not supported on 6.x.
 [artifacts]
 enabled = false
 
-# v0.2 anchor: tables legacy
 # ---------------------------------------------------------------- legacy migration
 #
 # Used only by profile adopt --from-legacy. The layout is carried over from

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/kazupc/paritydesk/internal/config"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/orchestrator"
 	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/redact"
@@ -117,7 +118,7 @@ func TestSwitchWritesRunLog(t *testing.T) {
 func TestRunLogRedactsMessages(t *testing.T) {
 	home := "/Users/someone"
 	ev := []loggedEvent{{Event: orchestrator.Event{Phase: orchestrator.P3Quit, Status: "warn",
-		Message: "folder " + home + "/Library/x id 00000000-0000-4000-8000-000000000001"}}}
+		Message: i18n.Raw("folder " + home + "/Library/x id 00000000-0000-4000-8000-000000000001")}}}
 	res := &orchestrator.Result{RunID: "run-0002", From: "a", To: "b", Code: pderr.OK}
 	got := string(runLogLines(res, ev, redact.Redactor{Home: home}, fixedTime))
 	if strings.Contains(got, home) || strings.Contains(got, "00000000-0000-4000-8000-000000000001") {
@@ -133,7 +134,7 @@ func TestRunLogRedactsMessages(t *testing.T) {
 // values are dropped.
 func TestRunLogRecordsMessageAliases(t *testing.T) {
 	ev := []loggedEvent{{Event: orchestrator.Event{Phase: orchestrator.P10Commit, Status: "ok",
-		Message: "removed client-x; its folder was left as it is",
+		Message: i18n.Raw("removed client-x; its folder was left as it is"),
 		Data:    map[string]any{orchestrator.EventAliases: []string{"client-x", "Not An Alias"}}}}}
 	res := &orchestrator.Result{RunID: "run-0003", From: "a", To: "b", Code: pderr.OK}
 	got := string(runLogLines(res, ev, redact.Redactor{Home: "/Users/someone"}, fixedTime))

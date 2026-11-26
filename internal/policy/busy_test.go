@@ -1,72 +1,76 @@
 package policy
 
 import (
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 )
 
-// futureIDRE is the shape of an i18n id (area.what, snake case).
-var futureIDRE = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$`)
+// busyTextIDs are the ids the log-signal item's orchestrator texts moved
+// to (spec-busy 12.2, spec-i18n-ja 7.4 item 2).
+var busyTextIDs = []string{
+	"confirm.busy_line",
+	"confirm.busy_line_no_time",
+	"confirm.busy_untitled",
+	"confirm.busy_waited",
+	"progress.p3.busy_wait",
+	"warn.busy_stale",
+	"warn.busy_preview",
+	"warn.busy_truncated",
+	"warn.busy_log_unreadable",
+	"warn.account_window",
+	"warn.account_change",
+	"warn.in_folder_sign_in",
+	"warn.native_multi",
+	"warn.swap_only_native_log",
+	"warn.swap_only_native_history",
+	"err.sync.swap_only_native_log",
+	"err.sync.swap_only_native_history",
+	"err.resolve.in_folder_sign_in",
+	"doctor.busy_detection.ok",
+	"doctor.busy_detection.record",
+	"doctor.busy_detection.partial",
+	"doctor.busy_detection.unavailable",
+	"doctor.busy_now.app_stopped",
+	"doctor.busy_now.none",
+	"doctor.busy_now.some",
+	"doctor.busy_now.no_signals",
+	"doctor.busy_now.unreadable",
+	"doctor.busy_now.records",
+	"doctor.busy_now.stale",
+	"doctor.busy_now.truncated",
+	"doctor.account_change.unavailable",
+	"doctor.account_change.none",
+	"doctor.account_change.one",
+	"doctor.account_change.unknown",
+	"doctor.account_change.in_folder",
+	"doctor.account_change.native_log",
+	"doctor.account_change.native_history",
+	"doctor.account_change.unknown_time",
+	"doctor.chrome_pairing_org.known",
+	"doctor.chrome_pairing_org.unknown",
+	"doctor.chrome_pairing_org.state",
+	"doctor.chrome_bridge.pairing_disabled",
+	"doctor.version.deprecated_key",
+}
 
-// TestBusyTextIDs keeps internal/orchestrator/busytext.go ready for the
-// i18n-ja migration: every text constant starts with "txt" (the name
-// without it is the future catalog constant) and carries a comment that
-// names its future catalog id, unique and not already a catalog id.
-func TestBusyTextIDs(t *testing.T) {
+// TestBusyTextMigrated: the log-signal item's orchestrator texts live in
+// the catalog under their ids, and busytext.go is gone.
+func TestBusyTextMigrated(t *testing.T) {
 	root := repoRoot(t)
-	path := filepath.Join(root, "internal", "orchestrator", "busytext.go")
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
-	if err != nil {
-		t.Fatal(err)
+	if _, err := os.Stat(filepath.Join(root, "internal", "orchestrator", "busytext.go")); err == nil {
+		t.Error("internal/orchestrator/busytext.go still exists")
 	}
 	catalog, err := os.ReadFile(filepath.Join(root, "internal", "i18n", "catalog.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	seen := map[string]bool{}
-	n := 0
-	for _, decl := range f.Decls {
-		gd, ok := decl.(*ast.GenDecl)
-		if !ok || gd.Tok != token.CONST {
-			continue
+	for _, id := range busyTextIDs {
+		if !strings.Contains(string(catalog), strconv.Quote(id)) {
+			t.Errorf("%s is not a catalog id", id)
 		}
-		for _, spec := range gd.Specs {
-			vs := spec.(*ast.ValueSpec)
-			for _, name := range vs.Names {
-				n++
-				if !strings.HasPrefix(name.Name, "txt") {
-					t.Errorf("%s: constant without the txt prefix", name.Name)
-					continue
-				}
-				if vs.Doc == nil || len(vs.Doc.List) == 0 {
-					t.Errorf("%s: no comment naming its future id", name.Name)
-					continue
-				}
-				id := strings.Fields(strings.TrimPrefix(vs.Doc.List[0].Text, "//"))[0]
-				switch {
-				case !futureIDRE.MatchString(id):
-					t.Errorf("%s: %q is not an id", name.Name, id)
-				case seen[id]:
-					t.Errorf("%s: id %s used twice", name.Name, id)
-				case strings.Contains(string(catalog), strconv.Quote(id)):
-					t.Errorf("%s: id %s is already in the catalog", name.Name, id)
-				case regexp.MustCompile(`(?m)^\t` + strings.TrimPrefix(name.Name, "txt") + `\s+Msg = `).Match(catalog):
-					t.Errorf("%s: the future constant is already in the catalog", name.Name)
-				}
-				seen[id] = true
-			}
-		}
-	}
-	if n == 0 {
-		t.Fatal("no constants found in busytext.go")
 	}
 }
 

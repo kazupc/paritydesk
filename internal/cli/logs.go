@@ -106,7 +106,7 @@ func runLog(_ context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 	}
 	want := getString(fs, "run")
 	if want != "" && !runIDRE.MatchString(want) {
-		return usageErrorf("--run: not a run id")
+		return usageError(i18n.UsageRunFlag)
 	}
 	logs, err := listRunLogs(paths.LogDir)
 	if err != nil {
@@ -120,7 +120,7 @@ func runLog(_ context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 		}
 	}
 	if chosen == nil && want != "" {
-		return pderr.New(pderr.Usage, "log", "no log for that run")
+		return pderr.NewT(pderr.Usage, "log", i18n.ErrLogNoLog)
 	}
 	v := logView{Events: []json.RawMessage{}}
 	if chosen != nil {
@@ -134,7 +134,7 @@ func runLog(_ context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 	}
 	return e.emit(v, func(p *render.Printer) {
 		if chosen == nil {
-			p.Line("%s", i18n.T(i18n.LogNone))
+			p.Msg(i18n.LogNone)
 			return
 		}
 		for _, ev := range v.Events {
@@ -177,7 +177,7 @@ func runHistory(_ context.Context, e *env, _ *flag.FlagSet, _ []string) error {
 	}
 	return e.emit(v, func(p *render.Printer) {
 		if len(v.Runs) == 0 {
-			p.Line("%s", i18n.T(i18n.HistoryNone))
+			p.Msg(i18n.HistoryNone)
 			return
 		}
 		rows := make([][]string, len(v.Runs))
@@ -271,7 +271,7 @@ func runLogLines(res *orchestrator.Result, events []loggedEvent, r redact.Redact
 	enc := json.NewEncoder(&b)
 	for _, ev := range events {
 		_ = enc.Encode(logLine{V: 1, Time: ev.At.UTC(), Phase: ev.Event.Phase, Status: ev.Event.Status,
-			Message: r.String(ev.Event.Message), ElapsedNS: int64(ev.Event.Elapsed), Aliases: eventAliases(ev.Event)})
+			Message: r.String(ev.Event.Message.English()), ElapsedNS: int64(ev.Event.Elapsed), Aliases: eventAliases(ev.Event)})
 	}
 	code := res.Code
 	_ = enc.Encode(logLine{V: 1, Time: now.UTC(), Run: res.RunID, Code: &code, From: res.From, To: res.To, Mode: string(res.Mode)})

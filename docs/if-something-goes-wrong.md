@@ -278,7 +278,6 @@ directory.
 and every redaction rule. Open it (`tar -xzf <file>`) and read it before
 you attach it to an issue.
 
-<!-- v0.2 anchor: busy -->
 <a id="signed-in-to-another-account"></a>
 ## Exit 20: a folder was signed in to another profile's account
 
@@ -298,11 +297,6 @@ with Claude's own multi-account mode), the next switch only swaps folders
 and carries nothing, and `paritydesk sync` exits 31; the switch after
 that is normal again.
 
-<!-- v0.2 anchor: fdscan -->
-
-<!-- v0.2 anchor: sidebar-offline -->
-
-<!-- v0.2 anchor: scratch -->
 ## A carried scratch session says "folder not found" or shows no previews
 
 A session started without a folder lives in a scratch workspace.
@@ -322,8 +316,6 @@ the account that created the workspace. Removed scratch files are in the
 newest backup generation (`paritydesk rollback`), and after pruning in the
 `scratch-kept` folder doctor names; copy a file back by hand from there.
 
-
-<!-- v0.2 anchor: online -->
 ## Changes waiting to be applied in Claude
 
 `paritydesk status` shows "… wait to be applied in Claude" after a switch
@@ -348,7 +340,6 @@ through Claude's own tools. Open a Code session and run
 - **`--app-support-dir` is set.** The hooks only know the default folder,
   so the changes are not applied; `paritydesk doctor` says so.
 
-<!-- v0.2 anchor: pins -->
 ## Pins are not carried
 
 The plan says "pins not carried this time" and a warning names the profile
@@ -379,7 +370,6 @@ not carried while this lasts, and nothing else is affected. Update
 paritydesk; `paritydesk rebase` clears the check (every row then starts
 as on a first sync).
 
-<!-- v0.2 anchor: artifacts -->
 ## Artifact sync is blocked or stopped
 
 - *"cannot tell from Claude's log which account Claude is using"*:
@@ -404,7 +394,6 @@ as on a first sync).
   deletion and never deletes the other copies; `paritydesk artifacts
   allow <id> --restore --profile <name>` creates it again there.
 
-<!-- v0.2 anchor: legacy-adopt -->
 ## Adopting folders from an earlier script stops or keeps leftovers
 
 `paritydesk profile adopt --from-legacy` explains each folder it leaves
@@ -421,6 +410,3 @@ out and how to fix it ([migration-from-legacy.md](migration-from-legacy.md)).
 - Moved leftovers are in a pinned backup generation:
   `paritydesk rollback <n>` puts them back; a bare `paritydesk rollback`
   never picks it.
-
-
-<!-- v0.2 anchor: i18n-ja -->

@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"golang.org/x/text/unicode/norm"
+
+	"github.com/kazupc/paritydesk/internal/i18n"
 )
 
 // AccountID is an account UUID (lower-case, hyphenated).
@@ -70,7 +72,7 @@ func ParseSession(s string) (SessionID, error) {
 // previous profile).
 func ParseAlias(s string) (Alias, error) {
 	if !aliasRE.MatchString(s) {
-		return "", fmt.Errorf("ids: alias must match [a-z0-9][a-z0-9-]{0,31}")
+		return "", i18n.NewErr(i18n.ErrIDsAlias)
 	}
 	return Alias(s), nil
 }
@@ -82,12 +84,12 @@ func DefaultParkedFolder(a Alias) string { return "Claude-" + string(a) }
 // the reserved list (plus extra reserved names, e.g. other tools' folders).
 func ValidateFolder(name string, extraReserved ...string) error {
 	if !folderRE.MatchString(name) {
-		return fmt.Errorf("ids: folder must match ^Claude-[A-Za-z0-9._-]{1,48}$")
+		return i18n.NewErr(i18n.ErrIDsFolderPattern)
 	}
 	n := FoldName(name)
 	for _, r := range append(append([]string(nil), reservedFolders...), extraReserved...) {
 		if n == FoldName(r) {
-			return fmt.Errorf("ids: folder name is reserved")
+			return i18n.NewErr(i18n.ErrIDsFolderReserved)
 		}
 	}
 	return nil

@@ -1,0 +1,1 @@
+{"v":1,"state":"cancelled","queue":"run-0001","profile":"home","from":"work","waiting_for_session":false,"counts":{"pins_add":0,"pins_remove":0,"pins_keep":0,"pins_blocked":0,"sidebar":0,"other":0,"done":0,"skipped":0,"failed":0},"steps":[],"lines":["Dropped the waiting changes. Nothing in Claude was changed."],"lang":"ja","display_lines":["待っていた変更を破棄しました。Claude では何も変更していません。"]}

@@ -99,7 +99,6 @@ every other entry the compatibility manifest marks as never touched.
   for this command, so no program a repository names runs; files that a
   filter such as Git LFS normalizes may therefore count as modified.
 
-<!-- v0.2 anchor: busy -->
 - Claude's rotated logs `main1.log` … `main4.log` next to `main.log`, read
   the same way (record lines only, matched at the start of the message),
   to find working sessions and the account changes inside a data folder
@@ -113,7 +112,6 @@ every other entry the compatibility manifest marks as never touched.
   reliable sign of a running turn. Nothing else in that file is read for
   this.
 
-<!-- v0.2 anchor: fdscan -->
 - The process table and the files processes hold open (read through
   macOS's process information interface; `lsof` with fixed arguments as
   the fallback), to make sure Claude has fully quit before anything is
@@ -121,9 +119,6 @@ every other entry the compatibility manifest marks as never touched.
   while the check runs. `paritydesk doctor` runs the same check once
   with nothing kept and reports counts only.
 
-<!-- v0.2 anchor: sidebar-offline -->
-
-<!-- v0.2 anchor: scratch -->
 - **Scratch workspaces** (row `scratch`): the files of the scratch
   workspaces your sessions name are read and hashed (sha256) on this Mac,
   and copied between your own data folders. Replaced and removed files
@@ -135,10 +130,6 @@ every other entry the compatibility manifest marks as never touched.
   archives name a workspace by its leaf only, with account and
   organization masked and the path inside it hashed.
 
-
-<!-- v0.2 anchor: online -->
-
-<!-- v0.2 anchor: pins -->
 - **Pins** (row `pins`): which of your local Code sessions are pinned is
   read from Claude's IndexedDB (one key of the claude.ai origin's
   database) through a private copy of its files in paritydesk's temporary
@@ -150,7 +141,6 @@ every other entry the compatibility manifest marks as never touched.
   the state folder; the list's text is never stored or logged, and
   doctor and plan lines print counts, never ids.
 
-<!-- v0.2 anchor: artifacts -->
 **Artifacts** (only when you run `/paritydesk:artifacts`): paritydesk
 keeps the pages of your own claude.ai artifacts in
 `<SupportDir>/artifacts` (folders 0700, files 0600): page content and
@@ -161,16 +151,12 @@ wrote to are never saved. Nothing in the archive leaves the Mac;
 keeps the archive unless `--keep-artifacts=false`; `paritydesk artifacts
 forget` stops tracking an artifact but keeps its saved versions.
 
-<!-- v0.2 anchor: legacy-adopt -->
 - **Adopting folders of an earlier script** (`profile adopt
   --from-legacy`): only the names of directories inside the data folders
   are compared, and a small `scheduled-tasks.json` is read to tell an
   empty one. The earlier script's state file is read only when you name
   it, and its labels are never printed or stored. Moved directories stay
   in a pinned backup generation (mode 0700) until you remove it.
-
-
-<!-- v0.2 anchor: i18n-ja -->
 
 ## Things paritydesk asks macOS to do
 

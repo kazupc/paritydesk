@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/kazupc/paritydesk/internal/compat"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/online"
 	"github.com/kazupc/paritydesk/internal/orchestrator"
@@ -31,26 +32,37 @@ type runView struct {
 	Detached          bool             `json:"detached,omitempty"`
 	QuitPending       bool             `json:"quit_pending,omitempty"`
 	Summary           plan.Summary     `json:"summary"`
-	Lines             []string         `json:"lines"`
-	Warnings          []string         `json:"warnings,omitempty"`
+	Lines             []string         `json:"lines"` // English always
+	Warnings          []i18n.Text      `json:"warnings,omitempty"`
 	TimingsMS         map[string]int64 `json:"timings_ms,omitempty"`
-	// v0.2 anchor: view busy
 	// Busy lists the sessions still working; titles are data written by
 	// other sessions and never appear in Lines.
 	Busy []orchestrator.BusyView `json:"busy,omitempty"`
 	// humanBusy is the titled busy block of the human output only.
 	humanBusy []string
 
-	// v0.2 anchor: view scratch
 	Scratch *render.ScratchSummary `json:"scratch,omitempty"`
 
-	// v0.2 anchor: view online
 	// Online counts what the switch applies inside Claude afterwards
 	// (counts and fixed words only).
 	Online *online.Summary `json:"online,omitempty"`
 
-	// v0.2 anchor: view i18n-ja
+	// Lang and DisplayLines are set only when the display language is
+	// not English: the same lines as Lines in that language, for the
+	// plugin's skill to show verbatim.
+	Lang         i18n.Lang `json:"lang,omitempty"`
+	DisplayLines []string  `json:"display_lines,omitempty"`
+	// pv is the plan behind Lines (nil without a plan); not encoded.
+	pv *render.PlanView
+}
 
+// HumanLines returns the plan lines in the process language (nil without
+// a plan): human output never uses the display language.
+func (v runView) HumanLines() []string {
+	if v.pv == nil {
+		return nil
+	}
+	return render.PlanLinesIn(i18n.Current(), *v.pv)
 }
 
 // newRunView builds the view of a result. Lines are the human summary,
@@ -60,7 +72,7 @@ func newRunView(r *orchestrator.Result) runView {
 		Run: r.RunID, From: r.From, To: r.To, Mode: r.Mode,
 		PlanHash: r.PlanHash, DestructiveDigest: r.DestructiveDigest,
 		Generation: r.Generation, Code: r.Code, Detached: r.Detached, QuitPending: r.QuitPending,
-		Warnings: sanitizeAll(r.Warnings),
+		Warnings: sanitizeTexts(r.Warnings),
 	}
 	if p := r.Plan; p != nil {
 		if v.PlanHash == "" {
@@ -120,7 +132,11 @@ func newRunView(r *orchestrator.Result) runView {
 			Seeded: r.Plan != nil && r.Plan.Seeded,
 		}, r.Plan)
 		v.Scratch = pv.Scratch
-		v.Lines = render.PlanLines(pv)
+		v.pv = &pv
+		v.Lines = render.PlanLinesIn(i18n.English, pv)
+		if l := i18n.DisplayLang(); l != i18n.English {
+			v.Lang, v.DisplayLines = l, render.PlanLinesIn(l, pv)
+		}
 		v.humanBusy = render.BusyTitled(titles, masked)
 	}
 	if len(r.Timings) > 0 {
@@ -144,6 +160,24 @@ func sanitizeAll(in []string) []string {
 	return out
 }
 
+// sanitizeTexts sanitizes the arguments of every text of a list and
+// bounds its rendering to 300 runes in every language.
+func sanitizeTexts(in []i18n.Text) []i18n.Text {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]i18n.Text, len(in))
+	for i, t := range in {
+		out[i] = sanitizeText(t, 300)
+	}
+	return out
+}
+
+// sanitizeText sanitizes t's arguments and bounds its rendering.
+func sanitizeText(t i18n.Text, max int) i18n.Text {
+	return t.MapStrings(func(s string) string { return render.Sanitize(s, 0) }).Cut(max)
+}
+
 // okView is the --json document of commands without other output.
 type okView struct {
 	OK    bool      `json:"ok"`
@@ -158,7 +192,10 @@ func normalizeStatus(s *orchestrator.Status) *orchestrator.Status {
 	if c.Profiles == nil {
 		c.Profiles = []orchestrator.ProfileStatus{}
 	}
-	c.Warnings = sanitizeAll(c.Warnings)
+	c.Warnings = sanitizeTexts(c.Warnings)
+	for i := range c.Profiles {
+		c.Profiles[i].Problem = sanitizeText(c.Profiles[i].Problem, 300)
+	}
 	sort.SliceStable(c.Profiles, func(i, j int) bool { return c.Profiles[i].Alias < c.Profiles[j].Alias })
 	return &c
 }

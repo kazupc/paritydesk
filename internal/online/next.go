@@ -169,14 +169,14 @@ type NextOutput struct {
 }
 
 func newBatch(state string) Batch {
-	return Batch{State: state, Calls: []Call{}, Tools: []string{}, Lines: []string{}}
+	return Batch{State: state, Calls: []Call{}, Tools: []string{}, Lines: []i18n.Text{}}
 }
 
 // lineBatch returns a batch with one fixed line.
 func lineBatch(state, queue string, m i18n.Msg) Batch {
 	b := newBatch(state)
 	b.Queue = queue
-	b.Lines = []string{i18n.T(m)}
+	b.Lines = []i18n.Text{i18n.Tx(m)}
 	return b
 }
 
@@ -184,7 +184,7 @@ func lineBatch(state, queue string, m i18n.Msg) Batch {
 // output. A run that is open is NeedsRecover (exit 41).
 func Next(in NextInput) (NextOutput, error) {
 	if in.RunOpen {
-		return NextOutput{}, pderr.New(pderr.NeedsRecover, "online next", "a run was interrupted; run paritydesk recover")
+		return NextOutput{}, pderr.NewT(pderr.NeedsRecover, "online next", i18n.ErrInterrupted)
 	}
 	q := in.Queue
 	if q == nil {
@@ -780,10 +780,10 @@ func ApplyDecision(q *Queue, ps []Provider, question, option string) error {
 				}
 				return nil
 			}
-			return pderr.New(pderr.Usage, "online decide", "unknown answer for this question")
+			return pderr.NewT(pderr.Usage, "online decide", i18n.ErrOnlineUnknownAnswer)
 		}
 	}
-	return pderr.New(pderr.Usage, "online decide", "no such question is open")
+	return pderr.NewT(pderr.Usage, "online decide", i18n.ErrOnlineNoQuestion)
 }
 
 // retryReasons are the failures `online retry` offers once more.

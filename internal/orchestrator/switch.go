@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/kazupc/paritydesk/internal/compat"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/state"
 )
@@ -154,7 +155,7 @@ func (o *Orchestrator) readOnlyPlan(ctx context.Context, r *run) (*Result, error
 	if err := r.preview(ctx); err != nil {
 		return r.fail(err)
 	}
-	o.progress(P2Preview, "ok", "read-only mode: nothing was changed")
+	o.progress(P2Preview, "ok", i18n.Tx(i18n.ProgressP2ReadOnly))
 	return r.res, nil
 }
 
@@ -167,7 +168,7 @@ func (o *Orchestrator) detachedParent(ctx context.Context, r *run) (*Result, err
 			return r.fail(err)
 		}
 	} else if r.opts.ConfirmedPlan == "" && !r.opts.Yes {
-		return r.fail(pderr.New(pderr.Declined, "switch", "a detached switch needs --confirmed-plan or --yes"))
+		return r.fail(pderr.NewT(pderr.Declined, "switch", i18n.ErrSwitchDetachedNeedsConfirmation))
 	}
 	g := JobGlobals{Config: o.d.Paths.ConfigFile, StateDir: o.d.Paths.StateDir, AppSupportDir: o.d.Paths.SupportDir}
 	id, err := o.d.Detach.Submit(ctx, r.opts.JobArgs(g))
@@ -175,7 +176,7 @@ func (o *Orchestrator) detachedParent(ctx context.Context, r *run) (*Result, err
 		return r.fail(pderr.Wrap(pderr.Internal, "detach", err))
 	}
 	r.res.RunID = id
-	o.progress(P0Preflight, "ok", "the switch continues in the background")
+	o.progress(P0Preflight, "ok", i18n.Tx(i18n.ProgressP0Detached))
 	return r.res, nil
 }
 
@@ -187,7 +188,7 @@ func (r *run) confirmForJob(ctx context.Context) error {
 		return err
 	}
 	if r.decision.Mode == compat.ModePreviewOnly {
-		return pderr.New(pderr.CompatRefused, "compat", "this Claude version is untested and require_tested is set; only plan works")
+		return pderr.NewT(pderr.CompatRefused, "compat", i18n.ErrCompatUntested)
 	}
 	r.previewBusy(ctx, r.invokingCLI())
 	if err := r.preview(ctx); err != nil {
@@ -247,7 +248,7 @@ func (o *Orchestrator) Sync(ctx context.Context, opts SyncOptions) (*Result, err
 		return r.fail(pderr.Wrap(pderr.Internal, "sync", err))
 	}
 	if inside {
-		return r.fail(pderr.New(pderr.Usage, "sync", "sync quits Claude; run it from Terminal, not from inside Claude"))
+		return r.fail(pderr.NewT(pderr.Usage, "sync", i18n.ErrSyncInsideClaude))
 	}
 	if o.d.ReadOnly {
 		return o.readOnlyPlan(ctx, r)

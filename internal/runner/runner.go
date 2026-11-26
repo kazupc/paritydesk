@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/kazupc/paritydesk/internal/app"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/plan"
 )
@@ -67,7 +68,7 @@ func ValidRunID(id string) bool { return runIDRE.MatchString(id) }
 // world-writable) and builds the job for runID.
 func NewJob(runDir, logDir, binary, runID string, args []string) (*Job, error) {
 	if !ValidRunID(runID) {
-		return nil, pderr.New(pderr.Internal, "runner", "invalid run id")
+		return nil, pderr.Bug("runner", "invalid run id")
 	}
 	for _, d := range []string{runDir, logDir} {
 		if err := checkAbsClean(d); err != nil {
@@ -122,7 +123,7 @@ func checkBinary(p string) error {
 // no KeepAlive, AbandonProcessGroup).
 func (j *Job) Plist() ([]byte, error) {
 	if j == nil || j.Label == "" || j.Binary == "" {
-		return nil, pderr.New(pderr.Internal, "runner", "incomplete job")
+		return nil, pderr.Bug("runner", "incomplete job")
 	}
 	var b bytes.Buffer
 	b.WriteString(xml.Header)
@@ -161,7 +162,7 @@ func writeKeyString(b *bytes.Buffer, key, val string) {
 
 func escape(b *bytes.Buffer, s string) error {
 	if strings.ContainsRune(s, 0) {
-		return pderr.New(pderr.Internal, "runner", "argument contains NUL")
+		return pderr.Bug("runner", "argument contains NUL")
 	}
 	return xml.EscapeText(b, []byte(s))
 }
@@ -343,7 +344,7 @@ func writeAtomic(path string, data []byte) error {
 // app.IsAppProcess bound to the located bundle path.
 func InsideApp(ctx context.Context, procs app.ProcessTable, pid int, isApp func(app.Process) bool) (bool, error) {
 	if procs == nil || isApp == nil {
-		return false, pderr.New(pderr.Internal, "runner", "no process table")
+		return false, pderr.Bug("runner", "no process table")
 	}
 	list, err := procs.Processes(ctx)
 	if err != nil {
@@ -387,7 +388,7 @@ func (d Detacher) InsideApp(ctx context.Context) (bool, error) {
 // returns the run id whose result file the caller may wait on.
 func (d Detacher) Submit(ctx context.Context, args []string) (runID string, err error) {
 	if d.Launchd == nil {
-		return "", pderr.New(pderr.Internal, "runner", "no launchd")
+		return "", pderr.Bug("runner", "no launchd")
 	}
 	if err := Reap(ctx, d.Launchd, d.UID, d.RunDir); err != nil {
 		return "", err
@@ -435,7 +436,7 @@ func (s PlanStore) dir() string { return filepath.Join(s.Dir, "plans") }
 // Save stores p and returns its hash.
 func (s PlanStore) Save(p *plan.Plan) (string, error) {
 	if p == nil {
-		return "", pderr.New(pderr.Internal, "plans", "nil plan")
+		return "", pderr.Bug("plans", "nil plan")
 	}
 	if err := checkAbsClean(s.Dir); err != nil {
 		return "", pderr.Wrap(pderr.Internal, "plans", err)
@@ -474,21 +475,21 @@ func (s PlanStore) prune(now time.Time) {
 // Load returns the stored plan with the given hash.
 func (s PlanStore) Load(hash string, now time.Time) (*plan.Plan, error) {
 	if !planHashRE.MatchString(hash) {
-		return nil, pderr.New(pderr.Declined, "plans", "the confirmed plan hash is not valid")
+		return nil, pderr.NewT(pderr.Declined, "plans", i18n.ErrPlansHashInvalid)
 	}
 	b, err := os.ReadFile(filepath.Join(s.dir(), hash+".json"))
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, pderr.New(pderr.Declined, "plans", "the confirmed plan was not found; run paritydesk plan again")
+		return nil, pderr.NewT(pderr.Declined, "plans", i18n.ErrPlansNotFound)
 	}
 	if err != nil {
 		return nil, pderr.Wrap(pderr.Internal, "plans", err)
 	}
 	var p plan.Plan
 	if err := json.Unmarshal(b, &p); err != nil {
-		return nil, pderr.New(pderr.Declined, "plans", "the confirmed plan is unreadable")
+		return nil, pderr.NewT(pderr.Declined, "plans", i18n.ErrPlansUnreadable)
 	}
 	if p.Hash() != hash {
-		return nil, pderr.New(pderr.Declined, "plans", "the confirmed plan does not match its hash")
+		return nil, pderr.NewT(pderr.Declined, "plans", i18n.ErrPlansHashMismatch)
 	}
 	return &p, nil
 }

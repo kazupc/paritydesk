@@ -9,6 +9,7 @@ import (
 
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/config"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -202,7 +203,7 @@ func (o *Orchestrator) permissionAcks(ctx context.Context, m *compat.Manifest, t
 	}
 	prefs, err := o.d.PermissionAcks(ctx, t.Folder, t.Replica)
 	if err != nil {
-		o.progress(P2Preview, "warn", "permission acknowledgements of the entering folder could not be read")
+		o.progress(P2Preview, "warn", i18n.Tx(i18n.ProgressP2AcksUnreadable))
 		return nil
 	}
 	var table map[string][]string
@@ -323,7 +324,7 @@ func (o *Orchestrator) side(r *state.Root, s sideRef, k state.BaseKey, snap *mod
 	if ref, ok := r.Bases[k.String()]; ok && s.BaseValid {
 		base, err := o.d.State.GetSnapshot(ref)
 		if err != nil {
-			o.progressNaming(P2Preview, "warn", fmt.Sprintf("%s: the base of %s is unreadable and is treated as invalid", k.Row, s.Alias), s.Alias)
+			o.progressNaming(P2Preview, "warn", i18n.Tx(i18n.ProgressP2BaseUnreadable, k.Row, s.Alias), s.Alias)
 		} else {
 			sd.Base, sd.BaseValid = base, true
 		}
@@ -486,9 +487,9 @@ func (o *Orchestrator) emptyPlan(runID string, s, t sideRef, skipped map[model.R
 // staleWarning describes values on which a row's two stored copies
 // disagree. For presets neither copy wins: the presets are not written
 // while the copies disagree.
-func staleWarning(r model.RowID, n int) string {
+func staleWarning(r model.RowID, n int) i18n.Text {
 	if r == model.RowEnvironments {
-		return fmt.Sprintf("%s: %d preset(s) differ between Local Storage and ccd-session-presets.json; presets are not written until they agree", r, n)
+		return i18n.Tx(i18n.ProgressP2PresetsDiffer, r, n)
 	}
-	return fmt.Sprintf("%s: %d stale Local Storage value(s) ignored; the config mirror wins", r, n)
+	return i18n.Tx(i18n.ProgressP2StaleValues, r, n)
 }

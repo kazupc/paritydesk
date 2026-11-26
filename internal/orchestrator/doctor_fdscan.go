@@ -18,23 +18,23 @@ func (dr *doctor) fdscanChecks(ctx context.Context) {
 
 // openFileScanCheck maps the scan's description to a status and detail;
 // the first matching row wins.
-func openFileScanCheck(info app.HolderScanInfo) (status, detail string) {
+func openFileScanCheck(info app.HolderScanInfo) (status string, detail i18n.Text) {
 	switch {
 	case info.Reason == "blind":
-		return "fail", i18n.T(i18n.DoctorFDScanBlind)
+		return "fail", i18n.Tx(i18n.DoctorFDScanBlind)
 	case info.Mode == app.ScanNative && info.Backend != "native":
-		return "fail", i18n.T(i18n.DoctorFDScanNativeFailed)
+		return "fail", i18n.Tx(i18n.DoctorFDScanNativeFailed)
 	case info.Backend != "native" && !info.LsofOK:
-		return "fail", i18n.T(i18n.DoctorFDScanNone)
+		return "fail", i18n.Tx(i18n.DoctorFDScanNone)
 	case info.Backend == "native":
-		return "ok", i18n.T(i18n.DoctorFDScanNative)
+		return "ok", i18n.Tx(i18n.DoctorFDScanNative)
 	case info.Reason == "config":
-		return "ok", i18n.T(i18n.DoctorFDScanLsofConfig)
+		return "ok", i18n.Tx(i18n.DoctorFDScanLsofConfig)
 	case info.Reason == "test":
-		return "ok", i18n.T(i18n.DoctorFDScanLsofTest)
+		return "ok", i18n.Tx(i18n.DoctorFDScanLsofTest)
 	case info.Reason == "partial":
-		return "warn", i18n.T(i18n.DoctorFDScanPartial, info.Unreadable, info.Partial)
+		return "warn", i18n.Tx(i18n.DoctorFDScanPartial, info.Unreadable, info.Partial)
 	}
 	// "self-check", "unsupported", "scan-error" (and anything unforeseen).
-	return "warn", i18n.T(i18n.DoctorFDScanFallback)
+	return "warn", i18n.Tx(i18n.DoctorFDScanFallback)
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/kazupc/paritydesk/internal/config"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/profile"
@@ -16,13 +17,17 @@ import (
 )
 
 // chromeNote explains Claude in Chrome with several accounts (ADR 0003).
-const chromeNote = "Claude in Chrome follows the Chrome profile's sign-in, not the Claude folder: use one Chrome profile per account"
+var chromeNote = i18n.Tx(i18n.ProgressP0ChromeNote)
 
 // InitOptions are the answers `init` collects interactively.
 type InitOptions struct {
 	Alias   ids.Alias
 	Label   string
 	Managed bool
+	// FallbackLang, when Japanese, is written as [ui] fallback_lang if
+	// that key is "auto" or empty (the CLI sets it for a language that
+	// came from PARITYDESK_LANG or the locale).
+	FallbackLang i18n.Lang
 }
 
 // session is a locked command that edits state (init and profile
@@ -37,7 +42,7 @@ type session struct {
 // run and a pending profile add (recover settles both first).
 func (o *Orchestrator) lockedSession(ctx context.Context, op string) (*session, error) {
 	if o.d.ReadOnly {
-		return nil, pderr.New(pderr.Usage, op, op+" writes; it cannot run in read-only mode")
+		return nil, pderr.NewT(pderr.Usage, op, i18n.ErrReadOnlyWrites, op)
 	}
 	l, err := o.d.State.Lock(ctx, 0)
 	if err != nil {
@@ -50,11 +55,11 @@ func (o *Orchestrator) lockedSession(ctx context.Context, op string) (*session, 
 	}
 	if root.Run != nil {
 		_ = l.Release()
-		return nil, pderr.New(pderr.NeedsRecover, op, "a run was interrupted; run paritydesk recover")
+		return nil, pderr.NewT(pderr.NeedsRecover, op, i18n.ErrInterrupted)
 	}
 	if root.PendingAdd != nil {
 		_ = l.Release()
-		return nil, pderr.New(pderr.NeedsRecover, op, "a profile add is waiting for its sign-in; run paritydesk recover")
+		return nil, pderr.NewT(pderr.NeedsRecover, op, i18n.ErrPendingAdd)
 	}
 	if err := o.checkBinding(root); err != nil {
 		_ = l.Release()
@@ -85,7 +90,7 @@ func (o *Orchestrator) validateNewAlias(root *state.Root, a ids.Alias) error {
 		return pderr.Wrap(pderr.Usage, "profile", err)
 	}
 	if _, ok := o.d.Config.Profile(a); ok || root.Profiles[a] != nil {
-		return pderr.New(pderr.Usage, "profile", "profile "+string(a)+" already exists")
+		return pderr.NewT(pderr.Usage, "profile", i18n.ErrProfileExists, a)
 	}
 	return nil
 }
@@ -107,14 +112,17 @@ func (o *Orchestrator) Init(ctx context.Context, opts InitOptions) error {
 		return err
 	}
 	if f == nil || f.Identity == nil {
-		return pderr.New(pderr.IdentityMismatch, "init", "Claude holds no signed-in account; open Claude and sign in first")
+		return pderr.NewT(pderr.IdentityMismatch, "init", i18n.ErrInitNoAccount)
 	}
 	if a := aliasOf(s.root, f.Identity.Account); a != "" {
-		return pderr.New(pderr.Usage, "init", "the active account is already registered as "+string(a))
+		return pderr.NewT(pderr.Usage, "init", i18n.ErrInitRegistered, a)
 	}
 	cfg := o.d.Config
-	o.progressNaming(P0Preflight, "start", fmt.Sprintf("config: add profile %s (account %s)", opts.Alias, ids.Mask(string(f.Identity.Account))), opts.Alias)
+	o.progressNaming(P0Preflight, "start", i18n.Tx(i18n.ProgressP0InitAdd, opts.Alias, ids.Mask(string(f.Identity.Account))), opts.Alias)
 	cfg.Profiles = append(cfg.Profiles, config.Profile{Alias: opts.Alias, Label: opts.Label, ManagedByOrg: opts.Managed})
+	if opts.FallbackLang == i18n.Japanese && (cfg.UI.FallbackLang == "" || strings.EqualFold(cfg.UI.FallbackLang, config.LangAuto)) {
+		cfg.UI.FallbackLang = config.LangJA
+	}
 	if err := o.saveConfig(); err != nil {
 		return err
 	}
@@ -140,9 +148,7 @@ func (o *Orchestrator) legacyFolders(root *state.Root, folders []profile.Folder)
 		if aliasOf(root, f.Identity.Account) != "" {
 			continue
 		}
-		o.progress(P0Preflight, "warn", fmt.Sprintf("%s holds a signed-in account that no profile registers; "+
-			"register it with paritydesk profile adopt <alias> %s instead of profile add, "+
-			"or adopt every such folder at once as described in docs/migration-from-legacy.md", f.Name, f.Name))
+		o.progress(P0Preflight, "warn", i18n.Tx(i18n.ProgressP0UnregisteredFolder, f.Name, f.Name))
 	}
 }
 
@@ -152,7 +158,7 @@ func (o *Orchestrator) initChecks(ctx context.Context, root *state.Root) {
 	if b, err := d.App.Locate(ctx, d.Config.App.BundleID); err == nil {
 		if m, _, err := d.Compat.Manifest(ctx, b.Version); err == nil && m != nil {
 			for _, t := range o.foreignTools(m.Footprints) {
-				o.progress(P0Preflight, "warn", "another account-switching tool was detected: "+t)
+				o.progress(P0Preflight, "warn", i18n.Tx(i18n.ProgressP0ForeignTool, t))
 			}
 		}
 	}
@@ -160,10 +166,10 @@ func (o *Orchestrator) initChecks(ctx context.Context, root *state.Root) {
 		return
 	}
 	if err := d.App.ProbeAutomation(ctx, d.Config.App.BundleID); err != nil {
-		o.progress(P0Preflight, "warn", "Automation permission for Claude is missing; paritydesk doctor --grant-automation asks again")
+		o.progress(P0Preflight, "warn", i18n.Tx(i18n.ProgressP0AutomationMissing))
 		return
 	}
-	o.progress(P0Preflight, "ok", "Automation permission for Claude is granted")
+	o.progress(P0Preflight, "ok", i18n.Tx(i18n.ProgressP0AutomationGranted))
 }
 
 // ProfileAdopt registers a parked folder after checking its identity.
@@ -185,13 +191,13 @@ func (o *Orchestrator) ProfileAdopt(ctx context.Context, alias ids.Alias, folder
 		return err
 	}
 	if f == nil {
-		return pderr.New(pderr.Usage, "profile adopt", "folder "+folder+" was not found")
+		return pderr.NewT(pderr.Usage, "profile adopt", i18n.ErrProfileAdoptNotFound, folder)
 	}
 	if f.Identity == nil {
-		return pderr.New(pderr.IdentityMismatch, "profile adopt", folder+" holds no signed-in account")
+		return pderr.NewT(pderr.IdentityMismatch, "profile adopt", i18n.ErrProfileAdoptNoAccount, folder)
 	}
 	if a := aliasOf(s.root, f.Identity.Account); a != "" {
-		return pderr.New(pderr.IdentityMismatch, "profile adopt", folder+" holds the account of profile "+string(a))
+		return pderr.NewT(pderr.IdentityMismatch, "profile adopt", i18n.ErrProfileAdoptRegistered, folder, a)
 	}
 	p := config.Profile{Alias: alias, ManagedByOrg: managed}
 	if folder != ids.DefaultParkedFolder(alias) {
@@ -237,7 +243,7 @@ func (o *Orchestrator) ProfileAdd(ctx context.Context, alias ids.Alias, managed 
 	r.T = &profile.Binding{Profile: config.Profile{Alias: alias, ManagedByOrg: managed}}
 	if r.manifest != nil {
 		if tools := o.foreignTools(r.manifest.Footprints); len(tools) > 0 {
-			return pderr.New(pderr.ForeignTool, "profile add", "another account-switching tool was detected: "+tools[0])
+			return pderr.NewT(pderr.ForeignTool, "profile add", i18n.ErrForeignTool, tools[0])
 		}
 	}
 	return r.addAccount(ctx, managed)
@@ -264,7 +270,7 @@ func (r *run) addAccount(ctx context.Context, managed bool) error {
 	}
 	if err := d.FS.RenameExcl(r.sPath, sParked); err != nil {
 		if errors.Is(err, fs.ErrExist) {
-			err = pderr.New(pderr.Usage, "profile add", sParked+" already exists; nothing was moved")
+			err = pderr.NewT(pderr.Usage, "profile add", i18n.ErrProfileAddTaken, sParked)
 		}
 		return r.abort(cctx, err)
 	}
@@ -277,9 +283,9 @@ func (r *run) addAccount(ctx context.Context, managed bool) error {
 		return err
 	}
 	if err := d.App.Launch(cctx, d.Config.App.BundleID); err != nil {
-		r.o.progress(P11Launch, "warn", "Claude could not be launched; open it manually to sign in")
+		r.o.progress(P11Launch, "warn", i18n.Tx(i18n.ProgressP11LaunchFailedSignIn))
 	}
-	r.o.progressNaming(P11Launch, "ok", "sign in to the new account in Claude, then run paritydesk recover to register it as "+string(r.T.Profile.Alias), r.T.Profile.Alias)
+	r.o.progressNaming(P11Launch, "ok", i18n.Tx(i18n.ProgressP11AddSignIn, r.T.Profile.Alias), r.T.Profile.Alias)
 	r.o.progress(P11Launch, "ok", chromeNote)
 	return nil
 }
@@ -295,7 +301,7 @@ func (o *Orchestrator) ProfileRename(ctx context.Context, from, to ids.Alias) er
 	cfg := o.d.Config
 	i := slices.IndexFunc(cfg.Profiles, func(p config.Profile) bool { return p.Alias == from })
 	if i < 0 {
-		return pderr.New(pderr.Usage, "profile rename", "unknown profile "+string(from))
+		return pderr.NewT(pderr.Usage, "profile rename", i18n.ErrSwitchUnknownProfile, from)
 	}
 	if err := o.validateNewAlias(s.root, to); err != nil {
 		return err
@@ -448,10 +454,10 @@ func (o *Orchestrator) ProfileRemove(ctx context.Context, alias ids.Alias) error
 	cfg := o.d.Config
 	i := slices.IndexFunc(cfg.Profiles, func(p config.Profile) bool { return p.Alias == alias })
 	if i < 0 {
-		return pderr.New(pderr.Usage, "profile remove", "unknown profile "+string(alias))
+		return pderr.NewT(pderr.Usage, "profile remove", i18n.ErrSwitchUnknownProfile, alias)
 	}
 	if s.root.Active == alias {
-		return pderr.New(pderr.Usage, "profile remove", "the active profile cannot be removed; switch to another profile first")
+		return pderr.NewT(pderr.Usage, "profile remove", i18n.ErrProfileRemoveActive)
 	}
 	cfg.Profiles = slices.Delete(cfg.Profiles, i, i+1)
 	if err := o.saveConfig(); err != nil {
@@ -473,8 +479,8 @@ func (o *Orchestrator) ProfileRemove(ctx context.Context, alias ids.Alias) error
 	}
 	o.artifactsRemoved(ctx, alias)
 	if err := o.d.State.GC(s.root); err != nil {
-		o.progress(P10Commit, "warn", "unreferenced state objects could not be removed")
+		o.progress(P10Commit, "warn", i18n.Tx(i18n.ProgressP10ObjectsNotRemoved))
 	}
-	o.progressNaming(P10Commit, "ok", "removed "+string(alias)+"; its folder was left as it is", alias)
+	o.progressNaming(P10Commit, "ok", i18n.Tx(i18n.ProgressP10Removed, alias), alias)
 	return nil
 }

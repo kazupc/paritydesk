@@ -3,7 +3,6 @@ package orchestrator
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/fs"
 	"math"
 	"os"
@@ -17,6 +16,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/fsx"
 	"github.com/kazupc/paritydesk/internal/gen"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/localstorage"
 	"github.com/kazupc/paritydesk/internal/model"
@@ -31,11 +31,11 @@ import (
 // harvest is P5 up to the commit: identity re-check, final plan,
 // validation and the comparison with the preview.
 func (r *run) harvest(ctx context.Context) error {
-	defer r.phase(P5Harvest, "final plan")()
+	defer r.phase(P5Harvest, i18n.Tx(i18n.ProgressP5FinalPlan))()
 	d := r.d()
 	b, err := d.App.Locate(ctx, d.Config.App.BundleID)
 	if err != nil || !sameBundle(b, r.bundle) {
-		return r.abort(ctx, pderr.New(pderr.CompatRefused, "harvest", "Claude changed during the run (an update installed?)"))
+		return r.abort(ctx, pderr.NewT(pderr.CompatRefused, "harvest", i18n.ErrHarvestAppChanged))
 	}
 	if r.swapOnly() {
 		r.p5 = r.p2
@@ -65,11 +65,11 @@ func (r *run) harvest(ctx context.Context) error {
 	}
 	if nd := plan.NewDestructive(r.p2.Plan, pl.Plan); len(nd) > 0 {
 		if !r.interactive {
-			return r.abort(ctx, pderr.New(pderr.Declined, "harvest", fmt.Sprintf("the final plan deletes %d item(s) the preview did not; nothing was changed", len(nd))))
+			return r.abort(ctx, pderr.NewT(pderr.Declined, "harvest", i18n.ErrHarvestNewDestructive, len(nd)))
 		}
 		c := Confirmation{Kind: ConfirmNewDestructive, Plan: pl.Plan, Summary: r.res.Summary}
 		for _, ch := range nd {
-			c.Lines = append(c.Lines, fmt.Sprintf("%s: %s", ch.Row, ids.Mask(ch.Key)))
+			c.Lines = append(c.Lines, i18n.Tx(i18n.ConfirmDeletionLine, ch.Row, ids.Mask(ch.Key)))
 		}
 		if err := r.o.ask(ctx, true, c); err != nil {
 			return r.abort(ctx, err)
@@ -91,7 +91,7 @@ func (r *run) stillQuiet(ctx context.Context) error {
 		return r.abort(ctx, pderr.Wrap(pderr.Internal, "quiescence", err))
 	}
 	if !rep.Quiet {
-		return r.abort(ctx, pderr.New(pderr.AppDidNotQuit, "quiescence", "Claude or another process opened the data folders during the run; nothing was changed"))
+		return r.abort(ctx, pderr.NewT(pderr.AppDidNotQuit, "quiescence", i18n.ErrQuiescenceOpened))
 	}
 	return nil
 }
@@ -292,7 +292,7 @@ func (o *Orchestrator) nextGeneration(root *state.Root) uint64 {
 
 // backup is P6: a complete generation of everything the plan touches.
 func (r *run) backup(ctx context.Context) error {
-	defer r.phase(P6Backup, "backing up")()
+	defer r.phase(P6Backup, i18n.Tx(i18n.ProgressP6BackingUp))()
 	d := r.d()
 	p := r.p5.Plan
 	r.gen = r.o.nextGeneration(r.root)
@@ -401,7 +401,7 @@ func (r *run) loserBytes(c model.Conflict) []byte {
 
 // applyPlan is P7: apply on the (parked) entering folder, then the marker.
 func (r *run) applyPlan(ctx context.Context) error {
-	defer r.phase(P7Apply, "applying")()
+	defer r.phase(P7Apply, i18n.Tx(i18n.ProgressP7Applying))()
 	d := r.d()
 	if err := r.o.begin(r.root, P7Apply, state.IntentApplied, nil); err != nil {
 		return err
@@ -476,13 +476,13 @@ func (r *run) rollbackT(ctx context.Context, cause error) error {
 	}
 	live := r.tPath == r.o.claudePath()
 	if busy, err := r.o.folderInUse(cctx, r.bundle.Path, r.tPath, live); err != nil || busy {
-		r.warn(P7Apply, "the entering folder is in use, so it was not restored; quit Claude, then run paritydesk recover")
-		return &pderr.Error{Code: pderr.NeedsRecover, Op: "apply", Msg: "the entering folder is in use; run paritydesk recover", Err: cause}
+		r.warn(P7Apply, i18n.Tx(i18n.WarnEnteringInUseNotRestored))
+		return pderr.WrapT(pderr.NeedsRecover, "apply", i18n.ErrApplyEnteringInUse, cause)
 	}
 	rep, err := r.o.restoreFolder(cctx, r.gen, r.tPath, r.genLS && r.lsOpened, r.res.RunID, scratchRootOf(r.manifest))
 	if err != nil {
-		r.warn(P7Apply, "the entering folder could not be fully restored; run paritydesk recover")
-		return &pderr.Error{Code: pderr.NeedsRecover, Op: "apply", Msg: "the entering folder could not be fully restored; run paritydesk recover", Err: errors.Join(cause, err)}
+		r.warn(P7Apply, i18n.Tx(i18n.WarnEnteringNotFullyRestored))
+		return pderr.WrapT(pderr.NeedsRecover, "apply", i18n.ErrApplyEnteringNotRestored, errors.Join(cause, err))
 	}
 	r.o.invalidateConflicted(r.root, r.T.Profile.Alias, r.T.Replica, rep.Conflicts)
 	r.o.restoreMarker(r.root, r.T.Profile.Alias, r.tPath)
@@ -526,7 +526,7 @@ func (o *Orchestrator) restoreFolder(ctx context.Context, n uint64, folder strin
 // Storage, and recover finishes once the folder is free (41).
 func lsOpenErr(op string, err error) error {
 	if errors.Is(err, kv.ErrLocked) {
-		return &pderr.Error{Code: pderr.NeedsRecover, Op: op, Msg: "another process holds the Local Storage lock; quit Claude (and any copy started with --user-data-dir), then run paritydesk recover", Err: err}
+		return pderr.WrapT(pderr.NeedsRecover, op, i18n.ErrApplyLSLockedRecover, err)
 	}
 	return pderr.Wrap(pderr.Internal, op, err)
 }
@@ -558,7 +558,7 @@ func (o *Orchestrator) restoreMarker(root *state.Root, a ids.Alias, folder strin
 // swap is P8 (switch only): swap Claude/ with the entering folder, or the
 // journaled two-rename fallback, then the post-swap check.
 func (r *run) swap(ctx context.Context) error {
-	defer r.phase(P8Swap, "swapping folders")()
+	defer r.phase(P8Swap, i18n.Tx(i18n.ProgressP8SwappingFolders))()
 	d := r.d()
 	claude := r.o.claudePath()
 	sParked := r.o.folderPath(r.S.Profile.ParkedFolder())
@@ -613,7 +613,7 @@ func (r *run) fallbackSwap(ctx context.Context, claude, sParked string) error {
 	if err := d.FS.RenameExcl(r.tPath, claude); err != nil {
 		// Put S back so Claude/ is never left empty.
 		if berr := d.FS.RenameExcl(sParked, claude); berr != nil {
-			return pderr.New(pderr.NeedsRecover, "swap", "the folder swap was interrupted; run paritydesk recover")
+			return pderr.NewT(pderr.NeedsRecover, "swap", i18n.ErrSwapInterrupted)
 		}
 		r.sPath = claude
 		return r.rollbackT(ctx, pderr.Wrap(pderr.ApplyRolledBack, "swap", err))
@@ -634,13 +634,13 @@ func (r *run) fallbackPostCheck(ctx context.Context) error {
 		Folders: []string{r.tPath, r.sPath}, After: r.t4}
 	rep, err := d.App.CheckQuiescence(ctx, in)
 	if err != nil {
-		r.warn(P8Swap, "the post-swap check could not run")
+		r.warn(P8Swap, i18n.Tx(i18n.WarnPostSwapCheckNotRun))
 		return nil
 	}
 	if len(rep.StartedAfter) == 0 && len(rep.WriteHolders) == 0 {
 		return nil
 	}
-	return pderr.New(pderr.NeedsRecover, "swap", "a process started during the folder swap; quit Claude, then run paritydesk recover")
+	return pderr.NewT(pderr.NeedsRecover, "swap", i18n.ErrSwapProcessStarted)
 }
 
 // postSwapCheck looks for an app process or holder that appeared since
@@ -651,7 +651,7 @@ func (r *run) postSwapCheck(ctx context.Context) error {
 		Folders: []string{r.tPath, r.sPath}, After: r.t4}
 	rep, err := d.App.CheckQuiescence(ctx, in)
 	if err != nil {
-		r.warn(P8Swap, "the post-swap check could not run")
+		r.warn(P8Swap, i18n.Tx(i18n.WarnPostSwapCheckNotRun))
 		return nil
 	}
 	if len(rep.StartedAfter) == 0 && len(rep.WriteHolders) == 0 {
@@ -661,20 +661,20 @@ func (r *run) postSwapCheck(ctx context.Context) error {
 		return err
 	}
 	if len(rep.WriteHolders)+len(rep.ReadOnlyHolders) > 0 {
-		return pderr.New(pderr.NeedsRecover, "swap", "a process opened the data folders during the swap; quit it, then run paritydesk recover")
+		return pderr.NewT(pderr.NeedsRecover, "swap", i18n.ErrSwapFoldersOpened)
 	}
 	claude := r.o.claudePath()
 	if err := d.FS.SwapDirs(claude, r.sPath); err != nil {
-		return pderr.New(pderr.NeedsRecover, "swap", "swapping back failed; run paritydesk recover")
+		return pderr.NewT(pderr.NeedsRecover, "swap", i18n.ErrSwapBackFailed)
 	}
 	r.sPath, r.tPath = claude, r.sPath
 	_ = d.FS.FullSync(d.DataRoot)
-	return r.rollbackT(ctx, pderr.New(pderr.ApplyRolledBack, "swap", "a process started during the swap; the switch was undone"))
+	return r.rollbackT(ctx, pderr.NewT(pderr.ApplyRolledBack, "swap", i18n.ErrSwapUndone))
 }
 
 // park is P9: give S its own parked name.
 func (r *run) park(ctx context.Context) error {
-	defer r.phase(P9Park, "parking")()
+	defer r.phase(P9Park, i18n.Tx(i18n.ProgressP9Parking))()
 	d := r.d()
 	sParked := r.o.folderPath(r.S.Profile.ParkedFolder())
 	if err := r.o.begin(r.root, P9Park, state.IntentParked, nil); err != nil {
@@ -682,8 +682,7 @@ func (r *run) park(ctx context.Context) error {
 	}
 	if err := d.FS.RenameExcl(r.sPath, sParked); err != nil {
 		if errors.Is(err, fs.ErrExist) {
-			return pderr.New(pderr.NeedsRecover, "park", fmt.Sprintf("%s already exists; folders hold accounts %s and %s",
-				filepath.Base(sParked), maskedAccount(r.S), maskedAccount(r.T)))
+			return pderr.NewT(pderr.NeedsRecover, "park", i18n.ErrParkTaken, filepath.Base(sParked), maskedAccount(r.S), maskedAccount(r.T))
 		}
 		return pderr.Wrap(pderr.NeedsRecover, "park", err)
 	}
@@ -706,7 +705,7 @@ func (r *run) markLeaving() {
 	d := r.d()
 	m := model.Marker{Version: 1, Alias: r.S.Profile.Alias, Replica: r.S.Replica, Generation: r.gen, BaseHash: r.p5.Plan.Hash()}
 	if err := d.WriteMarker(d.FS, r.sPath, m); err != nil {
-		r.warn(P7Apply, "the leaving folder's marker could not be written; the next switch back merges without deleting")
+		r.warn(P7Apply, i18n.Tx(i18n.WarnLeavingMarkerNotWritten))
 		return
 	}
 	r.sMarked = true

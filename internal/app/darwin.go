@@ -53,7 +53,7 @@ func NewDarwin(cfg DarwinConfig) (*Platform, error) {
 		name = defaultAppName
 	}
 	if name != filepath.Base(name) || name == "." || name == ".." {
-		return nil, pderr.New(pderr.Internal, "app", "invalid app name")
+		return nil, pderr.Bug("app", "invalid app name")
 	}
 	procs := sysctlProcs{}
 	logDir := filepath.Join(home, "Library", "Logs", defaultAppName)
@@ -87,14 +87,14 @@ func holdersFor(mode ScanMode, scanner fdscan.Scanner, lsof lsofHolders, procs P
 		mode = ScanAuto
 	case ScanAuto, ScanNative, ScanLsof:
 	default:
-		return nil, pderr.New(pderr.Internal, "app", "invalid open-file scan mode")
+		return nil, pderr.Bug("app", "invalid open-file scan mode")
 	}
 	switch {
 	case mode == ScanLsof:
 		return newScanHolders(mode, nil, "config", lsof, procs), nil
 	case scanner == nil && testing.Testing():
 		if mode == ScanNative {
-			return nil, pderr.New(pderr.Internal, "app", "the native open-file scan needs a scanner under go test")
+			return nil, pderr.Bug("app", "the native open-file scan needs a scanner under go test")
 		}
 		return newScanHolders(mode, nil, "test", lsof, procs), nil
 	case scanner == nil:
@@ -109,7 +109,7 @@ func runnerFor(exec Runner) (Runner, error) {
 		return exec, nil
 	}
 	if testing.Testing() {
-		return nil, pderr.New(pderr.Internal, "app", "the real command runner is not allowed under go test")
+		return nil, pderr.Bug("app", "the real command runner is not allowed under go test")
 	}
 	return ExecRunner{}, nil
 }
@@ -118,7 +118,7 @@ func runnerFor(exec Runner) (Runner, error) {
 func homeFor(home string) (string, error) {
 	if home == "" {
 		if testing.Testing() {
-			return "", pderr.New(pderr.Internal, "app", "a test must pass a temporary home")
+			return "", pderr.Bug("app", "a test must pass a temporary home")
 		}
 		h, err := os.UserHomeDir()
 		if err != nil {
@@ -127,7 +127,7 @@ func homeFor(home string) (string, error) {
 		home = h
 	}
 	if !filepath.IsAbs(home) {
-		return "", pderr.New(pderr.Internal, "app", "home must be an absolute path")
+		return "", pderr.Bug("app", "home must be an absolute path")
 	}
 	home = filepath.Clean(home)
 	if err := fsx.CheckTestPath(home); err != nil {
@@ -147,7 +147,7 @@ func appDirsFor(dirs []string, home string) ([]string, error) {
 	out := make([]string, 0, len(dirs))
 	for _, d := range dirs {
 		if !filepath.IsAbs(d) {
-			return nil, pderr.New(pderr.Internal, "app", "application directories must be absolute")
+			return nil, pderr.Bug("app", "application directories must be absolute")
 		}
 		d = filepath.Clean(d)
 		if err := fsx.CheckTestPath(d); err != nil {

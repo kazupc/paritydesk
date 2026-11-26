@@ -2,11 +2,11 @@ package orchestrator
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/kazupc/paritydesk/internal/app"
 	"github.com/kazupc/paritydesk/internal/compat"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/profile"
@@ -52,7 +52,7 @@ func earliestStart(procs []app.Process) time.Time {
 // loadAccountChanges reads the logged changes back to root.LastCommitAt
 // and attributes them. It sets r.changes; on app.ErrSignalUnknown or any
 // read error r.changes stays nil and nothing else happens. A truncated
-// window adds the warning txtWarnAccountWindow once.
+// window adds the warning i18n.Tx(i18n.WarnAccountWindow) once.
 func (r *run) loadAccountChanges(ctx context.Context) {
 	r.changes = nil
 	changes, truncated := loadChanges(ctx, r.d().App, r.sig, r.root)
@@ -62,7 +62,7 @@ func (r *run) loadAccountChanges(ctx context.Context) {
 	r.changes = changes
 	if truncated && !r.warnedWindow {
 		r.warnedWindow = true
-		r.warn(P0Preflight, txtWarnAccountWindow)
+		r.warn(P0Preflight, i18n.Tx(i18n.WarnAccountWindow))
 	}
 }
 
@@ -97,7 +97,7 @@ func (r *run) checkInFolderSignIn(res *profile.Resolution) error {
 	if !ok {
 		return nil
 	}
-	return pderr.New(pderr.IdentityMismatch, "resolve", fmt.Sprintf(txtErrInFolderSignIn, c.Folder, c.Holder, c.Folder))
+	return pderr.NewT(pderr.IdentityMismatch, "resolve", i18n.ErrResolveInFolderSignIn, c.Folder, c.Holder, c.Folder)
 }
 
 // aliasOrMasked names a profile, or the masked account when no profile
@@ -127,14 +127,14 @@ func nativeLogName(changes []profile.AttributedChange, holder ids.Alias) (string
 // accountChangeWarnings returns one warning per change since the last
 // switch, unless the changes form a chain (native multi-account mode),
 // which only the swap-only cause reports.
-func accountChangeWarnings(changes []profile.AttributedChange) []string {
+func accountChangeWarnings(changes []profile.AttributedChange) []i18n.Text {
 	if _, n := profile.NativeMultiFromLog(changes); n >= 2 {
 		return nil
 	}
-	var out []string
+	var out []i18n.Text
 	for _, c := range changes {
 		if c.SinceCommit {
-			out = append(out, fmt.Sprintf(txtWarnAccountChange, aliasOrMasked(c.FromAlias, c.From), aliasOrMasked(c.ToAlias, c.To)))
+			out = append(out, i18n.Tx(i18n.WarnAccountChange, aliasOrMasked(c.FromAlias, c.From), aliasOrMasked(c.ToAlias, c.To)))
 		}
 	}
 	return out
@@ -144,18 +144,18 @@ func accountChangeWarnings(changes []profile.AttributedChange) []string {
 // multi-account mode: the warning for a switch and the error detail for
 // sync. ok is false when neither the log chain nor the history rule
 // holds.
-func (r *run) nativeCause() (warning, syncErr string, ok bool) {
+func (r *run) nativeCause() (warning, syncErr i18n.Text, ok bool) {
 	var holder ids.Alias
 	if r.S != nil {
 		holder = r.S.Profile.Alias
 	}
 	if name, n := nativeLogName(r.changes, holder); n >= 2 {
-		return fmt.Sprintf(txtWarnSwapOnlyNativeLog, name, n), fmt.Sprintf(txtErrSyncSwapOnlyNativeLog, name, n), true
+		return i18n.Tx(i18n.WarnSwapOnlyNativeLog, name, n), i18n.Tx(i18n.ErrSyncSwapOnlyNativeLog, name, n), true
 	}
 	if h := r.nativeMultiAlias(); h != "" {
-		return fmt.Sprintf(txtWarnSwapOnlyNativeHistory, h), fmt.Sprintf(txtErrSyncSwapOnlyNativeHistory, h), true
+		return i18n.Tx(i18n.WarnSwapOnlyNativeHistory, h), i18n.Tx(i18n.ErrSyncSwapOnlyNativeHistory, h), true
 	}
-	return "", "", false
+	return i18n.Text{}, i18n.Text{}, false
 }
 
 // accountChangeViews lists the changes for status (masked).

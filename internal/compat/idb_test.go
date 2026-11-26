@@ -62,9 +62,7 @@ func TestPinsManifestRefusals(t *testing.T) {
 		})
 	}
 	// A row whose mirror_paths overlap the pins mirror is refused.
-	text := replaceOnce(t, base, "# v0.2 anchor: rows sidebar-offline\n", `# v0.2 anchor: rows sidebar-offline
-`)
-	text = strings.Replace(text, `mirror_paths = [`, `mirror_paths = [["preferences", "epitaxyPrefs"], `, 1)
+	text := strings.Replace(base, `mirror_paths = [`, `mirror_paths = [["preferences", "epitaxyPrefs"], `, 1)
 	if _, err := compat.Decode([]byte(text), "test.toml"); err == nil || !strings.Contains(err.Error(), "overlap") {
 		t.Fatalf("overlapping mirror path: %v", err)
 	}

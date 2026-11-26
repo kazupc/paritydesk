@@ -52,35 +52,35 @@ type onlineEnv struct {
 // plugin's skills.
 func onlineGroup() *command {
 	hidden := func(c *command) *command { c.hidden = true; return c }
-	return group("online", "<status|cancel>", "Show or drop changes waiting to be applied in Claude", false,
-		leaf("status", "", "Show the changes waiting to be applied in Claude", 0, 0, nil, runOnlineStatus),
-		leaf("cancel", "", "Drop the waiting changes; nothing in Claude changes", 0, 0, nil, runOnlineCancel),
-		hidden(leaf("capture", "", "Internal: read-only calls before a switch (used by /paritydesk:switch)", 0, 0, func(fs *flag.FlagSet) {
+	return group("online", "<status|cancel>", i18n.HelpOnline, false,
+		leaf("status", "", i18n.HelpOnlineStatus, 0, 0, nil, runOnlineStatus),
+		leaf("cancel", "", i18n.HelpOnlineCancel, 0, 0, nil, runOnlineCancel),
+		hidden(leaf("capture", "", i18n.HelpOnlineCapture, 0, 0, func(fs *flag.FlagSet) {
 			sessionFlag(fs)
-			fs.Bool("finish", false, "close the capture")
+			fs.Bool("finish", false, usage(i18n.FlagFinish))
 		}, runOnlineCapture)),
-		hidden(leaf("next", "", "Internal: the next calls to make (used by /paritydesk:reconcile)", 0, 0, func(fs *flag.FlagSet) {
+		hidden(leaf("next", "", i18n.HelpOnlineNext, 0, 0, func(fs *flag.FlagSet) {
 			callerFlags(fs)
-			fs.String("unavailable", "", "tools the session could not load, comma-separated")
-			fs.Bool("wait", false, "wait until the next calls can be made (at most 60 s)")
+			fs.String("unavailable", "", usage(i18n.FlagUnavailable))
+			fs.Bool("wait", false, usage(i18n.FlagWait))
 		}, runOnlineNext)),
-		hidden(leaf("decide", "", "Internal: record an answer (used by /paritydesk:reconcile)", 0, 0, func(fs *flag.FlagSet) {
+		hidden(leaf("decide", "", i18n.HelpOnlineDecide, 0, 0, func(fs *flag.FlagSet) {
 			callerFlags(fs)
-			fs.String("question", "", "question id")
-			fs.String("answer", "", "option id")
+			fs.String("question", "", usage(i18n.FlagQuestion))
+			fs.String("answer", "", usage(i18n.FlagAnswer))
 		}, runOnlineDecide)),
-		hidden(leaf("retry", "", "Internal: offer the changes that were not applied once more", 0, 0, callerFlags, runOnlineRetry)),
-		hidden(leaf("done", "", "Internal: finish applying changes (used by /paritydesk:reconcile)", 0, 0, callerFlags, runOnlineDone)),
+		hidden(leaf("retry", "", i18n.HelpOnlineRetry, 0, 0, callerFlags, runOnlineRetry)),
+		hidden(leaf("done", "", i18n.HelpOnlineDone, 0, 0, callerFlags, runOnlineDone)),
 	)
 }
 
 func sessionFlag(fs *flag.FlagSet) {
-	fs.String("session", "", "the Claude Code session running this command")
+	fs.String("session", "", usage(i18n.FlagSession))
 }
 
 func callerFlags(fs *flag.FlagSet) {
 	sessionFlag(fs)
-	fs.String("token", "", "the token of the first online next answer")
+	fs.String("token", "", usage(i18n.FlagToken))
 }
 
 var (
@@ -92,13 +92,13 @@ var (
 func caller(fs *flag.FlagSet) (online.Caller, error) {
 	s := getString(fs, "session")
 	if s != "" && !ids.IsUUID(s) {
-		return online.Caller{}, usageErrorf("--session must be a session UUID")
+		return online.Caller{}, usageError(i18n.UsageSessionFlag)
 	}
 	c := online.Caller{Session: s}
 	if f := fs.Lookup("token"); f != nil {
 		t := getString(fs, "token")
 		if t != "" && !tokenFlagRE.MatchString(t) {
-			return online.Caller{}, usageErrorf("--token must be 32 lower-case hex digits")
+			return online.Caller{}, usageError(i18n.UsageTokenFlag)
 		}
 		c.Token = t
 	}
@@ -125,16 +125,16 @@ func (o *onlineEnv) on() bool {
 // batchLines sanitizes the fixed lines of a document.
 func emitBatch(e *env, b online.Batch, err error) error {
 	if b.Lines == nil {
-		b.Lines = []string{}
+		b.Lines = []i18n.Text{}
 	}
-	return e.emit(b, func(p *render.Printer) { p.Lines(b.Lines) }, err)
+	return e.emit(b, func(p *render.Printer) { p.Texts(b.Lines) }, err)
 }
 
 // noneBatch is a `state: none` answer with one fixed line (or none).
 func noneBatch(m i18n.Msg) online.Batch {
-	b := online.Batch{State: online.StateNone, Calls: []online.Call{}, Tools: []string{}, Lines: []string{}}
+	b := online.Batch{State: online.StateNone, Calls: []online.Call{}, Tools: []string{}, Lines: []i18n.Text{}}
 	if m != "" {
-		b.Lines = []string{i18n.T(m)}
+		b.Lines = []i18n.Text{i18n.Tx(m)}
 	}
 	return b
 }
@@ -149,12 +149,12 @@ func runOnlineStatus(ctx context.Context, e *env, _ *flag.FlagSet, _ []string) e
 		return err
 	}
 	v := o.svc.Status(info)
-	return e.emit(v, func(p *render.Printer) { p.Lines(v.Lines) }, nil)
+	return e.emit(v, func(p *render.Printer) { p.Texts(v.Lines) }, nil)
 }
 
 func runOnlineCancel(ctx context.Context, e *env, _ *flag.FlagSet, _ []string) error {
 	if e.readOnly() {
-		return pderr.New(pderr.Usage, "online cancel", i18n.T(i18n.OnlineErrReadOnly))
+		return pderr.NewT(pderr.Usage, "online cancel", i18n.OnlineErrReadOnly)
 	}
 	// The emergency stop (4.5) needs only the online folder: it does not
 	// load the config, the state or the app, which may be what is broken.
@@ -171,7 +171,7 @@ func runOnlineCancel(ctx context.Context, e *env, _ *flag.FlagSet, _ []string) e
 	if svc, serr := e.service(ctx, e.newUI(false, false)); serr == nil {
 		_, _ = svc.OnlineCancel(ctx, v.Queue)
 	}
-	return e.emit(v, func(p *render.Printer) { p.Lines(v.Lines) }, nil)
+	return e.emit(v, func(p *render.Printer) { p.Texts(v.Lines) }, nil)
 }
 
 // captureView is the document of `online capture`.
@@ -180,7 +180,7 @@ type captureView struct {
 	Capture string        `json:"capture,omitempty"`
 	Calls   []online.Call `json:"calls"`
 	Tools   []string      `json:"tools"`
-	Lines   []string      `json:"lines"`
+	Lines   []i18n.Text   `json:"lines"`
 }
 
 func runOnlineCapture(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
@@ -189,11 +189,11 @@ func runOnlineCapture(ctx context.Context, e *env, fs *flag.FlagSet, _ []string)
 		return err
 	}
 	none := func(m i18n.Msg) error {
-		v := captureView{State: online.StateNone, Calls: []online.Call{}, Tools: []string{}, Lines: []string{}}
+		v := captureView{State: online.StateNone, Calls: []online.Call{}, Tools: []string{}, Lines: []i18n.Text{}}
 		if m != "" {
-			v.Lines = []string{i18n.T(m)}
+			v.Lines = []i18n.Text{i18n.Tx(m)}
 		}
-		return e.emit(v, func(p *render.Printer) { p.Lines(v.Lines) }, nil)
+		return e.emit(v, func(p *render.Printer) { p.Texts(v.Lines) }, nil)
 	}
 	if e.readOnly() {
 		return none(i18n.OnlineErrReadOnly)
@@ -210,7 +210,7 @@ func runOnlineCapture(ctx context.Context, e *env, fs *flag.FlagSet, _ []string)
 		if err != nil {
 			return err
 		}
-		v := captureView{State: b.State, Calls: []online.Call{}, Tools: []string{}, Lines: []string{}}
+		v := captureView{State: b.State, Calls: []online.Call{}, Tools: []string{}, Lines: []i18n.Text{}}
 		return e.emit(v, func(p *render.Printer) { p.Line("%s", i18n.T(i18n.OnlineCaptureDone)) }, nil)
 	}
 	_, root, err := o.rootInfo()
@@ -229,7 +229,7 @@ func runOnlineCapture(ctx context.Context, e *env, fs *flag.FlagSet, _ []string)
 	if err != nil {
 		return err
 	}
-	v := captureView{State: b.State, Capture: b.Queue, Calls: b.Calls, Tools: b.Tools, Lines: []string{}}
+	v := captureView{State: b.State, Capture: b.Queue, Calls: b.Calls, Tools: b.Tools, Lines: []i18n.Text{}}
 	return e.emit(v, func(p *render.Printer) {
 		for _, call := range v.Calls {
 			p.Line("%s %s", string(call.ID), call.Tool)
@@ -245,7 +245,7 @@ func queueCommand(ctx context.Context, e *env, fs *flag.FlagSet, op string) (*on
 		return nil, c, online.RootInfo{}, err
 	}
 	if e.readOnly() {
-		return nil, c, online.RootInfo{}, pderr.New(pderr.Usage, op, i18n.T(i18n.OnlineErrReadOnly))
+		return nil, c, online.RootInfo{}, pderr.NewT(pderr.Usage, op, i18n.OnlineErrReadOnly)
 	}
 	o, err := e.onlineEnv(ctx)
 	if err != nil {
@@ -256,7 +256,7 @@ func queueCommand(ctx context.Context, e *env, fs *flag.FlagSet, op string) (*on
 		return nil, c, online.RootInfo{}, err
 	}
 	if info.RunOpen {
-		return nil, c, info, pderr.New(pderr.NeedsRecover, op, "a run was interrupted; run paritydesk recover")
+		return nil, c, info, pderr.NewT(pderr.NeedsRecover, op, i18n.ErrInterrupted)
 	}
 	return o, c, info, nil
 }
@@ -271,7 +271,7 @@ func runOnlineNext(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) er
 		for _, t := range strings.Split(s, ",") {
 			t = strings.TrimSpace(t)
 			if !online.ValidTool(t) {
-				return usageErrorf("--unavailable takes tool names")
+				return usageError(i18n.UsageUnavailableSyntax)
 			}
 			unavailable = append(unavailable, t)
 		}
@@ -293,7 +293,7 @@ func runOnlineNext(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) er
 func runOnlineDecide(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 	question, answer := getString(fs, "question"), getString(fs, "answer")
 	if !answerRE.MatchString(question) || !answerRE.MatchString(answer) {
-		return usageErrorf("--question and --answer take ids")
+		return usageError(i18n.UsageQuestionAnswer)
 	}
 	o, c, info, err := queueCommand(ctx, e, fs, "online decide")
 	if err != nil {
@@ -303,7 +303,7 @@ func runOnlineDecide(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) 
 	if err != nil {
 		return err
 	}
-	return e.emit(v, func(p *render.Printer) { p.Lines(v.Lines) }, nil)
+	return e.emit(v, func(p *render.Printer) { p.Texts(v.Lines) }, nil)
 }
 
 func runOnlineRetry(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
@@ -315,7 +315,7 @@ func runOnlineRetry(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) e
 	if err != nil {
 		return err
 	}
-	return e.emit(v, func(p *render.Printer) { p.Lines(v.Lines) }, nil)
+	return e.emit(v, func(p *render.Printer) { p.Texts(v.Lines) }, nil)
 }
 
 func runOnlineDone(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
@@ -324,13 +324,13 @@ func runOnlineDone(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) er
 		return err
 	}
 	if info.Record == nil {
-		v := online.StatusView{State: online.StateNone, Steps: []online.StepView{}, Lines: []string{i18n.T(i18n.OnlineStatusNone)}}
-		return e.emit(v, func(p *render.Printer) { p.Lines(v.Lines) }, nil)
+		v := online.StatusView{State: online.StateNone, Steps: []online.StepView{}, Lines: []i18n.Text{i18n.Tx(i18n.OnlineStatusNone)}}
+		return e.emit(v, func(p *render.Printer) { p.Texts(v.Lines) }, nil)
 	}
 	if info.Record.Kind != "" {
 		v := online.StatusView{State: online.StateNone, Queue: info.Record.Queue, Steps: []online.StepView{},
-			Lines: []string{i18n.T(i18n.OnlineArtifactsQueue)}}
-		return e.emit(v, func(p *render.Printer) { p.Lines(v.Lines) }, nil)
+			Lines: []i18n.Text{i18n.Tx(i18n.OnlineArtifactsQueue)}}
+		return e.emit(v, func(p *render.Printer) { p.Texts(v.Lines) }, nil)
 	}
 	svc, err := e.service(ctx, e.newUI(false, false))
 	if err != nil {
@@ -345,28 +345,28 @@ func runOnlineDone(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) er
 		// A17: artifacts from another profile wait (due.json, no lock).
 		if paths, _, perr := e.paths(); perr == nil {
 			if _, root, rerr := o.rootInfo(); rerr == nil {
-				if line := artifactsNextLine(paths.SupportDir, root); line != "" {
+				if line := artifactsNextLine(paths.SupportDir, root); !line.IsZero() {
 					v.Lines = append(v.Lines, line)
 				}
 			}
 		}
 	}
-	return e.emit(v, func(p *render.Printer) { p.Lines(v.Lines) }, nil)
+	return e.emit(v, func(p *render.Printer) { p.Texts(v.Lines) }, nil)
 }
 
 // doneView is the document of `online done`.
 func doneView(res *orchestrator.OnlineConfirmResult) online.StatusView {
 	v := online.StatusView{State: res.State, Queue: res.Queue, Profile: res.Profile, Counts: res.Counts,
-		Steps: []online.StepView{}, Lines: []string{}}
+		Steps: []online.StepView{}, Lines: []i18n.Text{}}
 	switch res.State {
 	case online.StateBusyElsewhere:
-		v.Lines = []string{i18n.T(i18n.OnlineBusyElsewhere)}
+		v.Lines = []i18n.Text{i18n.Tx(i18n.OnlineBusyElsewhere)}
 		return v
 	case online.StateStale:
-		v.Lines = []string{i18n.T(i18n.OnlineStatusStale)}
+		v.Lines = []i18n.Text{i18n.Tx(i18n.OnlineStatusStale)}
 		return v
 	case online.StateNone:
-		v.Lines = []string{i18n.T(i18n.OnlineStatusNone)}
+		v.Lines = []i18n.Text{i18n.Tx(i18n.OnlineStatusNone)}
 		return v
 	}
 	total, failed := 0, 0
@@ -382,12 +382,12 @@ func doneView(res *orchestrator.OnlineConfirmResult) online.StatusView {
 	}
 	v.Confirmed = &online.ConfirmView{BasesAdvanced: res.BasesAdvanced, ContestedCleared: res.ContestedCleared,
 		ContestedLeft: res.ContestedLeft, RootBusy: res.RootBusy}
-	v.Lines = append(v.Lines, i18n.T(i18n.OnlineDoneSummary, res.Counts.Done, total, res.Counts.Skipped, failed))
+	v.Lines = append(v.Lines, i18n.Tx(i18n.OnlineDoneSummary, res.Counts.Done, total, res.Counts.Skipped, failed))
 	if failed > 0 {
-		v.Lines = append(v.Lines, i18n.T(i18n.OnlineDoneFailedHint))
+		v.Lines = append(v.Lines, i18n.Tx(i18n.OnlineDoneFailedHint))
 	}
 	if res.RootBusy {
-		v.Lines = append(v.Lines, i18n.T(i18n.OnlineDoneRootBusy))
+		v.Lines = append(v.Lines, i18n.Tx(i18n.OnlineDoneRootBusy))
 	}
 	return v
 }

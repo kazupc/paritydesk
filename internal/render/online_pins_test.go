@@ -3,6 +3,8 @@ package render
 import (
 	"strings"
 	"testing"
+
+	"github.com/kazupc/paritydesk/internal/i18n"
 )
 
 func TestPinsLineFlags(t *testing.T) {
@@ -28,11 +30,11 @@ func TestPinsLineFlags(t *testing.T) {
 }
 
 func TestOnlinePinsLines(t *testing.T) {
-	got := strings.Join(onlineLines(PlanView{Online: &OnlinePlanView{PinsAdd: 1, PinsPreviewUnavailable: true}}), "\n")
+	got := strings.Join(onlineLines(i18n.English, PlanView{Online: &OnlinePlanView{PinsAdd: 1, PinsPreviewUnavailable: true}}), "\n")
 	if !strings.Contains(got, "pin(s)") || !strings.Contains(got, "not shown now") {
 		t.Fatalf("lines %q", got)
 	}
-	got = strings.Join(onlineLines(PlanView{Online: &OnlinePlanView{PinsUnreadable: true}}), "\n")
+	got = strings.Join(onlineLines(i18n.English, PlanView{Online: &OnlinePlanView{PinsUnreadable: true}}), "\n")
 	if !strings.Contains(got, "not carried this time") {
 		t.Fatalf("lines %q", got)
 	}

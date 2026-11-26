@@ -47,14 +47,14 @@ func (e *env) checkBundleTarget(p string, logs int) (string, error) {
 		return "", err
 	}
 	if logs < 0 || logs > bundle.MaxLogs {
-		return "", usageErrorf("--%s must be between 0 and %d", flagBundleLogs, bundle.MaxLogs)
+		return "", usageError(i18n.UsageOutOfRange, flagBundleLogs, bundle.MaxLogs)
 	}
 	abs, err := filepath.Abs(p)
 	if err != nil {
-		return "", usageErrorf("--%s: %v", flagBundle, err)
+		return "", usageError(i18n.UsageFlagValue, flagBundle, err)
 	}
 	if _, err := os.Lstat(abs); err == nil {
-		return "", pderr.New(pderr.Usage, "doctor --bundle", i18n.T(i18n.DoctorBundleExists))
+		return "", pderr.NewT(pderr.Usage, "doctor --bundle", i18n.DoctorBundleExists)
 	}
 	if err := checkTestPaths(abs); err != nil {
 		return "", err
@@ -69,7 +69,7 @@ func (e *env) checkBundleTarget(p string, logs int) (string, error) {
 	}
 	dataRoot := filepath.Clean(config.ExpandHome(home, cfg.App.DataRoot))
 	if insideDataFolder(dataRoot, abs) || insideDataFolder(resolved(dataRoot), filepath.Join(resolved(filepath.Dir(abs)), filepath.Base(abs))) {
-		return "", pderr.New(pderr.Usage, "doctor --bundle", i18n.T(i18n.DoctorBundleInData))
+		return "", pderr.NewT(pderr.Usage, "doctor --bundle", i18n.DoctorBundleInData)
 	}
 	return abs, nil
 }
@@ -114,7 +114,7 @@ func (e *env) writeBundle(abs string, logs int, v doctorView) error {
 		HookBinary: v.HookBinary,
 	}
 	for _, c := range v.Checks {
-		in.Checks = append(in.Checks, bundle.Check{ID: c.ID, Status: c.Status, Detail: c.Detail})
+		in.Checks = append(in.Checks, bundle.Check{ID: c.ID, Status: c.Status, Detail: c.Detail.English()})
 	}
 	cfg, exists, err := loadConfig(paths.ConfigFile)
 	switch {
@@ -129,7 +129,7 @@ func (e *env) writeBundle(abs string, logs int, v doctorView) error {
 	}
 	if err := bundle.Write(abs, in); err != nil {
 		if errors.Is(err, bundle.ErrExists) {
-			return pderr.New(pderr.Usage, "doctor --bundle", i18n.T(i18n.DoctorBundleExists))
+			return pderr.NewT(pderr.Usage, "doctor --bundle", i18n.DoctorBundleExists)
 		}
 		return pderr.Wrap(pderr.Internal, "doctor --bundle", err)
 	}

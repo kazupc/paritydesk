@@ -33,20 +33,20 @@ func PinsLineFlags(source, reason string, approximate bool) (unreadable, preview
 
 // onlineLines is the online block of PlanLines: the counts line when any
 // count is non-zero, then the pins-unreadable line.
-func onlineLines(v PlanView) []string {
+func onlineLines(l i18n.Lang, v PlanView) []string {
 	o := v.Online
 	if o == nil {
 		return nil
 	}
 	var lines []string
 	if o.PinsAdd+o.PinsRemove+o.Sidebar > 0 {
-		lines = append(lines, i18n.T(i18n.PlanOnlineLine, o.PinsAdd, o.PinsRemove, o.Sidebar))
+		lines = append(lines, i18n.TIn(l, i18n.PlanOnlineLine, o.PinsAdd, o.PinsRemove, o.Sidebar))
 	}
 	switch {
 	case o.PinsUnreadable:
-		lines = append(lines, i18n.T(i18n.PlanOnlinePinsUnreadable))
+		lines = append(lines, i18n.TIn(l, i18n.PlanOnlinePinsUnreadable))
 	case o.PinsPreviewUnavailable:
-		lines = append(lines, i18n.T(i18n.PlanOnlinePinsPreviewUnavailable))
+		lines = append(lines, i18n.TIn(l, i18n.PlanOnlinePinsPreviewUnavailable))
 	}
 	return lines
 }

@@ -19,10 +19,10 @@ import (
 
 // uninstallView is the --json document of uninstall.
 type uninstallView struct {
-	Removed  []string `json:"removed"`
-	Kept     []string `json:"kept"`
-	Move     string   `json:"move,omitempty"`
-	Warnings []string `json:"warnings,omitempty"`
+	Removed  []string    `json:"removed"`
+	Kept     []string    `json:"kept"`
+	Move     string      `json:"move,omitempty"`
+	Warnings []i18n.Text `json:"warnings,omitempty"`
 	// Pinned counts the pinned generations removed with the backups.
 	Pinned int `json:"pinned,omitempty"`
 }
@@ -66,10 +66,10 @@ func runUninstall(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) err
 		if st, err := svc.Status(ctx, true); err == nil && st != nil {
 			v.Move = moveHint(paths, home, st)
 		} else {
-			v.Warnings = append(v.Warnings, i18n.T(i18n.UninstallNoStatus))
+			v.Warnings = append(v.Warnings, i18n.Tx(i18n.UninstallNoStatus))
 		}
 	} else {
-		v.Warnings = append(v.Warnings, i18n.T(i18n.UninstallNoStatus))
+		v.Warnings = append(v.Warnings, i18n.Tx(i18n.UninstallNoStatus))
 	}
 
 	// fixed marks the folders paritydesk owns by their exact place under
@@ -113,20 +113,20 @@ func runUninstall(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) err
 	}
 	return e.emit(v, func(p *render.Printer) {
 		if len(v.Removed) == 0 {
-			p.Line("%s", i18n.T(i18n.UninstallNothing))
+			p.Msg(i18n.UninstallNothing)
 		}
 		for _, r := range v.Removed {
-			p.Line(i18n.T(i18n.UninstallRemoved, "%s"), r)
+			p.Msg(i18n.UninstallRemoved, r)
 		}
 		for _, k := range v.Kept {
-			p.Line(i18n.T(i18n.UninstallKept, "%s"), k)
+			p.Msg(i18n.UninstallKept, k)
 		}
-		p.Line("%s", i18n.T(i18n.UninstallFolders))
+		p.Msg(i18n.UninstallFolders)
 		if v.Move != "" {
-			p.Line("%s", i18n.T(i18n.UninstallMoveHint))
+			p.Msg(i18n.UninstallMoveHint)
 			p.Line("  %s", v.Move)
 		}
-		p.Line("%s", i18n.T(i18n.UninstallPlugin))
+		p.Msg(i18n.UninstallPlugin)
 		warn(p, v.Warnings)
 	}, nil)
 }

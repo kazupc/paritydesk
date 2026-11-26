@@ -35,7 +35,7 @@ func (p testPins) Questions(q *Queue) []Question {
 	}
 	for _, s := range q.Steps {
 		if s.Kind == KindPin && s.Status == StatusPending {
-			return []Question{{ID: "pins", Header: "Pins", Text: "t", Options: []Option{{ID: "apply"}, {ID: "add_only"}, {ID: optionSkip}}}}
+			return []Question{{ID: "pins", Header: i18n.Raw("Pins"), Text: i18n.Raw("t"), Options: []Option{{ID: "apply"}, {ID: "add_only"}, {ID: optionSkip}}}}
 		}
 	}
 	return nil

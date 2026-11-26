@@ -154,7 +154,7 @@ var perWorkspaceNotes = map[string]bool{
 // 13.1) in catalog order. The notices that name limits (oversize, budget,
 // no space) need the plan's ScratchNotes, which planning sets; a plan
 // read from a file has none and shows them without those lines.
-func ScratchNotices(p *plan.Plan, from, to string) []string {
+func ScratchNotices(p *plan.Plan, from, to string) []i18n.Text {
 	if p == nil {
 		return nil
 	}
@@ -196,28 +196,28 @@ func ScratchNotices(p *plan.Plan, from, to string) []string {
 			mirror = true
 		}
 	}
-	var out []string
+	var out []i18n.Text
 	add := func(n int, id i18n.Msg, args ...any) {
 		if n > 0 {
-			out = append(out, i18n.T(id, append([]any{n}, args...)...))
+			out = append(out, i18n.Tx(id, append([]any{n}, args...)...))
 		}
 	}
 	if lim := p.ScratchNotes; lim != nil {
 		for _, note := range []string{scratch.NoteOversizeFiles, scratch.NoteOversizeBytes} {
 			for _, leaf := range perWS[note] {
-				out = append(out, i18n.T(i18n.ScratchOversize, leaf, lim.MaxFilesPerWorkspace, Bytes(lim.MaxWorkspaceBytes)))
+				out = append(out, i18n.Tx(i18n.ScratchOversize, leaf, lim.MaxFilesPerWorkspace, Bytes(lim.MaxWorkspaceBytes)))
 			}
 		}
 		add(count[scratch.NoteBudget], i18n.ScratchBudget, Bytes(lim.MaxRunBytes), lim.MaxRunFiles)
 	}
 	for _, leaf := range perWS[scratch.NoteRootLink] {
-		out = append(out, i18n.T(i18n.ScratchRootLink, leaf))
+		out = append(out, i18n.Tx(i18n.ScratchRootLink, leaf))
 	}
 	for _, leaf := range perWS[scratch.NoteUnreadable] {
-		out = append(out, i18n.T(i18n.ScratchUnreadable, leaf))
+		out = append(out, i18n.Tx(i18n.ScratchUnreadable, leaf))
 	}
 	for _, leaf := range perWS[scratch.NoteReadOnly] {
-		out = append(out, i18n.T(i18n.ScratchReadOnly, leaf))
+		out = append(out, i18n.Tx(i18n.ScratchReadOnly, leaf))
 	}
 	add(count[scratch.NoteHeldBack], i18n.ScratchHeldBack, to)
 	add(conflicts, i18n.ScratchConflictCopy)
@@ -231,7 +231,7 @@ func ScratchNotices(p *plan.Plan, from, to string) []string {
 	add(count[scratch.NoteSpecial], i18n.ScratchSpecial)
 	add(count[scratch.NoteBytes], i18n.ScratchBytesUnavailable)
 	if count[scratch.NoteDeletionOff] > 0 {
-		out = append(out, i18n.T(i18n.ScratchDeletionsOff, to))
+		out = append(out, i18n.Tx(i18n.ScratchDeletionsOff, to))
 	}
 	add(count[scratch.NoteDeletionDefer], i18n.ScratchDeletionDeferred, to)
 	add(quarantined, i18n.ScratchQuarantined, from, to)
@@ -239,13 +239,13 @@ func ScratchNotices(p *plan.Plan, from, to string) []string {
 	add(count[scratch.NoteMissing], i18n.ScratchMissing)
 	add(count[scratch.NoteUnrecognized], i18n.ScratchUnrecognized)
 	if lim := p.ScratchNotes; lim != nil && lim.NeedBytes > 0 && p.Skipped[model.RowScratch] == ReasonScratchSpace {
-		out = append(out, i18n.T(i18n.ScratchNoSpace, Bytes(lim.NeedBytes), Bytes(lim.FreeBytes)))
+		out = append(out, i18n.Tx(i18n.ScratchNoSpace, Bytes(lim.NeedBytes), Bytes(lim.FreeBytes)))
 	}
 	if p.Skipped[model.RowScratch] == ReasonScratchManaged {
-		out = append(out, i18n.T(i18n.ScratchManaged))
+		out = append(out, i18n.Tx(i18n.ScratchManaged))
 	}
 	if mirror {
-		out = append(out, i18n.T(i18n.ScratchPreviewLimit))
+		out = append(out, i18n.Tx(i18n.ScratchPreviewLimit))
 	}
 	return out
 }
@@ -266,7 +266,7 @@ func WithScratch(v PlanView, p *plan.Plan) PlanView {
 }
 
 // scratchLines returns the scratch notices of a plan view.
-func scratchLines(v PlanView) []string { return v.ScratchNotes }
+func scratchLines(l i18n.Lang, v PlanView) []string { return i18n.Strings(l, v.ScratchNotes) }
 
 // Bytes formats a byte count for messages: "512 B", "1.5 KiB", "2.0 GiB".
 func Bytes(n int64) string {

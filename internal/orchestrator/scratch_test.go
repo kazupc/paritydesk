@@ -724,16 +724,16 @@ func TestDoctorScratchChecks(t *testing.T) {
 		if !ok || c.Status != "ok" {
 			t.Errorf("%s: %+v", id, c)
 		}
-		if strings.Contains(c.Detail, string(acctA)) {
-			t.Errorf("%s names a scope id: %q", id, c.Detail)
+		if strings.Contains(c.Detail.English(), string(acctA)) {
+			t.Errorf("%s names a scope id: %q", id, c.Detail.English())
 		}
 	}
-	if !strings.Contains(got["scratch"].Detail, "0 of this account, 1 carried") || !strings.Contains(got["scratch"].Detail, "Browser pane") {
-		t.Errorf("scratch: %q", got["scratch"].Detail)
+	if !strings.Contains(got["scratch"].Detail.English(), "0 of this account, 1 carried") || !strings.Contains(got["scratch"].Detail.English(), "Browser pane") {
+		t.Errorf("scratch: %q", got["scratch"].Detail.English())
 	}
 	// The fake folders keep no session records: the mirror is an orphan.
-	if !strings.Contains(got["scratch-orphans"].Detail, sLeaf) {
-		t.Errorf("orphans: %q", got["scratch-orphans"].Detail)
+	if !strings.Contains(got["scratch-orphans"].Detail.English(), sLeaf) {
+		t.Errorf("orphans: %q", got["scratch-orphans"].Detail.English())
 	}
 	joined := strings.Join(order, " ")
 	if !strings.Contains(joined, "runner scratch scratch-orphans scratch-kept") {
@@ -764,7 +764,7 @@ func TestDoctorScratchChecksAlwaysPresent(t *testing.T) {
 			got[c.ID] = c
 		}
 		for _, id := range []string{"scratch", "scratch-orphans", "scratch-kept"} {
-			if c, ok := got[id]; !ok || c.Detail == "" {
+			if c, ok := got[id]; !ok || c.Detail.English() == "" {
 				t.Errorf("%s: %s: %+v", name, id, c)
 			}
 		}

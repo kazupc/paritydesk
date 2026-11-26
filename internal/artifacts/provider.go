@@ -275,11 +275,11 @@ func (Provider) Questions(q *online.Queue) []online.Question {
 		return nil
 	}
 	return []online.Question{{
-		ID: QuestionID, Header: i18n.T(i18n.ArtifactsQHeader),
-		Text: i18n.T(i18n.ArtifactsQText, updates, creates, string(q.Profile), conflicts),
+		ID: QuestionID, Header: i18n.Tx(i18n.ArtifactsQHeader),
+		Text: i18n.Tx(i18n.ArtifactsQText, updates, creates, string(q.Profile), conflicts),
 		Options: []online.Option{
-			{ID: "apply", Label: i18n.T(i18n.ArtifactsQApply), Description: i18n.T(i18n.ArtifactsQApplyDesc)},
-			{ID: "skip", Label: i18n.T(i18n.ArtifactsQSkip), Description: i18n.T(i18n.ArtifactsQSkipDesc)},
+			{ID: "apply", Label: i18n.Tx(i18n.ArtifactsQApply), Description: i18n.Tx(i18n.ArtifactsQApplyDesc)},
+			{ID: "skip", Label: i18n.Tx(i18n.ArtifactsQSkip), Description: i18n.Tx(i18n.ArtifactsQSkipDesc)},
 		},
 	}}
 }

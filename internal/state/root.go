@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 )
@@ -32,7 +33,7 @@ const (
 var (
 	// ErrNewerRoot is returned when root.json was written by a newer
 	// paritydesk than this binary.
-	ErrNewerRoot = errors.New("state: root.json was written by a newer paritydesk; upgrade paritydesk before running it again")
+	ErrNewerRoot error = i18n.NewErr(i18n.ErrStateNewerRoot)
 	// ErrNoRun is returned by Begin and Done when no run is open.
 	ErrNoRun = errors.New("state: no open run")
 	// ErrNoIntent is returned by Done when no intent of that name exists.
@@ -123,7 +124,7 @@ func decodeRoot(b []byte) (*Root, error) {
 		return nil, err
 	}
 	if v > RootVersion {
-		return nil, fmt.Errorf("%w (found version %d, this binary supports %d)", ErrNewerRoot, v, RootVersion)
+		return nil, i18n.WrapErr(ErrNewerRoot, i18n.Tx(i18n.ErrStateNewerRootVersion, v, RootVersion))
 	}
 	if v < RootVersion {
 		if b, err = migrate(b, v); err != nil {
@@ -234,7 +235,7 @@ func (s *Store) keepPreMigration() error {
 	}
 	switch {
 	case v > RootVersion:
-		return fmt.Errorf("%w (found version %d, this binary supports %d)", ErrNewerRoot, v, RootVersion)
+		return i18n.WrapErr(ErrNewerRoot, i18n.Tx(i18n.ErrStateNewerRootVersion, v, RootVersion))
 	case v == RootVersion:
 		return nil
 	}

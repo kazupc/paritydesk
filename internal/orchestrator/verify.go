@@ -11,6 +11,7 @@ import (
 
 	"github.com/kazupc/paritydesk/internal/app"
 	"github.com/kazupc/paritydesk/internal/compat"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -58,10 +59,10 @@ func (o *Orchestrator) Verify(ctx context.Context) (*VerifyResult, error) {
 		return nil, err
 	}
 	if root.Active == "" || root.Profiles[root.Active] == nil {
-		return nil, pderr.New(pderr.Usage, "verify", "no active profile; run paritydesk init")
+		return nil, pderr.NewT(pderr.Usage, "verify", i18n.ErrVerifyNoActive)
 	}
 	if root.Run != nil {
-		return nil, pderr.New(pderr.NeedsRecover, "verify", "a run was interrupted; run paritydesk recover")
+		return nil, pderr.NewT(pderr.NeedsRecover, "verify", i18n.ErrInterrupted)
 	}
 	b, err := d.App.Locate(ctx, d.Config.App.BundleID)
 	if err != nil {
@@ -69,7 +70,7 @@ func (o *Orchestrator) Verify(ctx context.Context) (*VerifyResult, error) {
 	}
 	m, _, err := d.Compat.Manifest(ctx, b.Version)
 	if err != nil || m == nil {
-		return nil, pderr.New(pderr.CompatRefused, "verify", "no compatibility manifest covers this Claude version")
+		return nil, pderr.NewT(pderr.CompatRefused, "verify", i18n.ErrVerifyNoManifest)
 	}
 	if !d.ReadOnly {
 		if err := o.verifyConfirm(ctx, root, m); err != nil {
@@ -114,7 +115,7 @@ func (o *Orchestrator) verifyCore(ctx context.Context, in verifyIn) (*VerifyResu
 		}
 	}
 	if !in.settled && !o.waitSettled(ctx, claude, mirrorName) {
-		o.progress(P12Verify, "warn", "Claude did not settle in time; verifying what is there")
+		o.progress(P12Verify, "warn", i18n.Tx(i18n.ProgressP12NotSettled))
 	}
 	mirror, _, err := readContained(claude, mirrorName)
 	if err != nil {
@@ -140,14 +141,13 @@ func (o *Orchestrator) verifyCore(ctx context.Context, in verifyIn) (*VerifyResu
 	}
 	switch {
 	case !identityOK:
-		return res, pderr.New(pderr.IdentityMismatch, "verify", "the active folder does not hold "+string(in.alias)+"'s account")
+		return res, pderr.NewT(pderr.IdentityMismatch, "verify", i18n.ErrVerifyIdentity, in.alias)
 	case res.SignInNeeded:
-		return res, pderr.New(pderr.NeedsSignIn, "verify", "sign in with "+string(in.alias)+"'s account only; every other account stays signed in")
+		return res, pderr.NewT(pderr.NeedsSignIn, "verify", i18n.ErrVerifySignIn, in.alias)
 	case len(res.Drift) > 0 && in.record:
-		return res, pderr.New(pderr.VerifyDrift, "verify", "some values differ from what was written; the drift is recorded")
+		return res, pderr.NewT(pderr.VerifyDrift, "verify", i18n.ErrVerifyDrift)
 	case len(res.Drift) > 0:
-		return res, pderr.New(pderr.VerifyDrift, "verify",
-			"some values differ from the last run's bases; nothing was recorded, because a later difference may be your own edit")
+		return res, pderr.NewT(pderr.VerifyDrift, "verify", i18n.ErrVerifyDriftNotRecorded)
 	}
 	return res, nil
 }
@@ -352,7 +352,7 @@ func (o *Orchestrator) VerifyAfter(ctx context.Context, runID string) (*VerifyRe
 	}
 	m, _, err := d.Compat.Manifest(ctx, b.Version)
 	if err != nil || m == nil {
-		return nil, pderr.New(pderr.CompatRefused, "verify", "no compatibility manifest covers this Claude version")
+		return nil, pderr.NewT(pderr.CompatRefused, "verify", i18n.ErrVerifyNoManifest)
 	}
 	mirrorName := sources.DesktopConfigFile
 	for _, r := range model.AllRows {
@@ -362,7 +362,7 @@ func (o *Orchestrator) VerifyAfter(ctx context.Context, runID string) (*VerifyRe
 		}
 	}
 	if !o.waitSettled(ctx, o.claudePath(), mirrorName) {
-		o.progress(P12Verify, "warn", "Claude did not settle in time; verifying what is there")
+		o.progress(P12Verify, "warn", i18n.Tx(i18n.ProgressP12NotSettled))
 	}
 	if !d.ReadOnly {
 		l, err := d.State.Lock(ctx, DetachedLockWait)

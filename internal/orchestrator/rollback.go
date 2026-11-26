@@ -30,7 +30,7 @@ type RollbackResult struct {
 func (o *Orchestrator) Rollback(ctx context.Context, n uint64, propagate bool) (*RollbackResult, error) {
 	d := o.d
 	if d.ReadOnly {
-		return nil, pderr.New(pderr.Usage, "rollback", "rollback writes; it cannot run in read-only mode")
+		return nil, pderr.NewT(pderr.Usage, "rollback", i18n.ErrRollbackReadOnly)
 	}
 	l, err := d.State.Lock(ctx, 0)
 	if err != nil {
@@ -45,13 +45,13 @@ func (o *Orchestrator) Rollback(ctx context.Context, n uint64, propagate bool) (
 		return nil, err
 	}
 	if root.Run != nil || root.PendingAdd != nil {
-		return nil, pderr.New(pderr.NeedsRecover, "rollback", "a run is open; run paritydesk recover first")
+		return nil, pderr.NewT(pderr.NeedsRecover, "rollback", i18n.ErrRunOpen)
 	}
 	if n == 0 {
 		n = latestGeneration(root)
 	}
 	if n == 0 {
-		return nil, pderr.New(pderr.Usage, "rollback", "there is no generation to roll back")
+		return nil, pderr.NewT(pderr.Usage, "rollback", i18n.ErrRollbackNoGeneration)
 	}
 	man, err := d.Gens.Load(n)
 	if err != nil {
@@ -62,13 +62,13 @@ func (o *Orchestrator) Rollback(ctx context.Context, n uint64, propagate bool) (
 		return nil, err
 	}
 	quarantine := isQuarantine(man)
-	c := Confirmation{Kind: ConfirmRollback, Lines: []string{
-		fmt.Sprintf("Restore generation %d of %s (%d item(s)); items changed since are left as they are.", n, target, len(man.Entries)),
-		fmt.Sprintf("Propagate the restored values to other profiles: %v.", propagate)}}
+	c := Confirmation{Kind: ConfirmRollback, Lines: []i18n.Text{
+		i18n.Tx(i18n.ConfirmRollbackLine, n, target, len(man.Entries)),
+		i18n.Tx(i18n.ConfirmRollbackPropagate, fmt.Sprint(propagate))}}
 	if quarantine {
 		// A quarantine restore touches no row: propagate means nothing.
 		propagate = false
-		c.Lines = []string{i18n.T(i18n.RollbackQuarantineLine, len(man.Entries), parkedOrActive(o.d, root, target))}
+		c.Lines = []i18n.Text{i18n.Tx(i18n.RollbackQuarantineLine, len(man.Entries), parkedOrActive(o.d, root, target))}
 	}
 	if err := o.ask(ctx, o.interactive(false), c); err != nil {
 		return nil, err
@@ -121,7 +121,7 @@ func (o *Orchestrator) Rollback(ctx context.Context, n uint64, propagate bool) (
 		return nil, err
 	}
 	if quit {
-		o.relaunch(cctx, root, "relaunched Claude")
+		o.relaunch(cctx, root, i18n.Tx(i18n.ProgressP11RelaunchedClaude))
 	}
 	out := &RollbackResult{Generation: n, Restored: len(rep.Restored)}
 	for _, e := range rep.Conflicts {
@@ -144,10 +144,10 @@ func (o *Orchestrator) rollbackTarget(ctx context.Context, root *state.Root, n u
 	}
 	ps := root.Profiles[target]
 	if ps == nil {
-		return "", pderr.New(pderr.Usage, "rollback", fmt.Sprintf("generation %d belongs to no registered profile", n))
+		return "", pderr.NewT(pderr.Usage, "rollback", i18n.ErrRollbackNoProfile, n)
 	}
 	if man.Replica.Account != "" && man.Replica.Account != ps.Replica.Account {
-		return "", pderr.New(pderr.IdentityMismatch, "rollback", fmt.Sprintf("generation %d was taken from another account than %s holds now", n, target))
+		return "", pderr.NewT(pderr.IdentityMismatch, "rollback", i18n.ErrRollbackOtherAccount, n, target)
 	}
 	name := parkedName(o.d, target)
 	if target == root.Active {
@@ -158,7 +158,7 @@ func (o *Orchestrator) rollbackTarget(ctx context.Context, root *state.Root, n u
 		return "", err
 	}
 	if f == nil || f.Identity == nil || f.Identity.Account != ps.Replica.Account {
-		return "", pderr.New(pderr.IdentityMismatch, "rollback", fmt.Sprintf("%s does not hold the account of %s; nothing was restored", name, target))
+		return "", pderr.NewT(pderr.IdentityMismatch, "rollback", i18n.ErrRollbackFolderAccount, name, target)
 	}
 	return target, nil
 }
@@ -190,7 +190,7 @@ func (o *Orchestrator) stopForRollback(ctx context.Context, root *state.Root, b 
 		if cerr := o.commit(root); cerr != nil {
 			return cerr
 		}
-		return pderr.New(pderr.AppDidNotQuit, "rollback", "Claude did not quit; nothing was restored")
+		return pderr.NewT(pderr.AppDidNotQuit, "rollback", i18n.ErrRollbackNotQuit)
 	}
 	return o.done(root, P3Quit, state.IntentQuit)
 }
@@ -230,10 +230,9 @@ func (o *Orchestrator) quietForRollback(ctx context.Context, root *state.Root, b
 		return err
 	}
 	if quit {
-		o.relaunch(context.WithoutCancel(ctx), root, "relaunched Claude")
+		o.relaunch(context.WithoutCancel(ctx), root, i18n.Tx(i18n.ProgressP11RelaunchedClaude))
 	}
-	return pderr.New(pderr.AppDidNotQuit, "rollback",
-		"a process still uses the data folder; quit Claude (and any copy started with --user-data-dir), then run the rollback again; nothing was restored")
+	return pderr.NewT(pderr.AppDidNotQuit, "rollback", i18n.ErrRollbackInUse)
 }
 
 // finishRollback re-runs the conditional restore (idempotent), records
@@ -354,7 +353,7 @@ func parkedName(d Deps, a ids.Alias) string {
 // Rebase drops every base; the next run is a first sync (M14).
 func (o *Orchestrator) Rebase(ctx context.Context) error {
 	if o.d.ReadOnly {
-		return pderr.New(pderr.Usage, "rebase", "rebase writes; it cannot run in read-only mode")
+		return pderr.NewT(pderr.Usage, "rebase", i18n.ErrRebaseReadOnly)
 	}
 	l, err := o.d.State.Lock(ctx, 0)
 	if err != nil {
@@ -366,7 +365,7 @@ func (o *Orchestrator) Rebase(ctx context.Context) error {
 		return err
 	}
 	if root.Run != nil {
-		return pderr.New(pderr.NeedsRecover, "rebase", "a run is open; run paritydesk recover first")
+		return pderr.NewT(pderr.NeedsRecover, "rebase", i18n.ErrRunOpen)
 	}
 	root.Bases = map[string]state.Ref{}
 	root.Contested = nil
@@ -379,7 +378,7 @@ func (o *Orchestrator) Rebase(ctx context.Context) error {
 		return err
 	}
 	if err := o.d.State.GC(root); err != nil {
-		o.progress(P10Commit, "warn", "unreferenced state objects could not be removed")
+		o.progress(P10Commit, "warn", i18n.Tx(i18n.ProgressP10ObjectsNotRemoved))
 	}
 	return nil
 }

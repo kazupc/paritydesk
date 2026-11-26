@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/online"
@@ -471,7 +472,7 @@ type NextOut struct {
 	RetryAfterMS     int64            `json:"retry_after_ms"`
 	RemainingBatches int              `json:"remaining_batches"`
 	Counts           Counts           `json:"counts"`
-	Lines            []string         `json:"lines"`
+	Lines            []i18n.Text      `json:"lines"`
 }
 
 // States of a `next` answer beyond online's.

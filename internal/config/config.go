@@ -3,12 +3,14 @@ package config
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
 
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -52,7 +54,25 @@ type Config struct {
 	Artifacts Artifacts `toml:"artifacts" json:"artifacts"`
 	// Scratch configures the carry of scratch workspaces.
 	Scratch Scratch `toml:"scratch" json:"scratch"`
+	// UI holds presentation settings (the message language).
+	UI UI `toml:"ui" json:"ui"`
 }
+
+// UI holds presentation settings.
+type UI struct {
+	// Lang is the user's explicit choice: "auto" (default: the locale
+	// decides), "en" or "ja". paritydesk never writes it.
+	Lang string `toml:"lang" json:"lang"`
+	// FallbackLang applies only when LC_ALL, LC_MESSAGES and LANG are all
+	// unset: "auto" (default: English), "en" or "ja". init writes "ja".
+	FallbackLang string `toml:"fallback_lang" json:"fallback_lang"`
+}
+
+// Values of the [ui] keys.
+const (
+	LangAuto = "auto"
+	LangJA   = "ja"
+)
 
 // App configures how the desktop app is found and controlled.
 type App struct {
@@ -244,11 +264,45 @@ func Default() *Config {
 			MaxDeleteFraction:    0.5,
 			MaxDeleteMin:         50,
 		},
+		UI: UI{Lang: LangAuto, FallbackLang: LangAuto},
 	}
 }
 
-// ErrNoConfig is returned by Load when the file does not exist.
-var ErrNoConfig = errors.New("config: no config file; run paritydesk init")
+// ErrNoConfig is returned by Load when the file does not exist. It is one
+// pointer, so == and errors.Is keep working.
+var ErrNoConfig error = i18n.NewErr(i18n.ErrConfigNoConfig)
+
+// maxUIRead bounds what ReadUI reads.
+const maxUIRead = 1 << 20
+
+// ReadUI reads the two [ui] keys of the config file at path, tolerantly:
+// at most 1 MiB, unknown keys allowed, and "" for both on any error
+// (missing, unreadable or bad TOML). It never writes and never fails, so
+// the language can be chosen even when the rest of the config is invalid.
+func ReadUI(path string) (lang, fallback string) {
+	if path == "" {
+		return "", ""
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return "", ""
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, maxUIRead))
+	if err != nil {
+		return "", ""
+	}
+	var doc struct {
+		UI struct {
+			Lang         string `toml:"lang"`
+			FallbackLang string `toml:"fallback_lang"`
+		} `toml:"ui"`
+	}
+	if err := toml.NewDecoder(bytes.NewReader(b)).Decode(&doc); err != nil {
+		return "", ""
+	}
+	return doc.UI.Lang, doc.UI.FallbackLang
+}
 
 // Load reads path over the defaults. Unknown keys are an error. Load does
 // not validate; call Validate.

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kazupc/paritydesk/internal/compat"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/ids"
 	"github.com/kazupc/paritydesk/internal/model"
 )
@@ -253,7 +254,7 @@ type ImportReport struct {
 	Copies       ImportCopies `json:"copies"`
 	Unmapped     []string     `json:"unmapped_accounts"`
 	History      int          `json:"history"`
-	Lines        []string     `json:"lines"`
+	Lines        []i18n.Text  `json:"lines"`
 }
 
 // ImportPairs counts the legacy artifacts.
@@ -327,7 +328,7 @@ func planImport(lm LegacyManifest, files LegacyFiles, m *Manifest, current map[i
 	mapping map[ids.AccountID]ids.Alias, historyKeep int, spec compat.ArtifactsSpec, now time.Time) importPlan {
 	pl := importPlan{pairs: map[PairID]*Pair{}, blobs: map[string]string{}}
 	r := &pl.report
-	r.V, r.Format, r.Unmapped, r.Lines = 1, lm.Format, []string{}, []string{}
+	r.V, r.Format, r.Unmapped, r.Lines = 1, lm.Format, []string{}, []i18n.Text{}
 	claimed := m.claimed()
 	unmapped := map[string]bool{}
 	byAccount := map[ids.AccountID][]ids.Alias{}

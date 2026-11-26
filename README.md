@@ -27,10 +27,8 @@ v0.1 is designed to carry Code sessions, backlog and scheduled tasks, environmen
 
 A staged Claude update installs when Claude quits (finding 4 of ADR 0003), so a switch lets it install first and checks the new version before it syncs anything. That path has not yet been run against the real app (release checklist, step 20).
 
-<!-- v0.2 anchor: busy -->
 - **paritydesk waits for working sessions before quitting Claude.** It finds them in Claude's log, lists them in the plan and waits for them; Claude's own quit dialog stays the last guard. It refuses to run when a folder was signed in, inside Claude, to another profile's account ([ADR 0007](docs/adr/0007-log-signals.md); the patterns read from the app's code are confirmed on a real Mac before a release).
 
-<!-- v0.2 anchor: fdscan -->
 Before anything is written, paritydesk checks that no process still
 holds a file in Claude's data folders. It reads macOS's process
 information directly (no external command); `lsof` with fixed arguments
@@ -38,14 +36,10 @@ is the fallback, and `app.open_file_scan = "lsof"` keeps the v0.1 check.
 If paritydesk cannot read other processes' open files (for example
 inside a sandbox), the switch stops before writing anything.
 
-<!-- v0.2 anchor: sidebar-offline -->
 Under `sync.exclude`: collapsed project groups follow the same rule; while any glob is set, collapsed fork families and project groups that are not plain paths stay on their account.
 
-<!-- v0.2 anchor: scratch -->
 **Scratch workspaces** (sessions started without a folder, Claude 7.x) are carried with their sessions. paritydesk copies the workspace to the other account's folder at the same path, so the session keeps its history and stays trusted. Changed files merge with the newest change winning (the other copy is kept next to it as "… (conflict from <profile> <date>)"); a `.git` folder is taken whole from one side and never mixed; `node_modules`, `.venv`, `vendor`, build and cache folders (`[scratch] cache_dirs`) and other version-control folders are not carried, so reinstall or rebuild them where needed. A workspace over the limits (`[scratch]`: 20,000 files or 2 GiB per workspace, 8 GiB or 50,000 files per switch by default) is reported and not carried. File previews and Browser pane previews of a carried session work only on the account that created it (unverified on a real Mac). A file removed in a workspace is moved into the switch's backup generation; when old generations are pruned those files move to `scratch-kept` and stay until `paritydesk backups prune --scratch`. paritydesk never removes a workspace. A process still running in a scratch workspace keeps the folder busy, like any other open file.
 
-
-<!-- v0.2 anchor: online -->
 Some values only Claude's own tools can change after a relaunch (the
 sidebar's group-by and sort). The switch queues those calls, and the next
 Code session's `/paritydesk:reconcile` makes them, with a hook that lets
@@ -54,17 +48,11 @@ you ([ADR 0005](docs/adr/0005-online-layer.md); not yet confirmed on a
 real Mac, release checklist R-ON). `paritydesk online cancel` drops the
 waiting changes at any time.
 
-<!-- v0.2 anchor: pins -->
 **Pins** (Claude 7.x): which Code sessions are pinned is carried too. paritydesk reads the pin list read-only and asks inside Claude before it pins or unpins anything (`/paritydesk:reconcile`, one approval card per other session); when unpinning a session would also unpin sessions under it, those are pinned again, or the unpin waits with a warning. A pin list that cannot be read only skips pins for that switch ([ADR 0005](docs/adr/0005-online-layer.md); not yet confirmed on a real Mac, release checklist R-PIN). `sync.pins = false` turns it off.
 
-<!-- v0.2 anchor: artifacts -->
 **Artifacts** (beta, **capture only**): `/paritydesk:artifacts` in a Code session saves the account's claude.ai artifacts into paritydesk's archive on this Mac, newest change winning and older versions kept in history. Publishing them to your other profiles is built but stays off until it has been confirmed on a real Mac (release checklist R-AR-4). paritydesk never deletes an artifact; artifacts with several files, declared capabilities or another author are skipped ([ADR 0006](docs/adr/0006-artifact-sync.md)).
 
-<!-- v0.2 anchor: legacy-adopt -->
 **Coming from an earlier folder-swap script?** If your other accounts are parked as `Claude-<Name>` folders next to `Claude`, `paritydesk profile adopt --from-legacy` registers them all at once, keeps their names, and can move other accounts' leftovers into a backup it never prunes. Start with the dry run in [docs/migration-from-legacy.md](docs/migration-from-legacy.md).
-
-
-<!-- v0.2 anchor: i18n-ja -->
 
 ## What it will never do
 

@@ -131,7 +131,7 @@ func (r *run) saveScratchCache() {
 	}
 	p := o.statCachePath()
 	if err := ad.Cache.Save(o.d.FS, p, filepath.Join(filepath.Dir(p), ".tmp")); err != nil {
-		r.warn(P10Commit, i18n.T(i18n.ScratchStatCacheUnsaved))
+		r.warn(P10Commit, i18n.Tx(i18n.ScratchStatCacheUnsaved))
 	}
 }
 
@@ -226,7 +226,7 @@ func (o *Orchestrator) scratchReadNotes(in planInput, w *rowWork, extra []model.
 		}
 		switch c.Note {
 		case scratch.NoteOversizeFiles, scratch.NoteOversizeBytes:
-			o.progress(P2Preview, "warn", i18n.T(i18n.ScratchOversize, render.ScratchKey(c.Key),
+			o.progress(P2Preview, "warn", i18n.Tx(i18n.ScratchOversize, render.ScratchKey(c.Key),
 				lim.MaxFilesPerWorkspace, render.Bytes(lim.MaxWorkspaceBytes)))
 		case scratch.NoteBudget:
 			budget++
@@ -235,10 +235,10 @@ func (o *Orchestrator) scratchReadNotes(in planInput, w *rowWork, extra []model.
 		}
 	}
 	if budget > 0 {
-		o.progress(P2Preview, "warn", i18n.T(i18n.ScratchBudget, budget, render.Bytes(lim.MaxRunBytes), lim.MaxRunFiles))
+		o.progress(P2Preview, "warn", i18n.Tx(i18n.ScratchBudget, budget, render.Bytes(lim.MaxRunBytes), lim.MaxRunFiles))
 	}
 	if heldBack > 0 {
-		o.progress(P2Preview, "warn", i18n.T(i18n.ScratchHeldBack, heldBack, string(in.T.Alias)))
+		o.progress(P2Preview, "warn", i18n.Tx(i18n.ScratchHeldBack, heldBack, string(in.T.Alias)))
 	}
 }
 
@@ -274,7 +274,7 @@ func (o *Orchestrator) scratchCompose(in planInput, w *rowWork, res *sources.Ops
 		phase = P2Preview
 	}
 	notes.NeedBytes, notes.FreeBytes = int64(need), int64(free)
-	o.progress(phase, "warn", i18n.T(i18n.ScratchNoSpace, render.Bytes(int64(need)), render.Bytes(int64(free))))
+	o.progress(phase, "warn", i18n.Tx(i18n.ScratchNoSpace, render.Bytes(int64(need)), render.Bytes(int64(free))))
 	return true
 }
 
@@ -547,7 +547,7 @@ func (r *run) noteSoftSkipped(res apply.Result) {
 		shown.Changes = append(shown.Changes, sources.Skip(model.RowScratch, k, scratch.NoteSourceChanged))
 	}
 	r.res.Plan = &shown
-	r.warn(P7Apply, i18n.T(i18n.ScratchSourceChanged, len(res.SoftSkipped), string(r.T.Profile.Alias)))
+	r.warn(P7Apply, i18n.Tx(i18n.ScratchSourceChanged, len(res.SoftSkipped), string(r.T.Profile.Alias)))
 }
 
 // scratchRefsFromIntent returns the refs of rereadRows for recover: the

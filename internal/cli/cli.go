@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/kazupc/paritydesk/internal/config"
+	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/orchestrator"
 	"github.com/kazupc/paritydesk/internal/pderr"
 	"github.com/kazupc/paritydesk/internal/redact"
@@ -30,12 +31,18 @@ var (
 type globalFlags struct {
 	JSON, Plain, NoColor, ASCII, ReadOnly bool
 	Config, StateDir, AppSupportDir       string
+	// Lang is --lang (auto, en or ja); never passed to detached jobs.
+	Lang string
 }
+
+// flagLang names the message-language flag.
+const flagLang = "lang"
 
 // globalNames lists the global flags, for the usage text.
 var globalNames = map[string]bool{
 	"json": true, "plain": true, "no-color": true, "ascii": true, "read-only": true,
 	orchestrator.FlagConfig: true, orchestrator.FlagStateDir: true, orchestrator.FlagAppSupportDir: true,
+	flagLang: true,
 }
 
 // hiddenFlags are accepted but not listed in the usage text: internal
@@ -54,20 +61,42 @@ var hiddenFlags = map[string]bool{
 const hiddenUsage = "(hidden) "
 
 // isHidden reports whether a flag is left out of usage text and
-// completion: an internal flag name, or a usage starting with hiddenUsage.
+// completion: an internal flag name, or a usage whose English text starts
+// with hiddenUsage.
 func isHidden(f *flag.Flag) bool {
-	return hiddenFlags[f.Name] || strings.HasPrefix(f.Usage, hiddenUsage)
+	return hiddenFlags[f.Name] || strings.HasPrefix(i18n.En(i18n.Msg(f.Usage)), hiddenUsage)
+}
+
+// usage is the usage string of a flag: its catalog id, translated when
+// the usage text is printed (printFlags, completion).
+func usage(id i18n.Msg) string { return string(id) }
+
+// flagUsageArgs supplies the arguments of a flag usage format (today only
+// --only lists the category names); help and completion share it.
+var flagUsageArgs = map[i18n.Msg]func() []any{
+	i18n.FlagOnly: func() []any { return []any{strings.Join(categoryNames(), ",")} },
+}
+
+// flagUsageText renders a flag usage id in l.
+func flagUsageText(l i18n.Lang, usageID string) string {
+	id := i18n.Msg(usageID)
+	var args []any
+	if f := flagUsageArgs[id]; f != nil {
+		args = f()
+	}
+	return i18n.TIn(l, id, args...)
 }
 
 func (g *globalFlags) register(fs *flag.FlagSet) {
-	fs.BoolVar(&g.JSON, "json", g.JSON, "print one JSON document")
-	fs.BoolVar(&g.Plain, "plain", g.Plain, "plain lines, no tables or spinners")
-	fs.BoolVar(&g.NoColor, "no-color", g.NoColor, "no colour (also NO_COLOR, TERM=dumb)")
-	fs.BoolVar(&g.ASCII, "ascii", g.ASCII, "ASCII only")
-	fs.BoolVar(&g.ReadOnly, "read-only", g.ReadOnly, "plan only; never write (also PARITYDESK_READONLY=1)")
-	fs.StringVar(&g.Config, orchestrator.FlagConfig, g.Config, "config file (also PARITYDESK_CONFIG)")
-	fs.StringVar(&g.StateDir, orchestrator.FlagStateDir, g.StateDir, "state directory (also PARITYDESK_STATE_DIR)")
-	fs.StringVar(&g.AppSupportDir, orchestrator.FlagAppSupportDir, g.AppSupportDir, "paritydesk support directory")
+	fs.BoolVar(&g.JSON, "json", g.JSON, usage(i18n.FlagJSON))
+	fs.BoolVar(&g.Plain, "plain", g.Plain, usage(i18n.FlagPlain))
+	fs.BoolVar(&g.NoColor, "no-color", g.NoColor, usage(i18n.FlagNoColor))
+	fs.BoolVar(&g.ASCII, "ascii", g.ASCII, usage(i18n.FlagASCII))
+	fs.BoolVar(&g.ReadOnly, "read-only", g.ReadOnly, usage(i18n.FlagReadOnly))
+	fs.StringVar(&g.Config, orchestrator.FlagConfig, g.Config, usage(i18n.FlagConfig))
+	fs.StringVar(&g.StateDir, orchestrator.FlagStateDir, g.StateDir, usage(i18n.FlagStateDir))
+	fs.StringVar(&g.AppSupportDir, orchestrator.FlagAppSupportDir, g.AppSupportDir, usage(i18n.FlagAppSupportDir))
+	fs.StringVar(&g.Lang, flagLang, g.Lang, usage(i18n.FlagLang))
 }
 
 // env is what a command's run function receives.
@@ -78,6 +107,7 @@ type env struct {
 	stderr io.Writer
 	sys    *system
 	in     *bufio.Reader // lazily wraps stdin, shared by every prompt
+	ls     langState     // the message language (lang.go)
 }
 
 // command is one node of the command tree. The tree is built on the
@@ -86,8 +116,8 @@ type env struct {
 // requires that no package in the dependency graph imports it.
 type command struct {
 	name    string
-	args    string // usage of positional arguments
-	short   string
+	args    string   // usage of positional arguments
+	short   i18n.Msg // catalog id of the one-line description
 	hidden  bool
 	minArgs int
 	maxArgs int // -1: unlimited
@@ -98,18 +128,27 @@ type command struct {
 	// returns errFailClosed, exits non-zero without output, so the
 	// plugin's shim applies its own armed check (the PreToolUse guard).
 	failClosed bool
-	flags      func(fs *flag.FlagSet)
-	run        func(ctx context.Context, e *env, fs *flag.FlagSet, args []string) error
-	sub        []*command
+	// english commands print English only and resolve no language (the
+	// hook, completion and the hidden aliases command).
+	english bool
+	flags   func(fs *flag.FlagSet)
+	run     func(ctx context.Context, e *env, fs *flag.FlagSet, args []string) error
+	sub     []*command
 }
 
 // errUsage marks command-line errors (exit 2).
 var errUsage = errors.New("usage")
 
-// usageErrorf returns a command-line error.
-func usageErrorf(format string, args ...any) error {
-	return fmt.Errorf("%w: "+format, append([]any{errUsage}, args...)...)
-}
+// usageErr is a command-line error whose text is a catalog message.
+type usageErr struct{ t i18n.Text }
+
+func (u *usageErr) Error() string       { return errUsage.Error() + ": " + u.t.English() }
+func (u *usageErr) Unwrap() error       { return errUsage }
+func (u *usageErr) I18nText() i18n.Text { return u.t }
+
+// usageError returns a command-line error (exit 2) with the catalog text
+// id; Go flag parse errors use i18n.UsageFlag with err.Error().
+func usageError(id i18n.Msg, args ...any) error { return &usageErr{t: i18n.Tx(id, args...)} }
 
 // quietError carries an exit code whose message was already printed (a
 // JSON document with its own code, for example).
@@ -123,9 +162,18 @@ func Execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	return execute(ctx, args, stdin, stdout, stderr, realSystem())
 }
 
-// execute runs the command line against sys, which tests replace.
+// execute runs the command line against sys, which tests replace. Both
+// languages start as English and are restored on return, so a test that
+// calls execute never leaks a language.
 func execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, sys *system) int {
+	defer i18n.SetLang(i18n.SetLang(i18n.English))
+	defer i18n.SetDisplayLang(i18n.SetDisplayLang(i18n.English))
 	e := &env{g: &globalFlags{}, stdin: stdin, stdout: stdout, stderr: stderr, sys: sys}
+	if englishCommands[commandWord(args)] {
+		e.ls.english = true
+	} else {
+		_ = e.applyLang(nil, nil)
+	}
 	return e.finish(dispatch(ctx, e, root(), args, "paritydesk"))
 }
 
@@ -139,7 +187,12 @@ func (e *env) finish(err error) int {
 		return int(pderr.CodeOf(q.err))
 	}
 	if errors.Is(err, errUsage) {
-		err = &pderr.Error{Code: pderr.Usage, Op: "usage", Msg: strings.TrimPrefix(err.Error(), errUsage.Error()+": ")}
+		pe := &pderr.Error{Code: pderr.Usage, Op: "usage", Msg: strings.TrimPrefix(err.Error(), errUsage.Error()+": ")}
+		var tx i18n.Texter
+		if errors.As(err, &tx) {
+			pe.Text = tx.I18nText()
+		}
+		err = pe
 	}
 	e.printer().Error(err)
 	return int(pderr.CodeOf(err))
@@ -147,10 +200,7 @@ func (e *env) finish(err error) int {
 
 // printer returns the printer for the flags parsed so far.
 func (e *env) printer() *render.Printer {
-	m := render.DetectMode(render.Mode{
-		JSON: e.g.JSON, Plain: e.g.Plain, NoColor: e.g.NoColor, ASCII: e.g.ASCII,
-	}, e.sys.getenv, e.sys.isTerminal(e.stdout))
-	return &render.Printer{Out: e.stdout, Err: e.stderr, Mode: m, Redact: e.redactor().String}
+	return &render.Printer{Out: e.stdout, Err: e.stderr, Mode: e.mode(), Redact: e.redactor().String}
 }
 
 // redactor hides home paths and ids in output meant to be shared (JSON
@@ -188,38 +238,47 @@ func dispatch(ctx context.Context, e *env, c *command, args []string, path strin
 	if c.flags != nil {
 		c.flags(fs)
 	}
+	if c.english {
+		e.ls.english = true
+	}
 	if len(c.sub) > 0 {
 		// Only global flags may precede a subcommand name.
 		if err := fs.Parse(args); err != nil {
-			return e.parseError(c, fs, path, err)
+			return e.parseError(c, fs, path, args, err)
+		}
+		if err := e.applyLang(fs, c); err != nil {
+			return err
 		}
 		rest := fs.Args()
 		if len(rest) == 0 {
 			printUsage(e.stderr, c, fs, path)
-			return usageErrorf("missing command; run paritydesk help %s", strings.TrimPrefix(path, "paritydesk"))
+			return usageError(i18n.UsageMissingCommand, strings.TrimPrefix(path, "paritydesk"))
 		}
 		for _, s := range c.sub {
 			if s.name == rest[0] {
 				return dispatch(ctx, e, s, rest[1:], path+" "+s.name)
 			}
 		}
-		return usageErrorf("unknown command %q", rest[0])
+		return usageError(i18n.UsageUnknownCommand, rest[0])
 	}
 	pos, err := parseInterleaved(fs, args)
 	if err != nil {
 		if c.lenient && !errors.Is(err, flag.ErrHelp) {
 			return c.lenientFailure(path)
 		}
-		return e.parseError(c, fs, path, err)
+		return e.parseError(c, fs, path, args, err)
+	}
+	if err := e.applyLang(fs, c); err != nil {
+		return err
 	}
 	if len(pos) < c.minArgs || (c.maxArgs >= 0 && len(pos) > c.maxArgs) {
 		if c.lenient {
 			return c.lenientFailure(path)
 		}
-		return usageErrorf("%s %s", path, c.args)
+		return usageError(i18n.UsageSyntax, path, c.args)
 	}
 	if c.run == nil {
-		return pderr.New(pderr.Internal, path, "command has no run function")
+		return pderr.Bug(path, "command has no run function")
 	}
 	err = c.run(ctx, e, fs, pos)
 	if c.lenient {
@@ -246,12 +305,13 @@ func (c *command) lenientFailure(path string) error {
 
 // parseError prints the usage for --help (exit 0) and turns other parse
 // errors into usage errors.
-func (e *env) parseError(c *command, fs *flag.FlagSet, path string, err error) error {
+func (e *env) parseError(c *command, fs *flag.FlagSet, path string, args []string, err error) error {
 	if errors.Is(err, flag.ErrHelp) {
+		e.applyLangHelp(fs, c, args)
 		printUsage(e.stdout, c, fs, path)
 		return err
 	}
-	return usageErrorf("%v", err)
+	return usageError(i18n.UsageFlag, err.Error())
 }
 
 // parseInterleaved accepts flags before and after positional arguments.
@@ -279,22 +339,22 @@ func printUsage(w io.Writer, c *command, fs *flag.FlagSet, path string) {
 	if len(c.sub) == 0 {
 		args = strings.TrimSpace(args + " [flags]")
 	}
-	fmt.Fprintf(w, "usage: %s %s\n", path, args)
+	fmt.Fprintln(w, i18n.T(i18n.HelpUsage, path, args))
 	if c.short != "" {
-		fmt.Fprintf(w, "\n%s\n", c.short)
+		fmt.Fprintf(w, "\n%s\n", i18n.T(c.short))
 	}
 	if len(c.sub) > 0 {
-		fmt.Fprintln(w, "\ncommands:")
+		fmt.Fprintf(w, "\n%s\n", i18n.T(i18n.HelpCommands))
 		subs := append([]*command(nil), c.sub...)
 		sort.Slice(subs, func(i, j int) bool { return subs[i].name < subs[j].name })
 		for _, s := range subs {
 			if !s.hidden {
-				fmt.Fprintf(w, "  %-12s %s\n", s.name, s.short)
+				fmt.Fprintf(w, "  %-12s %s\n", s.name, i18n.T(s.short))
 			}
 		}
 	}
-	printFlags(w, fs, "flags", func(name string) bool { return !globalNames[name] })
-	printFlags(w, fs, "global flags", func(name string) bool { return globalNames[name] })
+	printFlags(w, fs, i18n.T(i18n.HelpFlags), func(name string) bool { return !globalNames[name] })
+	printFlags(w, fs, i18n.T(i18n.HelpGlobalFlags), func(name string) bool { return globalNames[name] })
 }
 
 // printFlags lists the visible flags that keep selects.
@@ -304,15 +364,16 @@ func printFlags(w io.Writer, fs *flag.FlagSet, title string, keep func(string) b
 		if !keep(f.Name) || isHidden(f) {
 			return
 		}
-		typ, usage := flag.UnquoteUsage(f)
+		typ, _ := flag.UnquoteUsage(f)
+		text := flagUsageText(i18n.Current(), f.Usage)
 		name := "--" + f.Name
 		if typ != "" {
 			name += " " + typ
 		}
 		if d := f.DefValue; d != "" && d != "false" && d != "0" {
-			usage += fmt.Sprintf(" (default %s)", d)
+			text += " " + i18n.T(i18n.HelpDefault, d)
 		}
-		lines = append(lines, fmt.Sprintf("  %-28s %s", name, usage))
+		lines = append(lines, fmt.Sprintf("  %-28s %s", name, text))
 	})
 	if len(lines) == 0 {
 		return
@@ -321,54 +382,63 @@ func printFlags(w io.Writer, fs *flag.FlagSet, title string, keep func(string) b
 }
 
 func categoryFlags(fs *flag.FlagSet) {
-	fs.String(orchestrator.FlagOnly, "", "categories to carry, comma-separated: "+strings.Join(categoryNames(), ","))
-	fs.String(orchestrator.FlagSkip, "", "categories to leave alone, comma-separated")
+	fs.String(orchestrator.FlagOnly, "", usage(i18n.FlagOnly))
+	fs.String(orchestrator.FlagSkip, "", usage(i18n.FlagSkip))
 }
 
 // planFlags registers the plan flags.
 func planFlags(fs *flag.FlagSet) {
 	categoryFlags(fs)
-	fs.String(flagInvokingSession, "", "the Claude Code session running this command, left out of the busy list")
+	fs.String(flagInvokingSession, "", usage(i18n.FlagInvokingSession))
 }
 
 // flagInvokingSession names the Claude Code session that runs plan (set
 // by the plugin's skill).
 const flagInvokingSession = "invoking-session"
 
-func leaf(name, args, short string, min, max int, flags func(*flag.FlagSet), run func(context.Context, *env, *flag.FlagSet, []string) error) *command {
+func leaf(name, args string, short i18n.Msg, min, max int, flags func(*flag.FlagSet), run func(context.Context, *env, *flag.FlagSet, []string) error) *command {
 	return &command{name: name, args: args, short: short, minArgs: min, maxArgs: max, flags: flags, run: run}
 }
 
-func group(name, args, short string, hidden bool, sub ...*command) *command {
+func group(name, args string, short i18n.Msg, hidden bool, sub ...*command) *command {
 	return &command{name: name, args: args, short: short, hidden: hidden, sub: sub}
 }
 
-func yesFlag(fs *flag.FlagSet) { fs.Bool(orchestrator.FlagYes, false, "do not ask") }
+// englishOnly marks c and its subcommands as English-only.
+func englishOnly(c *command) *command {
+	c.english = true
+	for _, s := range c.sub {
+		englishOnly(s)
+	}
+	return c
+}
+
+func yesFlag(fs *flag.FlagSet) { fs.Bool(orchestrator.FlagYes, false, usage(i18n.FlagYes)) }
 
 // switchFlags registers the switch flags under the names the orchestrator
 // uses to build the detached job's argv (orchestrator.JobArgs).
 func switchFlags(fs *flag.FlagSet) {
 	categoryFlags(fs)
-	fs.Bool(orchestrator.FlagYes, false, "do not ask (destructive differences after the preview still ask)")
-	fs.Bool(orchestrator.FlagNoLaunch, false, "do not relaunch Claude")
-	fs.Bool(orchestrator.FlagNoReopen, false, "do not reopen the invoking session")
-	fs.Bool(orchestrator.FlagDetach, false, "run as a detached launchd job")
-	fs.Bool(flagJSONProgress, false, "NDJSON progress on stderr")
-	fs.Int(orchestrator.FlagAllowDeletions, 0, "allow up to N deletions per category past the breaker")
-	fs.Bool(orchestrator.FlagAcceptWorktreeRisk, false, "switch even if a worktree with uncommitted changes loses its registration")
-	fs.String(orchestrator.FlagReopenSession, "", "Claude Code session id of the invoking session (set by the plugin; empty: no reopen)")
-	fs.String(orchestrator.FlagConfirmedPlan, "", "hash of the plan you confirmed (printed by paritydesk plan --json)")
-	fs.Bool(orchestrator.FlagConfirmFirstSync, false, "confirm the first-sync union that the confirmed plan showed")
-	fs.Int64(orchestrator.FlagLogOffset, -1, "internal: main.log offset recorded before the hand-off")
-	fs.Uint64(orchestrator.FlagLogInode, 0, "internal: inode of the main.log the offset belongs to")
-	fs.Bool(orchestrator.FlagFromRunner, false, "internal: this process is the detached job")
+	fs.Bool(orchestrator.FlagYes, false, usage(i18n.FlagSwitchYes))
+	fs.Bool(orchestrator.FlagNoLaunch, false, usage(i18n.FlagNoLaunch))
+	fs.Bool(orchestrator.FlagNoReopen, false, usage(i18n.FlagNoReopen))
+	fs.Bool(orchestrator.FlagDetach, false, usage(i18n.FlagDetach))
+	fs.Bool(flagJSONProgress, false, usage(i18n.FlagJSONProgress))
+	fs.Int(orchestrator.FlagAllowDeletions, 0, usage(i18n.FlagAllowDeletions))
+	fs.Bool(orchestrator.FlagAcceptWorktreeRisk, false, usage(i18n.FlagAcceptWorktreeRisk))
+	fs.String(orchestrator.FlagReopenSession, "", usage(i18n.FlagReopenSession))
+	fs.String(orchestrator.FlagConfirmedPlan, "", usage(i18n.FlagConfirmedPlan))
+	fs.Bool(orchestrator.FlagConfirmFirstSync, false, usage(i18n.FlagConfirmFirstSync))
+	fs.Int64(orchestrator.FlagLogOffset, -1, usage(i18n.FlagLogOffset))
+	fs.Uint64(orchestrator.FlagLogInode, 0, usage(i18n.FlagLogInode))
+	fs.Bool(orchestrator.FlagFromRunner, false, usage(i18n.FlagFromRunner))
 }
 
 // managedFlags registers --managed and --unmanaged. Without either, a
 // terminal asks and a run without one refuses (see managedChoice).
 func managedFlags(fs *flag.FlagSet) {
-	fs.Bool("managed", false, "the account is managed by an employer or client")
-	fs.Bool("unmanaged", false, "the account is not managed by an employer or client")
+	fs.Bool("managed", false, usage(i18n.FlagManaged))
+	fs.Bool("unmanaged", false, usage(i18n.FlagUnmanaged))
 }
 
 // Hidden flags of profile adopt --from-legacy (spec-legacy-adopt 2.1).
@@ -388,15 +458,15 @@ const (
 // legacy mode.
 func adoptFlags(fs *flag.FlagSet) {
 	managedFlags(fs)
-	fs.Bool(flagFromLegacy, false, hiddenUsage+"adopt every folder an earlier folder-swap script left next to Claude")
-	fs.Bool(flagLegacyApply, false, hiddenUsage+"make the changes (default: dry run)")
-	fs.Bool(flagQuarantine, false, hiddenUsage+"with --apply: move other accounts' leftovers into a backup generation (needs a terminal)")
-	fs.String(flagLegacyState, "", hiddenUsage+"absolute path of the earlier script's state file (a hint only)")
-	fs.Var(&multiFlag{}, flagLegacyAlias, hiddenUsage+"<folder>=<alias>; may be repeated")
-	fs.Var(&multiFlag{}, flagLegacyExclude, hiddenUsage+"leave this folder out; may be repeated")
-	fs.String(flagLegacyManaged, "", hiddenUsage+"comma list of new aliases that are managed; every other new profile is unmanaged")
-	fs.String(flagLegacyPlan, "", hiddenUsage+"plan hash printed by the dry run")
-	fs.Bool(flagLegacyNoSeed, false, hiddenUsage+"register only; seed no sync bases")
+	fs.Bool(flagFromLegacy, false, usage(i18n.FlagFromLegacy))
+	fs.Bool(flagLegacyApply, false, usage(i18n.FlagProfileAdoptApply))
+	fs.Bool(flagQuarantine, false, usage(i18n.FlagQuarantine))
+	fs.String(flagLegacyState, "", usage(i18n.FlagLegacyState))
+	fs.Var(&multiFlag{}, flagLegacyAlias, usage(i18n.FlagLegacyAlias))
+	fs.Var(&multiFlag{}, flagLegacyExclude, usage(i18n.FlagLegacyExclude))
+	fs.String(flagLegacyManaged, "", usage(i18n.FlagLegacyManaged))
+	fs.String(flagLegacyPlan, "", usage(i18n.FlagLegacyPlan))
+	fs.Bool(flagLegacyNoSeed, false, usage(i18n.FlagLegacyNoSeed))
 }
 
 // flagJSONProgress selects NDJSON progress events on stderr.
@@ -406,95 +476,93 @@ const flagJSONProgress = "json-progress"
 // config, log or hook call.
 func root() *command {
 	return group("paritydesk", "<command> [flags]",
-		"Switch the Claude desktop app between accounts and keep everything else in step.", false,
-		leaf("init", "", "Set up paritydesk for the account in the app now", 0, 0, func(fs *flag.FlagSet) {
-			fs.String("alias", "", "alias for the account in Claude now (asked when missing)")
-			fs.String("label", "", "display label for the profile")
+		i18n.HelpRoot, false,
+		leaf("init", "", i18n.HelpInit, 0, 0, func(fs *flag.FlagSet) {
+			fs.String("alias", "", usage(i18n.FlagAlias))
+			fs.String("label", "", usage(i18n.FlagLabel))
 			managedFlags(fs)
 		}, runInit),
-		group("profile", "<list|adopt|add|rename|remove>", "Manage profiles", false,
-			leaf("list", "", "List profiles", 0, 0, nil, runProfileList),
-			leaf("adopt", "<alias> <folder>", "Register a parked folder after checking its identity", 0, 2, adoptFlags, runProfileAdopt),
-			leaf("add", "<alias>", "Add an account without signing out of any other", 1, 1, managedFlags, runProfileAdd),
-			leaf("rename", "<alias> <new-alias>", "Rename a profile", 2, 2, nil, runProfileRename),
-			leaf("remove", "<alias>", "Unregister a profile; its folder is kept", 1, 1, nil, runProfileRemove),
+		group("profile", "<list|adopt|add|rename|remove>", i18n.HelpProfile, false,
+			leaf("list", "", i18n.HelpProfileList, 0, 0, nil, runProfileList),
+			leaf("adopt", "<alias> <folder>", i18n.HelpProfileAdopt, 0, 2, adoptFlags, runProfileAdopt),
+			leaf("add", "<alias>", i18n.HelpProfileAdd, 1, 1, managedFlags, runProfileAdd),
+			leaf("rename", "<alias> <new-alias>", i18n.HelpProfileRename, 2, 2, nil, runProfileRename),
+			leaf("remove", "<alias>", i18n.HelpProfileRemove, 1, 1, nil, runProfileRemove),
 		),
-		leaf("status", "", "Show the active profile and anything pending", 0, 0, func(fs *flag.FlagSet) {
-			fs.Bool("short", false, "one line; never opens Local Storage")
+		leaf("status", "", i18n.HelpStatus, 0, 0, func(fs *flag.FlagSet) {
+			fs.Bool("short", false, usage(i18n.FlagShort))
 		}, runStatus),
-		leaf("plan", "[<alias>|-]", "Preview what a switch would change (approximate)", 0, 1, planFlags, runPlan),
-		leaf("switch", "[<alias>|-]", "Switch to another profile", 0, 1, switchFlags, runSwitch),
-		leaf("sync", "", "Re-apply the shared state to the active profile", 0, 0, func(fs *flag.FlagSet) {
+		leaf("plan", "[<alias>|-]", i18n.HelpPlan, 0, 1, planFlags, runPlan),
+		leaf("switch", "[<alias>|-]", i18n.HelpSwitch, 0, 1, switchFlags, runSwitch),
+		leaf("sync", "", i18n.HelpSync, 0, 0, func(fs *flag.FlagSet) {
 			yesFlag(fs)
-			fs.Int(orchestrator.FlagAllowDeletions, 0, "allow up to N deletions per category past the breaker")
-			fs.Bool(orchestrator.FlagNoLaunch, false, "do not relaunch Claude")
-			fs.Bool(flagJSONProgress, false, "NDJSON progress on stderr")
+			fs.Int(orchestrator.FlagAllowDeletions, 0, usage(i18n.FlagAllowDeletions))
+			fs.Bool(orchestrator.FlagNoLaunch, false, usage(i18n.FlagNoLaunch))
+			fs.Bool(flagJSONProgress, false, usage(i18n.FlagJSONProgress))
 		}, runSync),
-		leaf("verify", "", "Check that the app kept what the last run wrote", 0, 0, func(fs *flag.FlagSet) {
-			fs.String(orchestrator.FlagAfterRun, "", "run id a background check verifies (set by paritydesk)")
+		leaf("verify", "", i18n.HelpVerify, 0, 0, func(fs *flag.FlagSet) {
+			fs.String(orchestrator.FlagAfterRun, "", usage(i18n.FlagAfterRun))
 		}, runVerify),
-		leaf("recover", "", "Finish or undo an interrupted run", 0, 0, func(fs *flag.FlagSet) {
-			fs.Bool("rollback", false, "undo the interrupted run instead of completing it")
+		leaf("recover", "", i18n.HelpRecover, 0, 0, func(fs *flag.FlagSet) {
+			fs.Bool("rollback", false, usage(i18n.FlagRollback))
 			yesFlag(fs)
 		}, runRecover),
-		leaf("rollback", "[<n>]", "Restore a generation without overwriting newer work", 0, 1, func(fs *flag.FlagSet) {
-			fs.Bool("propagate", false, "carry the restored values to other profiles on the next switch")
+		leaf("rollback", "[<n>]", i18n.HelpRollback, 0, 1, func(fs *flag.FlagSet) {
+			fs.Bool("propagate", false, usage(i18n.FlagPropagate))
 			yesFlag(fs)
 		}, runRollback),
-		leaf("rebase", "", "Forget every sync base; the next run is a first sync", 0, 0, nil, runRebase),
-		group("generations", "<list|show>", "List or show backup generations", false,
-			leaf("list", "", "List generations", 0, 0, nil, runGenerationsList),
-			leaf("show", "<n>", "Show one generation", 1, 1, nil, runGenerationsShow),
+		leaf("rebase", "", i18n.HelpRebase, 0, 0, nil, runRebase),
+		group("generations", "<list|show>", i18n.HelpGenerations, false,
+			leaf("list", "", i18n.HelpGenerationsList, 0, 0, nil, runGenerationsList),
+			leaf("show", "<n>", i18n.HelpGenerationsShow, 1, 1, nil, runGenerationsShow),
 		),
-		group("backups", "<prune|purge>", "Prune or purge backup generations", false,
-			leaf("prune", "", "Apply the retention policy", 0, 0, backupsPruneFlags, runBackupsPrune),
-			leaf("purge", "", "Remove every generation", 0, 0, yesFlag, runBackupsPurge),
+		group("backups", "<prune|purge>", i18n.HelpBackups, false,
+			leaf("prune", "", i18n.HelpBackupsPrune, 0, 0, backupsPruneFlags, runBackupsPrune),
+			leaf("purge", "", i18n.HelpBackupsPurge, 0, 0, yesFlag, runBackupsPurge),
 		),
-		leaf("doctor", "", "Check the installation, folders and app compatibility", 0, 0, func(fs *flag.FlagSet) {
-			fs.Bool("grant-automation", false, "ask macOS for Automation permission now")
-			fs.String(flagBundle, "", "write a redacted support archive (tar.gz) to this new file")
-			fs.Int(flagBundleLogs, defaultBundleLogs, "newest run logs to put in the archive")
+		leaf("doctor", "", i18n.HelpDoctor, 0, 0, func(fs *flag.FlagSet) {
+			fs.Bool("grant-automation", false, usage(i18n.FlagGrantAutomation))
+			fs.String(flagBundle, "", usage(i18n.FlagBundle))
+			fs.Int(flagBundleLogs, defaultBundleLogs, usage(i18n.FlagBundleLogs))
 		}, runDoctor),
-		leaf("log", "", "Show the log of a run", 0, 0, func(fs *flag.FlagSet) {
-			fs.String("run", "", "run id (default: the last run)")
+		leaf("log", "", i18n.HelpLog, 0, 0, func(fs *flag.FlagSet) {
+			fs.String("run", "", usage(i18n.FlagRun))
 		}, runLog),
-		leaf("history", "", "List past runs", 0, 0, nil, runHistory),
-		group("config", "<path|show|validate>", "Show, locate or validate the config file", false,
-			leaf("path", "", "Print the config file path", 0, 0, nil, runConfigPath),
-			leaf("show", "", "Print the effective config", 0, 0, nil, runConfigShow),
-			leaf("validate", "", "Validate the config file", 0, 0, nil, runConfigValidate),
+		leaf("history", "", i18n.HelpHistory, 0, 0, nil, runHistory),
+		group("config", "<path|show|validate>", i18n.HelpConfig, false,
+			leaf("path", "", i18n.HelpConfigPath, 0, 0, nil, runConfigPath),
+			leaf("show", "", i18n.HelpConfigShow, 0, 0, nil, runConfigShow),
+			leaf("validate", "", i18n.HelpConfigValidate, 0, 0, nil, runConfigValidate),
 		),
-		// v0.2 anchor: commands online
 		onlineGroup(),
 
-		// v0.2 anchor: commands artifacts
 		artifactsGroup(),
 
-		leaf("uninstall", "", "Remove paritydesk's state; every data folder is kept", 0, 0, func(fs *flag.FlagSet) {
-			fs.Bool("keep-backups", true, "keep backup generations")
-			fs.Bool("keep-artifacts", true, "keep the artifact archive (saved pages and their history)")
-			fs.Bool("keep-state", false, "keep the state directory as well")
+		leaf("uninstall", "", i18n.HelpUninstall, 0, 0, func(fs *flag.FlagSet) {
+			fs.Bool("keep-backups", true, usage(i18n.FlagKeepBackups))
+			fs.Bool("keep-artifacts", true, usage(i18n.FlagKeepArtifacts))
+			fs.Bool("keep-state", false, usage(i18n.FlagKeepState))
 			yesFlag(fs)
 		}, runUninstall),
-		group("hook", "<event>", "Internal: entry point of the plugin's hooks", true,
-			&command{name: "session-start", short: "SessionStart hook", maxArgs: -1, lenient: true,
+		englishOnly(group("hook", "<event>", i18n.HelpHook, true,
+			&command{name: "session-start", short: i18n.HelpHookSessionStart, maxArgs: -1, lenient: true,
 				flags: func(fs *flag.FlagSet) {
-					fs.String("plugin-version", "", "version of the calling plugin (silent on version skew)")
+					fs.String("plugin-version", "", usage(i18n.FlagHookSessionStartPluginVersion))
 				}, run: runHookSessionStart},
-			&command{name: "pre-tool-use", short: "PreToolUse hook", maxArgs: -1, lenient: true, failClosed: true,
+			&command{name: "pre-tool-use", short: i18n.HelpHookPreToolUse, maxArgs: -1, lenient: true, failClosed: true,
 				flags: func(fs *flag.FlagSet) {
-					fs.String("plugin-version", "", "version of the calling plugin")
+					fs.String("plugin-version", "", usage(i18n.FlagPluginVersion))
 				}, run: runHookPreToolUse},
-			&command{name: "post-tool-use", short: "PostToolUse hook", maxArgs: -1, lenient: true,
+			&command{name: "post-tool-use", short: i18n.HelpHookPostToolUse, maxArgs: -1, lenient: true,
 				flags: func(fs *flag.FlagSet) {
-					fs.String("plugin-version", "", "version of the calling plugin")
+					fs.String("plugin-version", "", usage(i18n.FlagPluginVersion))
 				}, run: runHookPostToolUse},
-		),
-		leaf("completion", "<bash|zsh|fish>", "Print a shell completion script", 1, 1, nil, runCompletion),
-		&command{name: aliasesCommand, short: "Internal: list profile aliases for completion", hidden: true, lenient: true,
+		)),
+		englishOnly(leaf("completion", "<bash|zsh|fish>", i18n.HelpCompletion, 1, 1, nil, runCompletion)),
+		&command{name: aliasesCommand, short: i18n.HelpAliases, hidden: true, lenient: true, english: true,
 			run: runAliases},
-		&command{name: "help", args: "[<command>...]", short: "Show help for a command", maxArgs: -1, run: runHelp},
-		&command{name: "version", short: "Print the version", run: runVersion},
+		&command{name: "help", args: "[<command>...]", short: i18n.HelpHelp, maxArgs: -1, run: runHelp},
+		&command{name: "version", short: i18n.HelpVersion, run: runVersion},
 	)
 }
 
@@ -509,7 +577,7 @@ func runHelp(_ context.Context, e *env, _ *flag.FlagSet, args []string) error {
 			}
 		}
 		if next == nil {
-			return usageErrorf("unknown command %q", a)
+			return usageError(i18n.UsageUnknownCommand, a)
 		}
 		c, path = next, path+" "+a
 	}

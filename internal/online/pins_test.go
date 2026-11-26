@@ -451,7 +451,7 @@ func TestPinsQuestion(t *testing.T) {
 	p := pinsProvider{}
 	q := familyQueue(t)
 	qs := p.Questions(q)
-	if len(qs) != 1 || qs[0].ID != QuestionPins || !strings.Contains(qs[0].Text, "pins 1 of them again") || len(qs[0].Options) != 2 {
+	if len(qs) != 1 || qs[0].ID != QuestionPins || !strings.Contains(qs[0].Text.English(), "pins 1 of them again") || len(qs[0].Options) != 2 {
 		t.Fatalf("question %+v", qs)
 	}
 	// Every step without a card, no breaker, no union: no question; the
@@ -468,7 +468,7 @@ func TestPinsQuestion(t *testing.T) {
 	}
 	in.PinsUnion = true
 	q = &Queue{V: 1, Phase: PhaseReconcile, Steps: pinsDraft(t, in).Steps}
-	if qs := p.Questions(q); len(qs) != 1 || !strings.Contains(qs[0].Text, "combined") {
+	if qs := p.Questions(q); len(qs) != 1 || !strings.Contains(qs[0].Text.English(), "combined") {
 		t.Fatalf("union question %+v", qs)
 	}
 }

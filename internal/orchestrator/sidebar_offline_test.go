@@ -125,7 +125,7 @@ func TestSidebarTargetStateErrorLeavesRowUnchanged(t *testing.T) {
 	}
 	warned := false
 	for _, ev := range e.ui.events {
-		if ev.Status == "warn" && strings.Contains(ev.Message, "sidebar-collapse: the entering folder's state could not be read") {
+		if ev.Status == "warn" && strings.Contains(ev.Message.English(), "sidebar-collapse: the entering folder's state could not be read") {
 			warned = true
 		}
 	}
