@@ -231,6 +231,26 @@ type Root struct {
 	LastCommitAt time.Time `json:"last_commit_at,omitzero"`
 }
 
+// CommitMark is the "last switch" mark of the account checks:
+// LastCommitAt, or, for a root written before that field existed, the
+// time of its newest backup generation (every committed switch made one).
+// Zero when neither is known.
+func (r *Root) CommitMark() time.Time {
+	if r == nil {
+		return time.Time{}
+	}
+	if !r.LastCommitAt.IsZero() {
+		return r.LastCommitAt
+	}
+	var mark time.Time
+	for _, g := range r.Generations {
+		if g.At.After(mark) {
+			mark = g.At
+		}
+	}
+	return mark
+}
+
 // VerifyRecord is the stored outcome of a verify.
 type VerifyRecord struct {
 	RunID   string        `json:"run"`

@@ -33,7 +33,9 @@ func openFileScanCheck(info app.HolderScanInfo) (status string, detail i18n.Text
 	case info.Reason == "test":
 		return "ok", i18n.Tx(i18n.DoctorFDScanLsofTest)
 	case info.Reason == "partial":
-		return "warn", i18n.Tx(i18n.DoctorFDScanPartial, info.Unreadable, info.Partial)
+		// Some processes cannot be read natively on any Mac (other
+		// processes' protections); lsof covers them, so nothing is wrong.
+		return "ok", i18n.Tx(i18n.DoctorFDScanPartial, info.Unreadable, info.Partial)
 	}
 	// "self-check", "unsupported", "scan-error" (and anything unforeseen).
 	return "warn", i18n.Tx(i18n.DoctorFDScanFallback)

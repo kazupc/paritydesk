@@ -72,7 +72,7 @@ func (r *run) loadAccountChanges(ctx context.Context) {
 func loadChanges(ctx context.Context, a AppControl, sig compat.Signals, root *state.Root) ([]profile.AttributedChange, bool) {
 	var mark time.Time
 	if root != nil {
-		mark = root.LastCommitAt
+		mark = root.CommitMark()
 	}
 	changes, truncated, err := a.AccountChanges(ctx, sig, mark)
 	if err != nil {

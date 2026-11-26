@@ -34,7 +34,7 @@ func TestDoctorOpenFileScan(t *testing.T) {
 		{"self-check", with(func(i *app.HolderScanInfo) { i.Backend, i.Reason = "lsof", "self-check" }), "warn", i18n.T(i18n.DoctorFDScanFallback)},
 		{"unsupported", with(func(i *app.HolderScanInfo) { i.Backend, i.Reason = "lsof", "unsupported" }), "warn", i18n.T(i18n.DoctorFDScanFallback)},
 		{"scan error", with(func(i *app.HolderScanInfo) { i.Backend, i.Reason = "lsof", "scan-error" }), "warn", i18n.T(i18n.DoctorFDScanFallback)},
-		{"partial", with(func(i *app.HolderScanInfo) { i.Backend, i.Reason, i.Unreadable, i.Partial = "lsof", "partial", 3, 1 }), "warn", i18n.T(i18n.DoctorFDScanPartial, 3, 1)},
+		{"partial", with(func(i *app.HolderScanInfo) { i.Backend, i.Reason, i.Unreadable, i.Partial = "lsof", "partial", 3, 1 }), "ok", i18n.T(i18n.DoctorFDScanPartial, 3, 1)},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

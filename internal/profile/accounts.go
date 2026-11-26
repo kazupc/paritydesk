@@ -34,7 +34,7 @@ func AttributeChanges(root *state.Root, changes []LoggedChange) []AttributedChan
 	out := make([]AttributedChange, len(changes))
 	var mark time.Time
 	if root != nil {
-		mark = root.LastCommitAt
+		mark = root.CommitMark()
 	}
 	for i, c := range changes {
 		out[i] = AttributedChange{
