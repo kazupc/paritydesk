@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"slices"
 	"unicode/utf8"
 
 	"github.com/kazupc/paritydesk/internal/jsonx"
@@ -75,6 +76,12 @@ func groupByLocation(edits []Edit) ([]group, error) {
 //     OpLSDelete for a removal; and drops the op when the composed bytes
 //     equal the original.
 //
+// Row scratch's edits (copy, mkdir, symlink, and its removals) are
+// composed without reading the location: exactly one edit per location,
+// PreHash = the edit's BaseHash, PostHash = Copy.Hash, DirHash(Mode) or
+// LinkHash(Link) (composeScratch). Apply re-checks every pre-hash, so
+// trusting BaseHash cannot write over unexpected bytes.
+//
 // Ops are returned in order of each location's first edit. Errors are
 // *pderr.Error with code Internal and never contain content.
 func Compose(edits []Edit, src Source) ([]Op, error) {
@@ -87,6 +94,14 @@ func Compose(edits []Edit, src Source) ([]Op, error) {
 	}
 	var ops []Op
 	for _, g := range groups {
+		if slices.ContainsFunc(g.edits, isScratchEdit) {
+			op, err := composeScratch(g)
+			if err != nil {
+				return nil, err
+			}
+			ops = append(ops, op)
+			continue
+		}
 		op, ok, err := composeLocation(g, src)
 		if err != nil {
 			return nil, err
@@ -301,4 +316,38 @@ func applyEdits(g group, doc []byte, exists bool) ([]byte, bool, error) {
 		}
 	}
 	return doc, exists, nil
+}
+
+// composeScratch composes the single row-scratch edit of a location into
+// its op without reading the location.
+func composeScratch(g group) (Op, error) {
+	if len(g.edits) != 1 {
+		return Op{}, composeErr(g.loc, nil, "a scratch edit may not be combined with other edits")
+	}
+	e := g.edits[0]
+	if g.loc.LSKey != "" {
+		return Op{}, composeErr(g.loc, nil, "a scratch edit (row %s) may not name a Local Storage key", e.Row)
+	}
+	op := Op{Row: e.Row, Path: g.loc.File, Mode: e.Mode, PreHash: e.BaseHash, Destructive: e.Destructive,
+		Secret: e.Secret, Reason: e.Reason}
+	if e.Item != "" {
+		op.Items = []string{e.Item}
+	}
+	switch e.Kind {
+	case EditCopy:
+		if e.Copy == nil {
+			return Op{}, composeErr(g.loc, nil, "a copy (row %s) has no source", e.Row)
+		}
+		c := *e.Copy
+		op.Kind, op.Copy, op.PostHash = OpCopyFile, &c, c.Hash
+	case EditMkdir:
+		op.Kind, op.PostHash = OpMkdir, DirHash(e.Mode)
+	case EditSymlink:
+		op.Kind, op.Link, op.PostHash = OpSymlink, e.Link, LinkHash(e.Link)
+	case EditRemove:
+		op.Kind, op.Destructive = OpQuarantine, true
+	default:
+		return Op{}, composeErr(g.loc, nil, "edit (row %s) has unknown kind %q", e.Row, e.Kind)
+	}
+	return op, nil
 }

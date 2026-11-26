@@ -53,12 +53,43 @@ func TestRegistryCoversEveryRow(t *testing.T) {
 			t.Errorf("row %s has no adapter", r)
 		}
 	}
+	// Row scratch reads only what the sessions row references.
+	if _, ok := reg[model.RowScratch].(sources.RefReader); !ok {
+		t.Error("the scratch adapter is not a RefReader")
+	}
+	if _, err := reg[model.RowScratch].Read(context.Background(), sources.ReadContext{}); !errors.Is(err, sources.ErrRefsRequired) {
+		t.Errorf("scratch Read: %v, want ErrRefsRequired", err)
+	}
+}
+
+// readRows are the rows the generic tests read with Read: every
+// implemented row except those read only with ReadRefs (row scratch has
+// its own tests in sources/scratch).
+func readRows() []model.RowID {
+	var out []model.RowID
+	reg := all.Registry()
+	for _, r := range implementedRows() {
+		if _, refOnly := reg[r].(sources.RefReader); !refOnly {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// readAdapters returns the adapters of readRows.
+func readAdapters() []sources.Adapter {
+	reg := all.Registry()
+	var out []sources.Adapter
+	for _, r := range readRows() {
+		out = append(out, reg[r])
+	}
+	return out
 }
 
 func TestEmptyFolderGivesEmptySnapshots(t *testing.T) {
 	e := newEnv(t)
 	folder := e.root.AddFolder(t, testkit.FolderSpec{Name: "Claude", Replica: testkit.Replica(1)})
-	for _, a := range all.Registry() {
+	for _, a := range readAdapters() {
 		s := read(t, a, e.rc(t, folder, testkit.Replica(1), a.Row()))
 		if s.Row != a.Row() || s.Schema != 1 || len(s.Items) != 0 || len(s.Tombstones) != 0 {
 			t.Errorf("%s: empty folder gave %+v", a.Row(), s)
@@ -71,7 +102,7 @@ func TestReadHashesAndIdempotentOps(t *testing.T) {
 	r := testkit.Replica(1)
 	folder := e.root.AddFolder(t, testkit.Rich("Claude", 1))
 	before := e.root.Tree(t)
-	for _, a := range all.Registry() {
+	for _, a := range readAdapters() {
 		rc := e.rc(t, folder, r, a.Row())
 		s := read(t, a, rc)
 		if len(s.Items) == 0 && carried(e.m, a.Row()) {
@@ -121,7 +152,7 @@ func syncRow(t *testing.T, e *env, a sources.Adapter, src, dst string, rs, rd mo
 }
 
 func TestRoundTripPerRow(t *testing.T) {
-	for _, a := range all.Registry() {
+	for _, a := range readAdapters() {
 		t.Run(string(a.Row()), func(t *testing.T) {
 			e := newEnv(t)
 			if !carried(e.m, a.Row()) {
@@ -203,7 +234,7 @@ func TestCanaryNeverInSnapshotsOrErrors(t *testing.T) {
 	e := newEnv(t)
 	r := testkit.Replica(1)
 	folder := e.root.AddFolder(t, testkit.Rich("Claude", 1))
-	for _, a := range all.Registry() {
+	for _, a := range readAdapters() {
 		s := read(t, a, e.rc(t, folder, r, a.Row()))
 		b, err := json.Marshal(s)
 		if err != nil || strings.Contains(string(b), testkit.Canary) {
@@ -230,7 +261,7 @@ func TestComposedSharedTargets(t *testing.T) {
 	var edits []plan.Edit
 	want := map[model.RowID]*model.RowSnapshot{}
 	shared := map[string][]model.RowID{}
-	for _, row := range implementedRows() {
+	for _, row := range readRows() {
 		d, res := syncRow(t, e, reg[row], src, dst, rs, rd)
 		want[row] = d
 		for _, ed := range res.Edits {
@@ -247,7 +278,7 @@ func TestComposedSharedTargets(t *testing.T) {
 		t.Fatalf("expected several rows on the config mirror, got %v", shared[sources.DesktopConfigFile])
 	}
 	testkit.Apply(t, dst, edits)
-	for _, row := range implementedRows() {
+	for _, row := range readRows() {
 		got := read(t, reg[row], e.rc(t, dst, rd, row))
 		t.Run(string(row), func(t *testing.T) { assertSameItems(t, got, want[row]) })
 	}
@@ -296,7 +327,7 @@ func TestPlanCompose(t *testing.T) {
 	dst := e.root.AddFolder(t, testkit.Rich("Claude", 2))
 	reg := all.Registry()
 	var edits []plan.Edit
-	for _, row := range implementedRows() {
+	for _, row := range readRows() {
 		_, res := syncRow(t, e, reg[row], src, dst, rs, rd)
 		edits = append(edits, res.Edits...)
 	}
@@ -356,7 +387,7 @@ func TestOtherAccountsUntouched(t *testing.T) {
 	}
 	reg := all.Registry()
 	var edits []plan.Edit
-	for _, row := range implementedRows() {
+	for _, row := range readRows() {
 		desired, res := syncRow(t, e, reg[row], src, dst, rs, rd)
 		b, _ := json.Marshal(desired)
 		if strings.Contains(string(b), "decoy") || strings.Contains(string(b), testkit.FakeSession(71)) {

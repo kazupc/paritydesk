@@ -21,6 +21,10 @@ type PlanView struct {
 	// and BusyWait how long the switch waits for them.
 	Busy     []BusyLine
 	BusyWait time.Duration
+	// Scratch and ScratchNotes describe row scratch (render/scratch.go,
+	// WithScratch).
+	Scratch      *ScratchSummary
+	ScratchNotes []string
 }
 
 // PlanLines returns the human summary of a plan: a header, one line per
@@ -49,6 +53,7 @@ func PlanLines(v PlanView) []string {
 	lines = append(lines, busyLines(v)...)
 
 	// v0.2 anchor: plan scratch
+	lines = append(lines, scratchLines(v)...)
 
 	// v0.2 anchor: plan online
 

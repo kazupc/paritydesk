@@ -9,10 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/kazupc/paritydesk/internal/fsx"
 	"github.com/kazupc/paritydesk/internal/localstorage"
 	"github.com/kazupc/paritydesk/internal/model"
+	"github.com/kazupc/paritydesk/internal/plan"
 	"github.com/kazupc/paritydesk/internal/store/kv"
 )
 
@@ -23,6 +25,11 @@ type RestoreInput struct {
 	LS     kv.Writer // the folder's Local Storage, opened writable
 	TmpDir string    // for atomic file writes
 	DryRun bool
+	// ScratchRoot is the manifest's scratch root: a directory row scratch
+	// created is removed only below it (and only when empty). The root the
+	// generation recorded (Manifest.ScratchRoot) wins; this one serves a
+	// generation that recorded none.
+	ScratchRoot string
 }
 
 // RestoreReport lists what was restored and what conflicted.
@@ -65,9 +72,12 @@ type restorer struct {
 
 // Restore restores every entry whose current hash equals its post-hash
 // (files through WriteFileAtomic, LS values in one batch, quarantined
-// files moved back). An entry with Present=false (created by apply) is
-// restored by moving the new file into the generation's quarantine, never
-// by deleting it. An entry whose current hash already equals its pre-hash
+// files moved back), in reverse entry order, so files a run put into a
+// directory it created are handled before that directory. An entry with
+// Present=false (created by apply) is restored by moving the new file
+// into the generation's quarantine, never by deleting it; a directory
+// row scratch created is removed only when empty, and a symlink it
+// created is moved into the quarantine. An entry whose current hash already equals its pre-hash
 // counts as restored without writing, so Restore is idempotent and recover
 // can re-run an interrupted rollback. Any other hash is a conflict and is
 // never overwritten. With DryRun nothing is written and the report says
@@ -82,7 +92,8 @@ func (s *Store) Restore(ctx context.Context, in RestoreInput) (RestoreReport, er
 		return rep, err
 	}
 	r := &restorer{s: s, m: m, in: in, dir: s.genDir(in.N)}
-	for _, e := range m.Entries {
+	for i := len(m.Entries) - 1; i >= 0; i-- {
+		e := m.Entries[i]
 		if err := ctx.Err(); err != nil {
 			return rep, err
 		}
@@ -92,6 +103,10 @@ func (s *Store) Restore(ctx context.Context, in RestoreInput) (RestoreReport, er
 			d, err = r.file(e)
 		case EntryLSValue:
 			d, err = r.lsValue(e)
+		case EntryDir:
+			d, err = r.createdDir(e)
+		case EntryLink:
+			d, err = r.createdLink(e)
 		default:
 			continue
 		}
@@ -181,6 +196,9 @@ func (r *restorer) putBack(e Entry, absent bool) error {
 		return errors.New("gen: restore: a temp directory is required for file writes")
 	}
 	src := filepath.Join(r.dir, e.Stored)
+	if e.Row == model.RowScratch {
+		return r.cloneBack(e, src)
+	}
 	data, err := os.ReadFile(src)
 	if err != nil {
 		return fmt.Errorf("gen: restore %s: %w", e.Path, err)
@@ -328,4 +346,94 @@ func freeName(dir, base string) (string, error) {
 		}
 	}
 	return "", errors.New("gen: restore LevelDB: too many replaced directories")
+}
+
+// cloneBack restores a row-scratch file from its stored copy by a
+// streamed clone verified against the pre-hash (no whole-file read).
+func (r *restorer) cloneBack(e Entry, src string) error {
+	fi, err := os.Lstat(src)
+	if err != nil || !fi.Mode().IsRegular() {
+		return fmt.Errorf("gen: restore %s: %w", e.Path, ErrTampered)
+	}
+	err = r.s.fs.CloneFileAtomic(src, r.in.Folder, e.Path, fi.Mode().Perm(), fi.ModTime(), e.PreHash, r.in.TmpDir)
+	switch {
+	case errors.Is(err, fsx.ErrHashMismatch), errors.Is(err, fsx.ErrSourceChanged):
+		return fmt.Errorf("gen: restore %s: %w", e.Path, ErrTampered)
+	case err != nil:
+		return fmt.Errorf("gen: restore %s: %w", e.Path, err)
+	}
+	return nil
+}
+
+// createdDir handles an EntryDir: absent counts as restored; an empty
+// directory below the scratch root is removed; anything else is kept and
+// reported.
+func (r *restorer) createdDir(e Entry) (decision, error) {
+	target, err := fsx.Contained(r.in.Folder, e.Path)
+	if err != nil {
+		return conflict, fmt.Errorf("gen: restore %s: %w", e.Path, err)
+	}
+	fi, err := os.Lstat(target)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return atPre, nil
+	case err != nil:
+		return conflict, fmt.Errorf("gen: restore %s: %w", e.Path, err)
+	case !fi.IsDir() || fi.Mode()&fs.ModeSymlink != 0:
+		return conflict, nil
+	}
+	root := r.m.ScratchRoot
+	if root == "" {
+		root = r.in.ScratchRoot
+	}
+	if e.Row != model.RowScratch || root == "" || !strings.HasPrefix(e.Path, root+"/") && e.Path != root {
+		return conflict, nil
+	}
+	entries, err := os.ReadDir(target)
+	if err != nil {
+		return conflict, fmt.Errorf("gen: restore %s: %w", e.Path, err)
+	}
+	if len(entries) > 0 {
+		return conflict, nil
+	}
+	if r.in.DryRun {
+		return atPost, nil
+	}
+	if err := r.s.fs.RemoveEmptyDir(r.in.Folder, e.Path); err != nil {
+		if errors.Is(err, fsx.ErrNotEmpty) {
+			return conflict, nil
+		}
+		return conflict, fmt.Errorf("gen: restore %s: %w", e.Path, err)
+	}
+	return atPost, nil
+}
+
+// createdLink handles an EntryLink: absent counts as restored; a link
+// that still points where the run made it point moves into the
+// quarantine; anything else is kept and reported.
+func (r *restorer) createdLink(e Entry) (decision, error) {
+	target, err := fsx.Contained(r.in.Folder, e.Path)
+	if err != nil {
+		return conflict, fmt.Errorf("gen: restore %s: %w", e.Path, err)
+	}
+	fi, err := os.Lstat(target)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return atPre, nil
+	case err != nil:
+		return conflict, fmt.Errorf("gen: restore %s: %w", e.Path, err)
+	case fi.Mode()&fs.ModeSymlink == 0:
+		return conflict, nil
+	}
+	l, err := os.Readlink(target)
+	if err != nil {
+		return conflict, fmt.Errorf("gen: restore %s: %w", e.Path, err)
+	}
+	if plan.LinkHash(l) != e.PostHash {
+		return conflict, nil
+	}
+	if r.in.DryRun {
+		return atPost, nil
+	}
+	return r.quarantineNew(e)
 }

@@ -33,6 +33,8 @@ const (
 	detailUnsupported = "unsupported probe target"
 	detailUnreadable  = "unreadable"
 	detailUnknownKind = "unknown probe kind"
+	// detailPresentNotDir is the failure of a dir-optional probe.
+	detailPresentNotDir = "present but not a directory"
 )
 
 // maxProbeFile bounds what a probe reads.
@@ -56,6 +58,8 @@ func runProbe(p Probe, env ProbeEnv) (bool, string) {
 		return probeStat(env.Folder, target, false)
 	case ProbeDir:
 		return probeStat(env.Folder, target, true)
+	case ProbeDirOptional:
+		return probeDirOptional(env.Folder, target)
 	case ProbeJSONShape:
 		return probeJSONShape(env.Folder, target, jp, p.Type)
 	case ProbeIdxVersion:
@@ -79,6 +83,21 @@ func probeStat(folder, rel string, dir bool) (bool, string) {
 		return false, detailNotDir
 	case !dir && !fi.Mode().IsRegular():
 		return false, detailNotRegular
+	}
+	return true, detailOK
+}
+
+// probeDirOptional passes when the target is absent, and when it is a
+// real directory (Lstat: a symlink to a directory fails).
+func probeDirOptional(folder, rel string) (bool, string) {
+	fi, err := os.Lstat(filepath.Join(folder, filepath.FromSlash(rel)))
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return true, detailAbsent
+	case err != nil:
+		return false, detailUnreadable
+	case !fi.IsDir():
+		return false, detailPresentNotDir
 	}
 	return true, detailOK
 }

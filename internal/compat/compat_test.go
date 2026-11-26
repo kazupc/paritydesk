@@ -51,6 +51,9 @@ func TestEmbeddedManifest(t *testing.T) {
 func checkEmbedded(t *testing.T, m *compat.Manifest) {
 	for _, r := range implementedRows() {
 		s, ok := m.Row(r)
+		if !ok && r == model.RowScratch && m.Name == "6.x" {
+			continue // scratch workspaces are carried on 7.x only (spec-scratch 5.2)
+		}
 		if !ok {
 			t.Errorf("row %s missing", r)
 			continue

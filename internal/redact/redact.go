@@ -18,6 +18,12 @@ var (
 	longHexRE = regexp.MustCompile(`\b[0-9A-Fa-f]{16,}\b`)
 	// usersRE matches any macOS home path, for homes other than Home.
 	usersRE = regexp.MustCompile(`/Users/[^/\s"'<>|:]+`)
+	// scratchRE matches the start of a scratch workspace key or path:
+	// account and organization UUIDs and the workspace leaf. The path
+	// inside it runs to the same ends as a home path (maskScratchPaths).
+	scratchRE = regexp.MustCompile(`([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})/` +
+		`([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})/` +
+		`(scratch-\d{4}-\d{2}-\d{2}-[0-9a-f]{6})`)
 )
 
 // Redactor holds the values to hide.
@@ -31,11 +37,17 @@ type Redactor struct {
 // s. Paths under Home become ~/<8 hex digits of the sha256 of the rest>;
 // a path runs to a quote, a newline, a tab, one of <>| or ": " (the
 // separator of wrapped errors), so a folder name with spaces is hashed
-// whole. UUIDs are masked to their first 4 characters.
+// whole. UUIDs are masked to their first 4 characters. A scratch
+// workspace key or path "<uuid>/<uuid>/scratch-<date>-<hex>/<rest>"
+// becomes "<mask>/<mask>/<leaf>/<8 hex digits of the sha256 of rest>",
+// rest running to the same ends as a home path (so a file name with
+// spaces is hashed whole); file names inside a workspace never reach a
+// log or a bundle.
 func (r Redactor) String(s string) string {
 	if r.Unredacted || s == "" {
 		return s
 	}
+	s = maskScratchPaths(s)
 	if home := r.home(); home != "" {
 		s = r.replaceHomePaths(s, home)
 	}
@@ -133,3 +145,27 @@ func shortHash(s string) string {
 }
 
 func maskUUID(u string) string { return u[:4] + "\u2026" }
+
+// maskScratchPaths masks every scratch workspace key or path in s: the
+// account and organization UUIDs, and the path inside the workspace up
+// to a quote, a newline, a tab, one of <>|` or ": " (pathLen).
+func maskScratchPaths(s string) string {
+	var b strings.Builder
+	for {
+		loc := scratchRE.FindStringSubmatchIndex(s)
+		if loc == nil {
+			b.WriteString(s)
+			return b.String()
+		}
+		b.WriteString(s[:loc[0]])
+		b.WriteString(maskUUID(s[loc[2]:loc[3]]) + "/" + maskUUID(s[loc[4]:loc[5]]) + "/" + s[loc[6]:loc[7]])
+		s = s[loc[1]:]
+		if strings.HasPrefix(s, "/") {
+			n := pathLen(s)
+			if rest := s[1:n]; rest != "" {
+				b.WriteString("/" + shortHash(rest))
+			}
+			s = s[n:]
+		}
+	}
+}

@@ -7,7 +7,6 @@ import "github.com/kazupc/paritydesk/internal/model"
 // then. Each unit deletes its own line (the blank lines keep the units'
 // edits apart).
 var pendingV02 = map[model.RowID]bool{
-	model.RowScratch: true, // scratch unit
 
 	model.RowPins: true, // pins unit
 }

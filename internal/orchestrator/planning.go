@@ -70,6 +70,9 @@ type planned struct {
 	// AuxSessions are the sessions-row snapshots of both sides when the
 	// sessions row is not planned but another row needs its facts.
 	AuxSessions struct{ S, T *model.RowSnapshot }
+	// SoftSkipped are the data-folder-relative paths of row scratch's soft
+	// copies apply left as they were (P7, spec-scratch 3.3).
+	SoftSkipped []string
 }
 
 // selectRows returns the rows to plan, in model.AllRows order, and the
@@ -86,7 +89,7 @@ func (o *Orchestrator) selectRows(m *compat.Manifest, dec compat.Decision, only,
 		switch {
 		case !o.d.Config.RowEnabled(r):
 			skipped[r] = "disabled in the config"
-		case len(only) > 0 && !slices.Contains(only, cat):
+		case len(only) > 0 && !slices.Contains(only, cat) && (model.ImpliedBy(cat) == "" || !slices.Contains(only, model.ImpliedBy(cat))):
 			skipped[r] = "not selected (--only)"
 		case slices.Contains(skip, cat):
 			skipped[r] = "skipped (--skip)"
@@ -118,7 +121,35 @@ func (o *Orchestrator) buildPlan(ctx context.Context, in planInput) (*planned, e
 		if err := ctx.Err(); err != nil {
 			return nil, pderr.Wrap(pderr.Declined, "interrupted", err)
 		}
-		w, err := o.mergeRow(ctx, in, r, acks, outs, nil)
+		var refs []string
+		var notes []model.Change
+		if r == model.RowScratch {
+			reason := o.scratchGate(in)
+			if sess := outs[model.RowSessions]; reason == "" && (sess == nil || sess.Desired == nil) {
+				// The sessions row was left out while planning (a source
+				// that could not be read): its refs are unknown, and an
+				// empty carry set would prune the row's canonical state.
+				reason = reasonScratchSessions
+			}
+			if reason != "" {
+				if pl.Skipped == nil {
+					pl.Skipped = map[model.RowID]string{}
+				}
+				pl.Skipped[r] = reason
+				continue
+			}
+			var err error
+			if refs, _, notes, err = o.scratchCarry(in, outs); err != nil {
+				return nil, err
+			}
+			if refs == nil {
+				refs = []string{}
+			}
+		}
+		w, err := o.mergeRow(ctx, in, r, acks, outs, refs)
+		if err == nil && r == model.RowScratch {
+			o.scratchReadNotes(in, w, notes)
+		}
 		var skip *errRowSkipped
 		if errors.As(err, &skip) {
 			// Only this row is left out: it is not merged, written or
@@ -193,6 +224,9 @@ func modeAcks(prefs map[string]bool, table map[string][]string) map[string]bool 
 func (o *Orchestrator) mergeRow(ctx context.Context, in planInput, r model.RowID, acks map[string]bool, prior map[model.RowID]*rows.Output, refs []string) (*rowWork, error) {
 	spec, _ := o.rowSpec(in.Manifest, r)
 	ad := o.d.Adapters[r]
+	if r == model.RowScratch {
+		o.scratchAdapter() // configures the registry's adapter from [scratch]
+	}
 	sRC := sources.ReadContext{Folder: in.S.Folder, Replica: in.S.Replica, LS: in.S.LS, Spec: spec.Expand(in.S.Replica), Manifest: in.Manifest}
 	tRC := sources.ReadContext{Folder: in.T.Folder, Replica: in.T.Replica, LS: in.T.LS, Spec: spec.Expand(in.T.Replica), Manifest: in.Manifest}
 	sSnap, err := readAdapter(ctx, ad, sRC, refs)
@@ -234,6 +268,12 @@ func (o *Orchestrator) mergeRow(ctx context.Context, in planInput, r model.RowID
 	}
 	if err := o.sidebarPolicy(ctx, r, ad, tRC, spec, prior, &mi.Policy); err != nil {
 		return nil, err
+	}
+	if r == model.RowScratch {
+		var err error
+		if mi.Policy.Scratch, err = o.scratchPolicy(in, refs, prior); err != nil {
+			return nil, err
+		}
 	}
 	out, err := o.d.Rows[r].Merge(mi)
 	if err != nil {
@@ -350,14 +390,26 @@ func (o *Orchestrator) composePlan(ctx context.Context, in planInput, pl *planne
 		Skipped: mergeSkipped(in.Skipped, pl.Skipped),
 	}
 	var edits []plan.Edit
+	var dropped []model.RowID
 	for _, r := range pl.Rows {
 		w := pl.Work[r]
 		spec, _ := o.rowSpec(in.Manifest, r)
 		tRC := sources.ReadContext{Folder: in.T.Folder, Replica: in.T.Replica, LS: in.T.LS, Spec: spec.Expand(in.T.Replica), Manifest: in.Manifest}
 		sRC := sources.ReadContext{Folder: in.S.Folder, Replica: in.S.Replica, LS: in.S.LS, Spec: spec.Expand(in.S.Replica), Manifest: in.Manifest}
-		res, err := o.d.Adapters[r].Ops(ctx, sources.OpsContext{ReadContext: tRC, NowMillis: now.UnixMilli(), Source: &sRC}, w.T, w.Out.Desired)
+		res, err := o.d.Adapters[r].Ops(ctx, sources.OpsContext{ReadContext: tRC, NowMillis: now.UnixMilli(), Source: &sRC,
+			SourceSnapshot: w.S}, w.T, w.Out.Desired)
 		if err != nil {
 			return nil, pderr.Wrap(pderr.Internal, fmt.Sprintf("ops %s", r), err)
+		}
+		if r == model.RowScratch && o.scratchCompose(in, w, &res, p) {
+			// Not enough free space: the row leaves the harvested set, as
+			// selectRows leaves a row out; nothing of it is committed.
+			if pl.Skipped == nil {
+				pl.Skipped = map[model.RowID]string{}
+			}
+			pl.Skipped[r] = reasonScratchSpace
+			dropped = append(dropped, r)
+			continue
 		}
 		edits = append(edits, res.Edits...)
 		w.Stamps = res.WrittenStamps
@@ -365,6 +417,13 @@ func (o *Orchestrator) composePlan(ctx context.Context, in planInput, pl *planne
 		p.Changes = append(p.Changes, res.Skipped...)
 		p.Conflicts = append(p.Conflicts, w.Out.Conflicts...)
 		p.NeedsConfirmation = p.NeedsConfirmation || w.Out.NeedsConfirmation
+	}
+	for _, r := range dropped {
+		pl.Rows = slices.DeleteFunc(pl.Rows, func(x model.RowID) bool { return x == r })
+		delete(pl.Work, r)
+	}
+	if len(dropped) > 0 {
+		p.Skipped = mergeSkipped(in.Skipped, pl.Skipped)
 	}
 	if len(edits) > 0 {
 		ops, err := o.d.Compose(edits, folderSource(in.T.Folder, in.T.LS))
@@ -380,7 +439,11 @@ func (o *Orchestrator) composePlan(ctx context.Context, in planInput, pl *planne
 func beforeCounts(pl *planned) map[model.Category]int {
 	m := map[model.Category]int{}
 	for r, w := range pl.Work {
-		if w.T != nil {
+		switch {
+		case w.T == nil:
+		case r == model.RowScratch:
+			m[model.CategoryOf(r)] += scratchCountable(w.T)
+		default:
 			m[model.CategoryOf(r)] += len(w.T.Items)
 		}
 	}

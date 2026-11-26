@@ -17,6 +17,7 @@ _paritydesk_subs() {
 
 _paritydesk_flags() {
   case $1 in
+    ('backups prune') reply=('--older-than:with --scratch: only sets older than this many days' '--scratch:remove the kept sets of scratch files removed by earlier switches (asks first)' '--yes:do not ask') ;;
     ('backups purge') reply=('--yes:do not ask') ;;
     ('doctor') reply=('--bundle:write a redacted support archive (tar.gz) to this new file' '--bundle-logs:newest run logs to put in the archive' '--grant-automation:ask macOS for Automation permission now') ;;
     ('init') reply=('--alias:alias for the account in Claude now (asked when missing)' '--label:display label for the profile' '--managed:the account is managed by an employer or client' '--unmanaged:the account is not managed by an employer or client') ;;
@@ -37,6 +38,7 @@ _paritydesk_flags() {
 
 _paritydesk_value_flags() {
   case $1 in
+    ('backups prune') reply=(--older-than) ;;
     ('doctor') reply=(--bundle --bundle-logs) ;;
     ('init') reply=(--alias --label) ;;
     ('log') reply=(--run) ;;

@@ -53,7 +53,7 @@ func (r *run) harvest(ctx context.Context) error {
 		}
 	}
 	pl, err := r.o.buildPlan(ctx, planInput{S: r.sideS(), T: r.sideT(), Manifest: r.manifest, Root: r.root,
-		Rows: r.rows, Skipped: r.skipped, RunID: r.res.RunID})
+		Rows: r.rows, Skipped: r.skipped, RunID: r.res.RunID, Preview: r.p2.Plan})
 	if err != nil {
 		return r.abort(ctx, err)
 	}
@@ -136,6 +136,7 @@ func (r *run) validate(ctx context.Context) error {
 		SecretsAllowed:     allowed,
 		AcceptWorktreeRisk: r.opts.AcceptWorktreeRisk,
 	}
+	r.scratchValidate(&in)
 	risks, err := r.worktreeRisks(ctx)
 	if err != nil {
 		return err
@@ -245,9 +246,12 @@ func (r *run) commitP5() error {
 	}
 	p := r.p5.Plan
 	root.Run.PlanHash = p.Hash()
-	root.Run.PostHashes = postHashes(p)
+	if err := r.recordPostHashes(root, p); err != nil {
+		return err
+	}
 	root.Run.ConfirmedPlan = r.opts.ConfirmedPlan
 	data := map[string]string{"hash": root.Run.PlanHash, "rows": joinRows(r.p5.Rows)}
+	r.scratchIntentData(data)
 	if err := r.o.begin(root, P5Harvest, state.IntentPlanned, data); err != nil {
 		return err
 	}
@@ -309,10 +313,21 @@ func (r *run) backup(ctx context.Context) error {
 // fillGeneration saves every target's previous bytes, conflict losers,
 // and a LevelDB clone when Local Storage is written.
 func (r *run) fillGeneration(w gen.Writer, p *plan.Plan) error {
+	if root := scratchRootOf(r.manifest); root != "" && slices.ContainsFunc(p.Ops, func(op plan.Op) bool { return op.Row == model.RowScratch }) {
+		w.SetScratchRoot(root)
+	}
 	for _, op := range p.Ops {
 		switch op.Kind {
-		case plan.OpWriteFile, plan.OpQuarantine:
+		case plan.OpWriteFile, plan.OpQuarantine, plan.OpCopyFile:
 			if err := w.SaveFile(op.Row, r.tPath, op.Path, op.PostHash); err != nil {
+				return err
+			}
+		case plan.OpMkdir:
+			if err := w.SaveCreated(gen.EntryDir, op.Row, r.tPath, op.Path, op.PostHash); err != nil {
+				return err
+			}
+		case plan.OpSymlink:
+			if err := w.SaveCreated(gen.EntryLink, op.Row, r.tPath, op.Path, op.PostHash); err != nil {
 				return err
 			}
 		case plan.OpLSPut, plan.OpLSDelete:
@@ -326,6 +341,10 @@ func (r *run) fillGeneration(w gen.Writer, p *plan.Plan) error {
 		}
 	}
 	for _, c := range p.Conflicts {
+		if c.Row == model.RowScratch {
+			// Scratch losers stay on disk: a sibling copy, or S's own file.
+			continue
+		}
 		if raw := r.loserBytes(c); raw != nil {
 			if err := w.SaveConflict(c.Row, c.Key, raw); err != nil {
 				return err
@@ -380,7 +399,8 @@ func (r *run) applyPlan(ctx context.Context) error {
 	if err := r.o.begin(r.root, P7Apply, state.IntentApplied, nil); err != nil {
 		return err
 	}
-	in := apply.Input{Plan: r.p5.Plan, Folder: r.tPath, TmpDir: r.o.tmpDir(r.res.RunID), QuarantineDir: r.genWriter.QuarantineDir()}
+	in := apply.Input{Plan: r.p5.Plan, Folder: r.tPath, TmpDir: r.o.tmpDir(r.res.RunID), QuarantineDir: r.genWriter.QuarantineDir(),
+		LeavingFolder: r.sPath}
 	res, err := d.Applier.Apply(ctx, in)
 	r.touched, r.lsOpened = res.Touched, res.LSOpened
 	if err != nil && !res.Touched {
@@ -389,6 +409,9 @@ func (r *run) applyPlan(ctx context.Context) error {
 	}
 	if err == nil {
 		err = checkApplied(r.p5.Plan, res)
+	}
+	if err == nil {
+		r.noteSoftSkipped(res)
 	}
 	if err == nil {
 		m := model.Marker{Version: 1, Alias: r.T.Profile.Alias, Replica: r.T.Replica, Generation: r.gen, BaseHash: r.p5.Plan.Hash()}
@@ -401,13 +424,25 @@ func (r *run) applyPlan(ctx context.Context) error {
 	return r.o.done(r.root, P7Apply, state.IntentApplied)
 }
 
-// checkApplied compares the hashes apply read back with the plan's.
+// checkApplied compares the hashes apply read back with the plan's. A
+// soft copy apply skipped must read back as its pre-hash (unchanged).
 func checkApplied(p *plan.Plan, res apply.Result) error {
 	if res.PostHashes == nil {
 		return nil
 	}
+	soft := map[string]bool{}
+	for _, s := range res.SoftSkipped {
+		soft[s] = true
+	}
 	for _, op := range p.Ops {
-		if got, ok := res.PostHashes[postHashKey(op)]; ok && got != op.PostHash {
+		want := op.PostHash
+		if soft[op.Path] {
+			if !plan.SoftCopy(op) {
+				return errors.New("orchestrator: apply skipped a copy that may not be skipped")
+			}
+			want = op.PreHash
+		}
+		if got, ok := res.PostHashes[postHashKey(op)]; ok && got != want {
 			return errors.New("orchestrator: a written target does not read back as planned")
 		}
 	}
@@ -437,7 +472,7 @@ func (r *run) rollbackT(ctx context.Context, cause error) error {
 		r.warn(P7Apply, "the entering folder is in use, so it was not restored; quit Claude, then run paritydesk recover")
 		return &pderr.Error{Code: pderr.NeedsRecover, Op: "apply", Msg: "the entering folder is in use; run paritydesk recover", Err: cause}
 	}
-	rep, err := r.o.restoreFolder(cctx, r.gen, r.tPath, r.genLS && r.lsOpened, r.res.RunID)
+	rep, err := r.o.restoreFolder(cctx, r.gen, r.tPath, r.genLS && r.lsOpened, r.res.RunID, scratchRootOf(r.manifest))
 	if err != nil {
 		r.warn(P7Apply, "the entering folder could not be fully restored; run paritydesk recover")
 		return &pderr.Error{Code: pderr.NeedsRecover, Op: "apply", Msg: "the entering folder could not be fully restored; run paritydesk recover", Err: errors.Join(cause, err)}
@@ -449,8 +484,10 @@ func (r *run) rollbackT(ctx context.Context, cause error) error {
 
 // restoreFolder rolls a folder back from generation n: the LevelDB clone
 // first when apply may have opened Local Storage for writing (cloneLS),
-// then the conditional restore of every entry.
-func (o *Orchestrator) restoreFolder(ctx context.Context, n uint64, folder string, cloneLS bool, runID string) (gen.RestoreReport, error) {
+// then the conditional restore of every entry. scratchRoot is the
+// manifest's scratch root ("" when unknown; the generation's own record
+// then decides).
+func (o *Orchestrator) restoreFolder(ctx context.Context, n uint64, folder string, cloneLS bool, runID, scratchRoot string) (gen.RestoreReport, error) {
 	d := o.d
 	if n == 0 {
 		return gen.RestoreReport{}, nil
@@ -460,7 +497,7 @@ func (o *Orchestrator) restoreFolder(ctx context.Context, n uint64, folder strin
 			return gen.RestoreReport{}, pderr.Wrap(pderr.Internal, "restore", err)
 		}
 	}
-	in := gen.RestoreInput{N: n, Folder: folder, TmpDir: o.tmpDir(runID)}
+	in := gen.RestoreInput{N: n, Folder: folder, TmpDir: o.tmpDir(runID), ScratchRoot: scratchRoot}
 	if m, err := d.Gens.Load(n); err == nil && hasLSEntries(m) {
 		w, err := d.KV.OpenWritable(ctx, sources.LevelDBPath(folder))
 		if err != nil {

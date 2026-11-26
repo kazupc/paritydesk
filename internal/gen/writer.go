@@ -40,6 +40,9 @@ type writer struct {
 	seen      map[string]bool
 	conflicts int
 	closed    bool
+	// barrier lists stored files of row scratch: synced with a barrier
+	// sync each and one full sync of the generation directory.
+	barrier map[string]bool
 }
 
 var _ Writer = (*writer)(nil)
@@ -73,7 +76,8 @@ func (s *Store) Begin(n uint64, runID string, alias ids.Alias, rep model.Replica
 			Entries: []Entry{},
 			SHA256:  map[string]string{},
 		},
-		seen: map[string]bool{},
+		seen:    map[string]bool{},
+		barrier: map[string]bool{},
 	}, nil
 }
 
@@ -131,8 +135,36 @@ func (w *writer) SaveFile(row model.RowID, folder, rel, postHash string) error {
 	e.Present, e.PreHash, e.Stored = true, h, stored
 	w.m.SHA256[stored] = h
 	w.m.Entries = append(w.m.Entries, e)
+	if row == model.RowScratch {
+		w.barrier[stored] = true
+	}
 	return nil
 }
+
+// SaveCreated records a directory or symlink the run will create. The
+// path must not exist now.
+func (w *writer) SaveCreated(kind EntryKind, row model.RowID, folder, rel, postHash string) error {
+	if kind != EntryDir && kind != EntryLink {
+		return fmt.Errorf("gen: save created %s: unknown kind %q", rel, kind)
+	}
+	p, err := fsx.Contained(folder, rel)
+	if err != nil {
+		return fmt.Errorf("gen: save created: %w", err)
+	}
+	if _, err := os.Lstat(p); err == nil {
+		return fmt.Errorf("gen: save created %s: %w", rel, fs.ErrExist)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("gen: save created %s: %w", rel, err)
+	}
+	if err := w.claim(string(kind) + " " + rel); err != nil {
+		return err
+	}
+	w.m.Entries = append(w.m.Entries, Entry{Kind: kind, Row: row, Path: rel, PostHash: postHash})
+	return nil
+}
+
+// SetScratchRoot records the manifest's scratch root.
+func (w *writer) SetScratchRoot(root string) { w.m.ScratchRoot = root }
 
 // writeRecord stores v as JSON at rel inside the generation and records
 // its hash.
@@ -254,7 +286,16 @@ func (w *writer) Finish() (*Manifest, error) {
 	}
 	sort.Strings(rels)
 	for _, rel := range rels {
-		if err := w.s.fs.FullSync(filepath.Join(w.dir, rel)); err != nil {
+		sync := w.s.fs.FullSync
+		if w.barrier[rel] {
+			sync = w.s.fs.BarrierSync
+		}
+		if err := sync(filepath.Join(w.dir, rel)); err != nil {
+			return nil, fmt.Errorf("gen: finish %d: %w", w.m.N, err)
+		}
+	}
+	if len(w.barrier) > 0 {
+		if err := w.s.fs.FullSync(w.dir); err != nil {
 			return nil, fmt.Errorf("gen: finish %d: %w", w.m.N, err)
 		}
 	}

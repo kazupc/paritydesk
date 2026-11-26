@@ -4,6 +4,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/sources"
 	"github.com/kazupc/paritydesk/internal/sources/prefs"
 	"github.com/kazupc/paritydesk/internal/sources/presets"
+	"github.com/kazupc/paritydesk/internal/sources/scratch"
 	"github.com/kazupc/paritydesk/internal/sources/sessions"
 	"github.com/kazupc/paritydesk/internal/sources/sidebar"
 	"github.com/kazupc/paritydesk/internal/sources/windowstate"
@@ -21,6 +22,7 @@ func Registry() sources.Registry {
 		worktrees.New(),
 		windowstate.New(),
 		// v0.2 anchor: adapters scratch
+		scratch.New(scratch.DefaultLimits(), nil, nil, nil),
 
 		// v0.2 anchor: adapters sidebar-offline
 		sidebar.NewCollapse(), sidebar.NewSeed(),

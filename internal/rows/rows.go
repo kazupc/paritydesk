@@ -160,6 +160,7 @@ func Registry() map[model.RowID]Module {
 		keyedModule{row: model.RowWindowState, noFieldMerge: true},
 		mcpModule{},
 		// v0.2 anchor: rows scratch
+		scratchModule{},
 
 		// v0.2 anchor: rows sidebar-offline
 		collapseModule{}, seedModule{},

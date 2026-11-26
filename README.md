@@ -42,6 +42,8 @@ inside a sandbox), the switch stops before writing anything.
 Under `sync.exclude`: collapsed project groups follow the same rule; while any glob is set, collapsed fork families and project groups that are not plain paths stay on their account.
 
 <!-- v0.2 anchor: scratch -->
+**Scratch workspaces** (sessions started without a folder, Claude 7.x) are carried with their sessions. paritydesk copies the workspace to the other account's folder at the same path, so the session keeps its history and stays trusted. Changed files merge with the newest change winning (the other copy is kept next to it as "… (conflict from <profile> <date>)"); a `.git` folder is taken whole from one side and never mixed; `node_modules`, `.venv`, `vendor`, build and cache folders (`[scratch] cache_dirs`) and other version-control folders are not carried, so reinstall or rebuild them where needed. A workspace over the limits (`[scratch]`: 20,000 files or 2 GiB per workspace, 8 GiB or 50,000 files per switch by default) is reported and not carried. File previews and Browser pane previews of a carried session work only on the account that created it (unverified on a real Mac). A file removed in a workspace is moved into the switch's backup generation; when old generations are pruned those files move to `scratch-kept` and stay until `paritydesk backups prune --scratch`. paritydesk never removes a workspace. A process still running in a scratch workspace keeps the folder busy, like any other open file.
+
 
 <!-- v0.2 anchor: online -->
 

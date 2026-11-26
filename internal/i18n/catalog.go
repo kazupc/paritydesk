@@ -176,6 +176,53 @@ const (
 	VerifyUnverified Msg = "verify.unverified"
 
 	// v0.2 anchor: scratch
+	// Scratch workspaces: plan notices (render.ScratchNotices) and the
+	// run's progress warnings.
+	ScratchOversize         Msg = "scratch.oversize"
+	ScratchBudget           Msg = "scratch.budget"
+	ScratchRootLink         Msg = "scratch.root_link"
+	ScratchUnreadable       Msg = "scratch.unreadable"
+	ScratchHeldBack         Msg = "scratch.held_back"
+	ScratchConflictCopy     Msg = "scratch.conflict_copy"
+	ScratchGitConflict      Msg = "scratch.git_conflict"
+	ScratchGitDiverged      Msg = "scratch.git_diverged"
+	ScratchTypeConflict     Msg = "scratch.type_conflict"
+	ScratchLinkKept         Msg = "scratch.link_kept"
+	ScratchNameCollision    Msg = "scratch.name_collision"
+	ScratchReservedName     Msg = "scratch.reserved_name"
+	ScratchUnsupportedName  Msg = "scratch.unsupported_name"
+	ScratchSpecial          Msg = "scratch.special"
+	ScratchBytesUnavailable Msg = "scratch.bytes_unavailable"
+	ScratchDeletionsOff     Msg = "scratch.deletions_off"
+	ScratchDeletionDeferred Msg = "scratch.deletion_deferred"
+	ScratchQuarantined      Msg = "scratch.quarantined"
+	ScratchSourceChanged    Msg = "scratch.source_changed"
+	ScratchMissing          Msg = "scratch.missing"
+	ScratchUnrecognized     Msg = "scratch.unrecognized"
+	ScratchNoSpace          Msg = "scratch.no_space"
+	ScratchManaged          Msg = "scratch.managed"
+	ScratchPreviewLimit     Msg = "scratch.preview_limit"
+	// Scratch workspaces: doctor and CLI.
+	DoctorScratch            Msg = "doctor.scratch"
+	DoctorScratchUnsupported Msg = "doctor.scratch_unsupported"
+	DoctorScratchOrphans     Msg = "doctor.scratch_orphans"
+	DoctorScratchLimits      Msg = "doctor.scratch_limits"
+	DoctorScratchKept        Msg = "doctor.scratch_kept"
+	CliOnlyScratch           Msg = "cli.only_scratch"
+	BackupsScratchConfirm    Msg = "backups.scratch_confirm"
+	BackupsScratchRemoved    Msg = "backups.scratch_removed"
+	// Scratch workspaces: texts added after review (same anchor).
+	ScratchReadOnly             Msg = "scratch.read_only"
+	ScratchStatCacheUnsaved     Msg = "scratch.stat_cache_unsaved"
+	DoctorScratchRootNotDir     Msg = "doctor.scratch_root_not_dir"
+	DoctorScratchSizeMore       Msg = "doctor.scratch_size_more"
+	DoctorScratchOrphansNone    Msg = "doctor.scratch_orphans_none"
+	DoctorScratchOrphansUsed    Msg = "doctor.scratch_orphans_used"
+	DoctorScratchOrphansNA      Msg = "doctor.scratch_orphans_na"
+	DoctorScratchOrphansUnread  Msg = "doctor.scratch_orphans_unreadable"
+	DoctorScratchOrphansMore    Msg = "doctor.scratch_orphans_more"
+	DoctorScratchKeptNone       Msg = "doctor.scratch_kept_none"
+	DoctorScratchKeptUnreadable Msg = "doctor.scratch_kept_unreadable"
 
 	// v0.2 anchor: online
 
@@ -358,6 +405,51 @@ var catalog = map[Msg]string{
 	VerifyUnverified: "Verify: these could not be read back while Claude runs; they are checked at the next switch: %s",
 
 	// v0.2 anchor: scratch
+	ScratchOversize:         "Scratch workspace %s was not carried: it is over the limit of %d files or %s. Raise the limit in [scratch], or tidy the workspace.",
+	ScratchBudget:           "%d scratch workspaces were not carried this time: together they exceed the per-switch limit (%s or %d files).",
+	ScratchRootLink:         "Scratch workspace %s was not carried: its folder path contains a symbolic link.",
+	ScratchUnreadable:       "Scratch workspace %s was not carried: some of its files could not be read.",
+	ScratchHeldBack:         "%d dependency, build or version-control folders in scratch workspaces were not carried (for example node_modules). Reinstall or rebuild them on %s if a session needs them.",
+	ScratchConflictCopy:     "%d files in scratch workspaces changed on both accounts. The newer copy is kept and the other is saved next to it with \"(conflict from <account> <date>)\" in its name.",
+	ScratchGitConflict:      "The .git folder of %d scratch workspaces changed on both accounts. Each account keeps its own copy; neither is carried until they match again.",
+	ScratchGitDiverged:      "The .git folder of %d scratch workspaces still differs between the accounts and is not carried. To carry one copy, make both equal (for example through a shared remote), or rename the .git folder away on the account that should receive the other copy.",
+	ScratchTypeConflict:     "%d paths are a file on one account and a folder on the other. %s's version was kept unchanged.",
+	ScratchLinkKept:         "%d symbolic links differ between the accounts or point outside their workspace; they were left as they are.",
+	ScratchNameCollision:    "%d files were not carried because %s already has a file whose name differs only in letter case or accents.",
+	ScratchReservedName:     "%d files were not carried because their names match a name the app reserves.",
+	ScratchUnsupportedName:  "%d files were not carried because their names cannot be copied safely (a backslash, or a path that is too long).",
+	ScratchSpecial:          "%d sockets, pipes or device files in scratch workspaces were not carried.",
+	ScratchBytesUnavailable: "%d files could not be carried because neither account's folder has their current contents.",
+	ScratchDeletionsOff:     "Files removed in scratch workspaces are not removed on %s (scratch.propagate_deletions is off), so they may come back.",
+	ScratchDeletionDeferred: "%d files removed in scratch workspaces after the preview are left on %s for now; the removal is carried on a later switch.",
+	ScratchQuarantined:      "%d files removed on %s will be moved from %s's scratch workspaces into this switch's backup generation; paritydesk rollback puts them back, and paritydesk never deletes them by itself.",
+	ScratchSourceChanged:    "%d files in scratch workspaces changed while switching and were left as they were on %s; they are carried on the next switch.",
+	ScratchMissing:          "%d sessions name a scratch workspace that neither account's folder has; those sessions may not find their folder.",
+	ScratchUnrecognized:     "%d scratch workspace paths in session records are not in this data root and were not carried.",
+	ScratchNoSpace:          "Scratch workspaces were not carried: copying them may need %s and only %s is free.",
+	ScratchManaged:          "Scratch workspaces are not carried between a managed account and another account (scratch.cross_managed is off).",
+	ScratchPreviewLimit:     "Sessions carried from another account's scratch workspace open here, but file previews and Browser pane previews of their files work only on the account that created them.",
+
+	DoctorScratch:            "Scratch workspaces: %d of this account, %d carried from other accounts (%s).",
+	DoctorScratchUnsupported: "Scratch workspaces are not carried with this app version (the compatibility manifest does not cover them).",
+	DoctorScratchOrphans:     "%d carried scratch workspaces (%s) are no longer used by any session here. paritydesk never removes them; delete them yourself when you no longer need them.",
+	DoctorScratchLimits:      "Sessions that started in another account's scratch workspace open on this account, but file previews and Browser pane previews for them work only on the account that created them.",
+	DoctorScratchKept:        "%d sets of scratch files removed by earlier switches are kept (%s) in %s. Remove them with: paritydesk backups prune --scratch",
+	CliOnlyScratch:           "scratch workspaces are carried with sessions: use --only sessions (add --skip scratch to leave them out).",
+	BackupsScratchConfirm:    "Permanently delete %d kept sets of scratch files (%s)? This cannot be undone. [y/N] ",
+	BackupsScratchRemoved:    "Removed %d kept sets of scratch files (%s).",
+
+	ScratchReadOnly:             "Scratch workspace %s was not carried: one of its folders is read-only for you, so files cannot be written into it.",
+	ScratchStatCacheUnsaved:     "the scratch stat cache could not be saved; the next switch hashes scratch files again",
+	DoctorScratchRootNotDir:     "the scratch workspace root of the active folder is present but not a directory; scratch workspaces are skipped",
+	DoctorScratchSizeMore:       "more than %s",
+	DoctorScratchOrphansNone:    "no carried scratch workspace is unused",
+	DoctorScratchOrphansUsed:    "every carried scratch workspace is used by a session",
+	DoctorScratchOrphansNA:      "not applicable: scratch workspaces are not carried here",
+	DoctorScratchOrphansUnread:  "the session records of the active folder could not be read",
+	DoctorScratchOrphansMore:    "and %d more",
+	DoctorScratchKeptNone:       "no scratch files are kept",
+	DoctorScratchKeptUnreadable: "the kept scratch files could not be listed",
 
 	// v0.2 anchor: online
 

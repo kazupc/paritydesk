@@ -303,6 +303,25 @@ that is normal again.
 <!-- v0.2 anchor: sidebar-offline -->
 
 <!-- v0.2 anchor: scratch -->
+## A carried scratch session says "folder not found" or shows no previews
+
+A session started without a folder lives in a scratch workspace.
+paritydesk copies that workspace to the other account's folder at the
+same path when it switches. If the session cannot find its folder:
+
+- run `paritydesk plan --json -- <profile>` and read the `scratch` member:
+  a workspace listed under `not_carried` (over the limits, unreadable, a
+  symbolic link in its path, a folder without write permission for you)
+  was not copied. Raise the limits in `[scratch]`, tidy the workspace or
+  give yourself write permission on its folders, then switch again;
+- `paritydesk doctor` lists carried workspaces no session uses any more
+  (`scratch-orphans`); paritydesk never removes them.
+
+File previews and Browser pane previews of a carried session work only on
+the account that created the workspace. Removed scratch files are in the
+newest backup generation (`paritydesk rollback`), and after pruning in the
+`scratch-kept` folder doctor names; copy a file back by hand from there.
+
 
 <!-- v0.2 anchor: online -->
 

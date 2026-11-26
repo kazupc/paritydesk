@@ -1,7 +1,10 @@
 package fsx
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -30,6 +33,15 @@ var (
 	// ErrRealPathInTest: a constructor running under `go test` was given a
 	// real app, home or bundle path (see CheckTestPath).
 	ErrRealPathInTest = errors.New("fsx: real app path used in a test")
+	// ErrHashMismatch: CloneFileAtomic's copy did not have the expected
+	// hash; the target is unchanged.
+	ErrHashMismatch = errors.New("fsx: copied bytes do not match the expected hash")
+	// ErrSourceChanged: CloneFileAtomic's source is missing or not a
+	// regular file.
+	ErrSourceChanged = errors.New("fsx: copy source is missing or not a regular file")
+	// ErrNotEmpty: RemoveEmptyDir found a directory with entries (or
+	// something other than a directory).
+	ErrNotEmpty = errors.New("fsx: directory is not empty")
 )
 
 // FileID identifies a folder independently of its name (D4).
@@ -84,6 +96,30 @@ type Ops interface {
 	SetXattr(path, name string, data []byte) error
 	// FreeBytes returns the bytes available to the user on path's volume.
 	FreeBytes(path string) (uint64, error)
+	// CloneFileAtomic copies regular file src (absolute, clean; last
+	// component opened without following) to root/rel: clonefile
+	// (CLONE_NOFOLLOW) into tmpDir (streamed byte-copy fallback), the
+	// streamed sha256 of the copy must equal wantHash (else
+	// ErrHashMismatch; root/rel unchanged, temp removed), sets exactly
+	// perm (no umask) and mtime, issues BarrierSync on the copy, and
+	// renames into place without following a symlink in any component
+	// under root. The parent of root/rel must exist; an existing regular
+	// file there is replaced. A source that is missing or not a regular
+	// file returns an error matching ErrSourceChanged.
+	CloneFileAtomic(src, root, rel string, perm fs.FileMode, mtime time.Time, wantHash, tmpDir string) error
+	// Mkdir creates root/rel (parent must exist) with exactly perm,
+	// opening every component under root without following symlinks;
+	// fs.ErrExist if present.
+	Mkdir(root, rel string, perm fs.FileMode) error
+	// Symlink creates root/rel -> target; fs.ErrExist if anything is
+	// there.
+	Symlink(target, root, rel string) error
+	// RemoveEmptyDir removes root/rel only if it is an empty directory,
+	// never following a symlink; ErrNotEmpty otherwise.
+	RemoveEmptyDir(root, rel string) error
+	// BarrierSync issues F_BARRIERFSYNC (darwin; fsync elsewhere) on a
+	// file.
+	BarrierSync(path string) error
 }
 
 // Contained joins root and rel after checking that rel is a clean, relative
@@ -125,6 +161,13 @@ func (r readOnly) ID(p string) (FileID, error)                { return r.o.ID(p)
 func (r readOnly) SetXattr(string, string, []byte) error      { return ErrReadOnly }
 func (r readOnly) FreeBytes(p string) (uint64, error)         { return r.o.FreeBytes(p) }
 func (r readOnly) GetXattr(p, n string) ([]byte, bool, error) { return r.o.GetXattr(p, n) }
+func (r readOnly) CloneFileAtomic(string, string, string, fs.FileMode, time.Time, string, string) error {
+	return ErrReadOnly
+}
+func (r readOnly) Mkdir(string, string, fs.FileMode) error { return ErrReadOnly }
+func (r readOnly) Symlink(string, string, string) error    { return ErrReadOnly }
+func (r readOnly) RemoveEmptyDir(string, string) error     { return ErrReadOnly }
+func (r readOnly) BarrierSync(string) error                { return ErrReadOnly }
 
 // CheckRemovable validates a RemoveAll target and returns the joined path.
 // It refuses: a root that is empty, relative, unclean or "/"; the user's
@@ -242,6 +285,43 @@ func (c confined) SetXattr(p, n string, d []byte) error {
 	return c.o.SetXattr(p, n, d)
 }
 
+// CloneFileAtomic guards every path it is given: its source as well as
+// root and tmpDir (spec-scratch 6.5).
+func (c confined) CloneFileAtomic(src, root, rel string, perm fs.FileMode, mtime time.Time, wantHash, tmpDir string) error {
+	if err := c.guard(src, root, tmpDir); err != nil {
+		return err
+	}
+	return c.o.CloneFileAtomic(src, root, rel, perm, mtime, wantHash, tmpDir)
+}
+
+func (c confined) Mkdir(root, rel string, perm fs.FileMode) error {
+	if err := c.guard(root); err != nil {
+		return err
+	}
+	return c.o.Mkdir(root, rel, perm)
+}
+
+func (c confined) Symlink(target, root, rel string) error {
+	if err := c.guard(root); err != nil {
+		return err
+	}
+	return c.o.Symlink(target, root, rel)
+}
+
+func (c confined) RemoveEmptyDir(root, rel string) error {
+	if err := c.guard(root); err != nil {
+		return err
+	}
+	return c.o.RemoveEmptyDir(root, rel)
+}
+
+func (c confined) BarrierSync(p string) error {
+	if err := c.guard(p); err != nil {
+		return err
+	}
+	return c.o.BarrierSync(p)
+}
+
 func (c confined) ID(p string) (FileID, error)                { return c.o.ID(p) }
 func (c confined) GetXattr(p, n string) ([]byte, bool, error) { return c.o.GetXattr(p, n) }
 func (c confined) FreeBytes(p string) (uint64, error)         { return c.o.FreeBytes(p) }
@@ -282,3 +362,29 @@ func CheckTestPath(p string) error {
 	}
 	return nil
 }
+
+// HashFile streams the sha256 of a regular file opened without following
+// a symlink in its last component, and returns its permission bits. A
+// path that is not a regular file is an error.
+func HashFile(path string) (string, fs.FileMode, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|oNoFollow, 0)
+	if err != nil {
+		return "", 0, err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return "", 0, err
+	}
+	if !fi.Mode().IsRegular() {
+		return "", 0, ErrNotRegular
+	}
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", 0, err
+	}
+	return hex.EncodeToString(h.Sum(nil)), fi.Mode().Perm(), nil
+}
+
+// ErrNotRegular is returned by HashFile for anything but a regular file.
+var ErrNotRegular = errors.New("fsx: not a regular file")

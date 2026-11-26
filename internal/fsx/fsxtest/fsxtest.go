@@ -1,6 +1,8 @@
 package fsxtest
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -370,3 +372,137 @@ func (f *FS) FreeBytes(path string) (uint64, error) {
 
 // String summarizes the call log for test failure messages.
 func (f *FS) String() string { return fmt.Sprintf("fsxtest.FS{%d calls}", len(f.Calls)) }
+
+// CloneFileAtomic copies src through a temp file in tmpDir, verifies its
+// hash, sets perm and mtime, and renames it into place (parent must
+// exist). Symlinks in the source's last component or under root are
+// refused.
+func (f *FS) CloneFileAtomic(src, root, rel string, perm fs.FileMode, mtime time.Time, wantHash, tmpDir string) error {
+	if err := f.enter("CloneFileAtomic", rel, src, root, tmpDir); err != nil {
+		return err
+	}
+	target, err := fsx.Contained(root, rel)
+	if err != nil {
+		return err
+	}
+	if fi, err := os.Lstat(src); err != nil || !fi.Mode().IsRegular() {
+		return fmt.Errorf("fsxtest: clone %s: %w", rel, fsx.ErrSourceChanged)
+	}
+	if err := noSymlinks(root, rel); err != nil {
+		return err
+	}
+	if fi, err := os.Lstat(filepath.Dir(target)); err != nil || !fi.IsDir() {
+		return fmt.Errorf("fsxtest: clone %s: parent missing", rel)
+	}
+	if fi, err := os.Lstat(target); err == nil && !fi.Mode().IsRegular() {
+		if fi.Mode()&fs.ModeSymlink != 0 {
+			return fsx.ErrSymlink
+		}
+		return fmt.Errorf("fsxtest: clone %s: target is not a regular file", rel)
+	}
+	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(tmpDir, "c-*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	fail := func(err error) error {
+		tmp.Close()
+		_ = os.Remove(name)
+		return err
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return fail(fsx.ErrSourceChanged)
+	}
+	h := sha256.New()
+	_, err = io.Copy(io.MultiWriter(tmp, h), in)
+	in.Close()
+	if err != nil {
+		return fail(err)
+	}
+	if hex.EncodeToString(h.Sum(nil)) != wantHash {
+		return fail(fmt.Errorf("fsxtest: clone %s: %w", rel, fsx.ErrHashMismatch))
+	}
+	if err := tmp.Chmod(perm.Perm()); err != nil {
+		return fail(err)
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	if err := os.Chtimes(name, mtime, mtime); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	return os.Rename(name, target)
+}
+
+// Mkdir creates root/rel with exactly perm; the parent must exist.
+func (f *FS) Mkdir(root, rel string, perm fs.FileMode) error {
+	if err := f.enter("Mkdir", rel, root); err != nil {
+		return err
+	}
+	target, err := fsx.Contained(root, rel)
+	if err != nil {
+		return err
+	}
+	if err := noSymlinks(root, rel); err != nil {
+		return err
+	}
+	if err := os.Mkdir(target, 0o700); err != nil {
+		return err
+	}
+	return os.Chmod(target, perm.Perm())
+}
+
+// Symlink creates root/rel -> target.
+func (f *FS) Symlink(target, root, rel string) error {
+	if err := f.enter("Symlink", rel, root); err != nil {
+		return err
+	}
+	p, err := fsx.Contained(root, rel)
+	if err != nil {
+		return err
+	}
+	if err := noSymlinks(root, rel); err != nil {
+		return err
+	}
+	return os.Symlink(target, p)
+}
+
+// RemoveEmptyDir removes root/rel only when it is an empty directory.
+func (f *FS) RemoveEmptyDir(root, rel string) error {
+	if err := f.enter("RemoveEmptyDir", rel, root); err != nil {
+		return err
+	}
+	p, err := fsx.Contained(root, rel)
+	if err != nil {
+		return err
+	}
+	if err := noSymlinks(root, rel); err != nil {
+		return err
+	}
+	fi, err := os.Lstat(p)
+	switch {
+	case err != nil:
+		return err
+	case fi.Mode()&fs.ModeSymlink != 0:
+		return fsx.ErrSymlink
+	case !fi.IsDir():
+		return fsx.ErrNotEmpty
+	}
+	entries, err := os.ReadDir(p)
+	if err != nil {
+		return err
+	}
+	if len(entries) > 0 {
+		return fsx.ErrNotEmpty
+	}
+	return os.Remove(p)
+}
+
+// BarrierSync only logs the call.
+func (f *FS) BarrierSync(path string) error { return f.enter("BarrierSync", path, path) }

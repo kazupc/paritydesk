@@ -87,6 +87,7 @@ func (u *termUI) Confirm(ctx context.Context, c orchestrator.Confirmation) (bool
 		if c.Plan != nil {
 			v.From, v.To = string(c.Plan.From), string(c.Plan.Target.Alias)
 			v.Approximate, v.FirstSync = c.Plan.Approximate, c.Plan.NeedsConfirmation
+			v = render.WithScratch(v, c.Plan)
 		}
 		u.p.Lines(render.PlanLines(v))
 	}

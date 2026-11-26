@@ -19,6 +19,8 @@ end
 
 function __paritydesk_value_flags
     switch "$argv[1]"
+        case 'backups prune'
+            printf '%s\n' --older-than
         case 'doctor'
             printf '%s\n' --bundle --bundle-logs
         case 'init'
@@ -119,6 +121,9 @@ complete -c paritydesk -n '__paritydesk_at \'profile\'' -a remove -d 'Unregister
 complete -c paritydesk -n '__paritydesk_at \'profile\'' -a rename -d 'Rename a profile'
 
 # Flags of each command
+complete -c paritydesk -n '__paritydesk_at \'backups prune\'' -l older-than -x -d 'with --scratch: only sets older than this many days'
+complete -c paritydesk -n '__paritydesk_at \'backups prune\'' -l scratch -d 'remove the kept sets of scratch files removed by earlier switches (asks first)'
+complete -c paritydesk -n '__paritydesk_at \'backups prune\'' -l yes -d 'do not ask'
 complete -c paritydesk -n '__paritydesk_at \'backups purge\'' -l yes -d 'do not ask'
 complete -c paritydesk -n '__paritydesk_at \'doctor\'' -l bundle -r -F -d 'write a redacted support archive (tar.gz) to this new file'
 complete -c paritydesk -n '__paritydesk_at \'doctor\'' -l bundle-logs -x -d 'newest run logs to put in the archive'

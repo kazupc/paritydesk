@@ -285,6 +285,31 @@ Record every result in ADR 0009.
   --json`. Expected: no change of `code-sessions-sort-ascending`.
 
 <!-- v0.2 anchor: scratch -->
+## Scratch workspaces (v0.2)
+
+Use fictional content only.
+
+- **S-1** On A, start a session without a folder, let Claude write two
+  files, switch to B, open the session: no trust prompt, full history,
+  files present, a new message works.
+- **S-2** On B change one file, add one, remove one; switch to A: A
+  matches; the removed file is in the newest generation.
+- **S-3** Change the same file on both accounts between switches: a
+  conflict copy appears. Commit in a scratch git repository on both
+  accounts: the plan reports the `.git` as diverged; each repository is
+  intact (`git fsck`).
+- **S-4** Relaunch and wait 3 minutes: the `main.log` sweep lines report
+  no removal of the mirror.
+- **S-5** For the mirrored session on B: try a file preview, a Browser
+  pane preview of an HTML file in the workspace, and `preview_start`;
+  record which are refused; the README text must match.
+- **S-6** Under an organization with an allowed-workspace-folders policy
+  (if available): run a tool in a mirrored session; record whether it is
+  denied.
+- **S-7** Run an in-app switch from a scratch session that is building
+  (`dist/` rewritten): the switch completes; the plan shows held-back or
+  deferred items, not exit 3.
+
 
 <!-- v0.2 anchor: online -->
 

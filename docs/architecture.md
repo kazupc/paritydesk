@@ -174,6 +174,26 @@ Local Storage-only rows are verified from a snapshot copy after launch
 unverified (exit 0). Facts and decisions: [ADR 0009](adr/0009-sidebar-collapse-and-seed.md).
 
 <!-- v0.2 anchor: scratch -->
+### Scratch workspaces (row 18b, v0.2)
+
+Row `scratch` (category `scratch`, implied by `sessions`) carries the
+scratch workspaces that session records name, at the same path in every
+folder ([ADR 0008](adr/0008-scratch-workspaces.md)). After the sessions
+row is merged, `sources/scratch.Refs` finds the workspaces Desired names
+(members of role `scratch_ref`); those present in the leaving folder are
+the carry set, recorded in the planned intent (`scratch_refs`). The
+adapter is a `sources.RefReader`: it reads only the carry set
+(`ReadRefs`), lists before hashing, never follows a symlink, applies
+per-workspace and per-read limits and a stat cache. `rows/scratch.go`
+merges files three-way (conflict losers kept as siblings), keeps
+directories and links create-only, and takes each `.git` unit whole from
+one side. Ops are `copy-file` (a clone verified against its hash),
+`mkdir`, `symlink` and `quarantine`; apply skips a soft copy whose leaving
+source changed after the plan, and the generation records created
+directories and links (`dir`, `link` entries) so a rollback removes them
+only when empty. Row scratch's post-hashes are a state object
+(`Run.PostHashesRef`); post-hash keys are `path:`, `dir:`, `link:`.
+
 
 <!-- v0.2 anchor: online -->
 

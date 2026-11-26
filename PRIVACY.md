@@ -124,6 +124,17 @@ every other entry the compatibility manifest marks as never touched.
 <!-- v0.2 anchor: sidebar-offline -->
 
 <!-- v0.2 anchor: scratch -->
+- **Scratch workspaces** (row `scratch`): the files of the scratch
+  workspaces your sessions name are read and hashed (sha256) on this Mac,
+  and copied between your own data folders. Replaced and removed files
+  are kept in the backup generation, and removed ones later under
+  `generations/scratch-kept/` (the files keep their own mode, inside
+  folders of mode 0700) until you remove them with
+  `paritydesk backups prune --scratch`. A stat cache of
+  file hashes (no content) is kept in the state folder. Logs and support
+  archives name a workspace by its leaf only, with account and
+  organization masked and the path inside it hashed.
+
 
 <!-- v0.2 anchor: online -->
 
