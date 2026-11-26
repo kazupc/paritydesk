@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"slices"
@@ -10,6 +12,7 @@ import (
 	"github.com/kazupc/paritydesk/internal/clock"
 	"github.com/kazupc/paritydesk/internal/compat"
 	"github.com/kazupc/paritydesk/internal/ids"
+	"github.com/kazupc/paritydesk/internal/model"
 	"github.com/kazupc/paritydesk/internal/pderr"
 )
 
@@ -128,10 +131,8 @@ func startedAfter(pr Process, t time.Time) bool { return !t.IsZero() && pr.Start
 func (p *Platform) QuitAndWait(ctx context.Context, bundleID, bundlePath string, sig compat.Signals, timeout time.Duration, onVeto func()) (QuitResult, error) {
 	clk := p.clk()
 	start := clk.Now()
-	offset, err := p.Log.Size()
-	if err != nil {
-		offset = -1 // veto detection unavailable; the wait still works
-	}
+	cursor, err := p.Log.Cursor()
+	logVeto := sig.QuitVetoed != "" && err == nil // else veto detection is unavailable; the wait still works
 	var res QuitResult
 	var cause error // the refused or unanswered quit's error, kept for the timeout error
 	if err := p.Control.Quit(ctx, bundleID); err != nil {
@@ -146,7 +147,6 @@ func (p *Platform) QuitAndWait(ctx context.Context, bundleID, bundlePath string,
 		}
 	}
 	vetoSig := compat.Signals{QuitVetoed: sig.QuitVetoed}
-	logVeto := sig.QuitVetoed != "" && offset >= 0
 	for {
 		running, err := p.Running(ctx, bundlePath)
 		if err != nil {
@@ -158,9 +158,9 @@ func (p *Platform) QuitAndWait(ctx context.Context, bundleID, bundlePath string,
 			return res, nil
 		}
 		if !res.Vetoed && logVeto {
-			evs, next, err := p.Log.Events(ctx, offset, vetoSig, "")
+			evs, next, err := p.Log.EventsAt(ctx, cursor, vetoSig, "")
 			if err == nil {
-				offset = next
+				cursor = next
 				if slices.Contains(evs, EvQuitVetoed) {
 					res.Vetoed = true
 					if onVeto != nil {
@@ -186,14 +186,16 @@ func (p *Platform) QuitAndWait(ctx context.Context, bundleID, bundlePath string,
 	}
 }
 
-// WaitTurnEnded waits until main.log reports, at or after offset from,
-// that the given session's turn ended, then a settle delay, so an in-app
-// switch does not trip the app's own quit veto (ADR 0003 finding 1). from
-// is recorded by the invoking process before it hands off to the detached
-// job (SwitchOptions.LogOffset), so a turn that ended before the job
-// reached P3 is found immediately. A timeout gives *pderr.Error
-// SessionsBusy; an empty TurnEnded pattern gives ErrSignalUnknown.
-func (p *Platform) WaitTurnEnded(ctx context.Context, from int64, sig compat.Signals, session ids.SessionID, timeout time.Duration) error {
+// WaitTurnEnded waits until main.log reports, after the cursor from,
+// that the given session's turn ended (a turn_ended or turn_cleared line
+// for it), then a settle delay, so an in-app switch does not trip the
+// app's own quit veto (ADR 0003 finding 1). from is recorded by the
+// invoking process before it hands off to the detached job
+// (SwitchOptions.LogOffset and LogInode), so a turn that ended before the
+// job reached P3 is found immediately, also after a rotation. A timeout
+// gives *pderr.Error SessionsBusy; an empty TurnEnded pattern gives
+// ErrSignalUnknown.
+func (p *Platform) WaitTurnEnded(ctx context.Context, from LogCursor, sig compat.Signals, session ids.SessionID, timeout time.Duration) error {
 	if _, err := ids.ParseSession(string(session)); err != nil {
 		return ErrInvalidSession
 	}
@@ -202,15 +204,15 @@ func (p *Platform) WaitTurnEnded(ctx context.Context, from int64, sig compat.Sig
 	}
 	clk := p.clk()
 	start := clk.Now()
-	only := compat.Signals{TurnEnded: sig.TurnEnded}
-	offset := from
+	only := compat.Signals{TurnEnded: sig.TurnEnded, TurnCleared: sig.TurnCleared}
+	cursor := from
 	for {
-		evs, next, err := p.Log.Events(ctx, offset, only, session)
+		evs, next, err := p.Log.EventsAt(ctx, cursor, only, session)
 		if err != nil {
 			return err
 		}
-		offset = next
-		if slices.Contains(evs, EvTurnEnded) {
+		cursor = next
+		if slices.Contains(evs, EvTurnEnded) || slices.Contains(evs, EvTurnCleared) {
 			return clk.Sleep(ctx, turnSettle)
 		}
 		if clk.Now().Sub(start) >= timeout {
@@ -246,10 +248,49 @@ func (p *Platform) WaitExited(ctx context.Context, bundlePath string, timeout ti
 	}
 }
 
-// BusySessions delegates to Log.Busy.
-func (p *Platform) BusySessions(ctx context.Context, from int64, sig compat.Signals) ([]ids.SessionID, error) {
-	return p.Log.Busy(ctx, from, sig)
+// BusySessions returns the busy report of the app's current run. It keeps
+// one BusyTracker, keyed by a fingerprint of the busy signals, so a poll
+// reads only the lines written since the last one. ErrSignalUnknown when
+// the manifest has no usable busy signals.
+func (p *Platform) BusySessions(ctx context.Context, sig compat.Signals, opts BusyOptions) (BusyReport, error) {
+	p.busyMu.Lock()
+	defer p.busyMu.Unlock()
+	key := busyKey(sig)
+	if p.busy == nil || p.busyFor != key {
+		t, err := p.Log.NewBusyTracker(sig)
+		if err != nil {
+			return BusyReport{}, err
+		}
+		p.busy, p.busyFor = t, key
+	}
+	return p.busy.Update(ctx, opts)
 }
+
+// busyKey fingerprints the busy signals.
+func busyKey(sig compat.Signals) string {
+	parts := append([]string{sig.TurnStarted, sig.TurnEnded, sig.WorkHeld, sig.WorkReleased, sig.WorkUncounted, sig.AppStarted},
+		sig.TurnCleared...)
+	parts = append(parts, sig.WorkIdleReasons...)
+	h := sha256.New()
+	for _, s := range parts {
+		h.Write([]byte(s))
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// AccountChanges delegates to Log.AccountChanges.
+func (p *Platform) AccountChanges(ctx context.Context, sig compat.Signals, since time.Time) ([]AccountChange, bool, error) {
+	return p.Log.AccountChanges(ctx, sig, since)
+}
+
+// LastReplica delegates to Log.LastReplica.
+func (p *Platform) LastReplica(ctx context.Context, sig compat.Signals, since time.Time) (model.Replica, bool, error) {
+	return p.Log.LastReplica(ctx, sig, since)
+}
+
+// LogCursor delegates to Log.Cursor.
+func (p *Platform) LogCursor() (LogCursor, error) { return p.Log.Cursor() }
 
 // WaitUpdateInstalled delegates to Bundle.
 func (p *Platform) WaitUpdateInstalled(ctx context.Context, bundleID string, timeout time.Duration) error {
@@ -257,8 +298,8 @@ func (p *Platform) WaitUpdateInstalled(ctx context.Context, bundleID string, tim
 }
 
 // ActiveOrg delegates to Log.ActiveOrg.
-func (p *Platform) ActiveOrg(ctx context.Context, sig compat.Signals, account ids.AccountID) (ids.OrgID, bool, error) {
-	return p.Log.ActiveOrg(ctx, sig, account)
+func (p *Platform) ActiveOrg(ctx context.Context, sig compat.Signals, account ids.AccountID, since time.Time) (ids.OrgID, bool, error) {
+	return p.Log.ActiveOrg(ctx, sig, account, since)
 }
 
 // The methods below expose the Platform's parts as one interface for the

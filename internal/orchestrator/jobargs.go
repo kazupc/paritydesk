@@ -23,6 +23,7 @@ const (
 	FlagAllowDeletions     = "allow-deletions"
 	FlagAcceptWorktreeRisk = "accept-worktree-risk"
 	FlagLogOffset          = "log-offset"
+	FlagLogInode           = "log-inode"
 	FlagConfirmedPlan      = "confirmed-plan"
 	FlagConfirmFirstSync   = "confirm-first-sync"
 )
@@ -68,6 +69,9 @@ func (o SwitchOptions) JobArgs(g JobGlobals) []string {
 	flag(o.AcceptWorktreeRisk, FlagAcceptWorktreeRisk)
 	if o.LogOffset >= 0 {
 		value(FlagLogOffset, strconv.FormatInt(o.LogOffset, 10))
+		if o.LogInode != 0 {
+			value(FlagLogInode, strconv.FormatUint(o.LogInode, 10))
+		}
 	}
 	value(FlagConfirmedPlan, o.ConfirmedPlan)
 	flag(o.ConfirmFirstSync, FlagConfirmFirstSync)

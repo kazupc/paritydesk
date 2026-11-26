@@ -64,15 +64,21 @@ type AppControl interface {
 	CheckQuiescence(ctx context.Context, in app.QuiescenceInput) (app.QuiescenceReport, error)
 	QuitAndWait(ctx context.Context, bundleID, bundlePath string, sig compat.Signals, timeout time.Duration, onVeto func()) (app.QuitResult, error)
 	WaitExited(ctx context.Context, bundlePath string, timeout time.Duration) (bool, error)
-	WaitTurnEnded(ctx context.Context, from int64, sig compat.Signals, session ids.SessionID, timeout time.Duration) error
-	BusySessions(ctx context.Context, from int64, sig compat.Signals) ([]ids.SessionID, error)
+	WaitTurnEnded(ctx context.Context, from app.LogCursor, sig compat.Signals, session ids.SessionID, timeout time.Duration) error
+	BusySessions(ctx context.Context, sig compat.Signals, opts app.BusyOptions) (app.BusyReport, error)
+	AccountChanges(ctx context.Context, sig compat.Signals, since time.Time) ([]app.AccountChange, bool, error)
+	// LastReplica is the replica of the newest active_org line at or after
+	// since, unless an account change follows it (online reconcile and
+	// artifact sync).
+	LastReplica(ctx context.Context, sig compat.Signals, since time.Time) (model.Replica, bool, error)
 	WaitUpdateInstalled(ctx context.Context, bundleID string, timeout time.Duration) error
-	ActiveOrg(ctx context.Context, sig compat.Signals, account ids.AccountID) (ids.OrgID, bool, error)
+	ActiveOrg(ctx context.Context, sig compat.Signals, account ids.AccountID, since time.Time) (ids.OrgID, bool, error)
 	Launch(ctx context.Context, bundleID string) error
 	OpenSession(ctx context.Context, id ids.SessionID) error
 	ProbeAutomation(ctx context.Context, bundleID string) error
 	Notify(ctx context.Context, title, text string) error
 	LogSize() (int64, error)
+	LogCursor() (app.LogCursor, error)
 	LogEvents(ctx context.Context, from int64, sig compat.Signals, session ids.SessionID) ([]app.LogEvent, int64, error)
 	GitDirty(ctx context.Context, dir string) (bool, error)
 	LockHeld(path string) (bool, error)

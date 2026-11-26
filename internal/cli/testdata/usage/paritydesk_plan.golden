@@ -3,6 +3,7 @@ usage: paritydesk plan [<alias>|-] [flags]
 Preview what a switch would change (approximate)
 
 flags:
+  --invoking-session string    the Claude Code session running this command, left out of the busy list
   --only string                categories to carry, comma-separated: sessions,environments,order,sidebar,pins,prefs,worktrees,scratch,window,mcp
   --skip string                categories to leave alone, comma-separated
 

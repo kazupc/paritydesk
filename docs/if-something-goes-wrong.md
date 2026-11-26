@@ -70,12 +70,29 @@ switch started from the plugin) to finish, then check
 Nothing was changed. A switch quits Claude, which would interrupt the
 listed sessions. Wait until they finish, then run the command again.
 
-paritydesk can list busy sessions only when the compatibility manifest
-has a confirmed `turn_started` log pattern. The manifests for Claude 6.x
-and 7.x have none yet, so v0.1 does not exit 12 and `paritydesk doctor` reports
-busy detection as unavailable. Until then only Claude's own quit dialog
-protects a working session: answer "Cancel" there and paritydesk exits 10
-without changing anything.
+paritydesk finds working sessions in Claude's log (`main.log` and the
+rotated `main1.log` … `main4.log`): a session works from the line that
+starts its turn until a line ends, interrupts or stops it, within the
+current run of Claude. `paritydesk plan` lists them (masked ids and how
+long they have been working; the titles appear only in the human output
+and in the `busy` member of `--json`). In a terminal, the switch asks,
+then waits for them up to `app.quit_timeout`; if they are still working
+then, it asks whether to quit anyway. A switch from inside Claude (the
+detached job) waits the same way and exits 12 without quitting Claude
+when they are still working. Other runs without a terminal exit 12 at
+once.
+
+A session whose turn started more than `app.busy_stale_after` ago (6
+hours by default, between 10 minutes and 48 hours) with no end in the log
+is shown as stuck and not waited for. Claude's own quit dialog stays the
+last guard: it also counts background tasks, loops, shells and
+permission cards, which no log line names. Answer "Cancel" there and
+paritydesk exits 10 without changing anything.
+
+On Claude 6.x the compatibility manifest has no confirmed turn start
+line, so `paritydesk doctor` reports busy detection as unavailable and
+only the session records and Claude's quit dialog protect a working
+session.
 
 <a id="update-pending"></a>
 ## Exit 13: a Claude update did not finish installing (PD-E13)
@@ -262,6 +279,24 @@ and every redaction rule. Open it (`tar -xzf <file>`) and read it before
 you attach it to an issue.
 
 <!-- v0.2 anchor: busy -->
+<a id="signed-in-to-another-account"></a>
+## Exit 20: a folder was signed in to another profile's account
+
+Nothing was changed, and every account stays signed in. Claude holds
+the folder of one profile, but inside Claude that folder was signed in to
+the account of another profile, so paritydesk cannot tell whose sessions
+and settings the folder now holds. The message names both profiles. In
+Claude, switch that folder back to the account of the profile it belongs
+to (Claude's account menu, or sign in again with that account), then run
+the command again. `paritydesk doctor` shows the change in its
+`account-change` check (accounts masked). paritydesk sees this from the
+folder's marker, or from Claude's log line that records the account
+change since the last switch.
+
+If the folder changed accounts twice since the last switch (for example
+with Claude's own multi-account mode), the next switch only swaps folders
+and carries nothing, and `paritydesk sync` exits 31; the switch after
+that is normal again.
 
 <!-- v0.2 anchor: fdscan -->
 

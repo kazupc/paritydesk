@@ -15,6 +15,40 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   run.
 
 <!-- v0.2 anchor: busy -->
+- Added: busy detection from Claude's log. `plan` lists the sessions
+  still working (masked ids and ages; titles only in the `busy` member of
+  `--json` and in the human output), a switch asks at P0 and waits for
+  them at P3 up to `app.quit_timeout`, and the detached job waits instead
+  of exiting 12 at P0. It follows the turn start, end, interrupt and stop
+  lines and, for Code sessions, Claude's keep-awake hold, across
+  `main.log` rotation (`main1.log` … `main4.log`). Claude's own quit
+  dialog stays the last guard.
+- Added: `app.busy_stale_after` (default `6h`, 10m to 48h): a session
+  whose turn started longer ago with no end in the log is shown as stuck
+  and not waited for.
+- Added: `plan --invoking-session <uuid>` leaves the session running the
+  command out of the busy list (the plugin's skill passes it).
+- Added: a folder signed in, inside Claude, to another profile's account
+  is refused with exit 20 by every command before anything is written
+  (found from the folder's marker or Claude's account-change log line).
+  Two account changes in one folder since the last switch (Claude's own
+  multi-account mode) give swap-only with the cause; `sync` exits 31
+  with it. `status` and `doctor` report account changes (masked).
+- Added: `doctor` checks `busy-now`, `account-change` and
+  `chrome-pairing-org` (the organization Claude in Chrome pairs with, from
+  the log, masked), and `chrome-bridge` reports a launch whose local
+  pairing Claude turned off. See ADR 0007.
+- Changed: compatibility manifest signal patterns match only record
+  lines, at the start of the message (after `<timestamp> [<level>] `);
+  continuation lines are never matched. Each pattern needs a fixed text
+  of at least 8 characters. Manifest overrides must follow these rules;
+  an old override that no longer matches only makes paritydesk fall back.
+- Deprecated: `signals.native_multi_account` is ignored (account changes
+  come from `account_changed`); `doctor` warns when an override sets it.
+  It is removed in v0.3.
+- Not yet confirmed on a real Mac: the 7.x patterns marked "from code"
+  (turn clears, keep-awake release and uncounted lines, account change,
+  pairing lines); release checklist step 4 confirms them.
 
 <!-- v0.2 anchor: fdscan -->
 

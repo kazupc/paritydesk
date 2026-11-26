@@ -48,6 +48,21 @@ type Status struct {
 	LastVerify   *state.VerifyRecord `json:"last_verify,omitempty"`
 	Generations  int                 `json:"generations"`
 	Warnings     []string            `json:"warnings,omitempty"`
+	// AccountChanges and NativeMultiAccount are filled by the full status
+	// only (short status reads no log); nil means not checked.
+	AccountChanges     []AccountChangeView `json:"account_changes,omitempty"`
+	NativeMultiAccount *bool               `json:"native_multi_account,omitempty"`
+}
+
+// AccountChangeView is one account change inside a data folder, from
+// Claude's log (masked).
+type AccountChangeView struct {
+	Profile     ids.Alias `json:"profile,omitempty"` // the profile whose folder changed accounts
+	FromMasked  string    `json:"from_masked"`
+	ToMasked    string    `json:"to_masked"`
+	ToProfile   ids.Alias `json:"to_profile,omitempty"`
+	At          time.Time `json:"at,omitzero"`
+	SinceSwitch bool      `json:"since_last_switch"`
 }
 
 // Status reports the current state. With short, it reads only root.json
@@ -95,9 +110,13 @@ func (o *Orchestrator) Status(ctx context.Context, short bool) (*Status, error) 
 // statusDetails adds what needs the app, a folder scan and the resolver.
 func (o *Orchestrator) statusDetails(ctx context.Context, root *state.Root, st *Status) {
 	d := o.d
+	var sig compat.Signals
 	if b, err := d.App.Locate(ctx, d.Config.App.BundleID); err == nil {
 		if procs, err := d.App.Running(ctx, b.Path); err == nil {
 			st.AppRunning = len(procs) > 0
+		}
+		if m, _, err := d.Compat.Manifest(ctx, b.Version); err == nil && m != nil {
+			sig = m.Signals
 		}
 	}
 	if staged, err := d.App.UpdateStaged(ctx, d.Config.App.BundleID); err == nil {
@@ -129,9 +148,7 @@ func (o *Orchestrator) statusDetails(ctx context.Context, root *state.Root, st *
 			st.Profiles[i].Problem = b.BaseInvalidWhy
 		}
 	}
-	if res.OutsideSwitch {
-		st.Warnings = append(st.Warnings, "the active account changed outside paritydesk; paritydesk sync re-applies the shared state")
-	}
+	o.statusAccounts(ctx, root, sig, res, st)
 }
 
 // folderNames returns the names of Claude and Claude-* entries.
@@ -176,6 +193,8 @@ type DoctorOptions struct {
 type doctor struct {
 	o      *Orchestrator
 	checks []Check
+	// busy holds what the log-signal checks share (doctor_busy.go).
+	busy doctorBusy
 }
 
 func (dr *doctor) add(id, status, detail string) {
@@ -231,6 +250,7 @@ func (o *Orchestrator) Doctor(ctx context.Context, opts DoctorOptions) ([]Check,
 		dr.busyDetection(m)
 	}
 	// v0.2 anchor: doctor busy
+	dr.busyChecks(ctx, root, folders, m)
 
 	dr.managed()
 	dr.runnerJobs()
@@ -295,6 +315,9 @@ func (dr *doctor) version(ctx context.Context, root *state.Root, b app.BundleIde
 		in.Probes = append(in.Probes, res...)
 	}
 	in.OrgUnknown = dr.org(ctx, root, folders, m)
+	if _, n := profile.NativeMultiFromLog(dr.accountChanges(ctx, root, m)); n >= 2 {
+		in.NativeMultiAccount = true
+	}
 	dec := d.Compat.Decide(in)
 	status := "ok"
 	switch dec.Mode {
@@ -308,6 +331,9 @@ func (dr *doctor) version(ctx context.Context, root *state.Root, b app.BundleIde
 		t = "tested"
 	}
 	dr.add("version", status, fmt.Sprintf("Claude %s (%s), mode %s", b.Version, t, dec.Mode))
+	for _, k := range m.DeprecatedKeys() {
+		dr.add("version", "warn", fmt.Sprintf(txtDoctorVersionDeprecatedKey, k))
+	}
 	for _, reason := range dec.Reasons {
 		dr.add("mode-reason", status, reason)
 	}
@@ -336,7 +362,7 @@ func (dr *doctor) org(ctx context.Context, root *state.Root, folders []profile.F
 		}
 	}
 	if m != nil && acct != "" {
-		if org, found, err := d.App.ActiveOrg(ctx, m.Signals, acct); err == nil && found {
+		if org, found, err := d.App.ActiveOrg(ctx, m.Signals, acct, dr.appSince(ctx)); err == nil && found {
 			hints.ActiveOrg = org
 		}
 	}
@@ -486,6 +512,9 @@ func (dr *doctor) bridge(ctx context.Context, sig compat.Signals) {
 		dr.add("chrome-bridge", "warn", "the Claude log could not be read")
 		return
 	}
+	if sinceLastStart(evs, app.EvPairingDisabled) {
+		dr.add("chrome-bridge", "warn", txtDoctorChromeBridgePairingDisabled)
+	}
 	for _, e := range evs {
 		if e == app.EvBridgeConnected {
 			dr.add("chrome-bridge", "ok", "the recent Claude log shows a Claude in Chrome connection")
@@ -496,20 +525,6 @@ func (dr *doctor) bridge(ctx context.Context, sig compat.Signals) {
 	// connection line only means it was not used since the log's start.
 	dr.add("chrome-bridge", "ok", "Claude in Chrome was not used in the recent Claude log; it connects on first use. "+
 		"The extension follows the Chrome profile's sign-in, not the Claude folder: use one Chrome profile per account")
-}
-
-// busyDetection reports whether paritydesk can see working Code
-// sessions: it needs a turn_started log pattern or a sessions busy field
-// in the manifest. Without either, only the app's own quit dialog
-// protects a working session.
-func (dr *doctor) busyDetection(m *compat.Manifest) {
-	spec, _ := m.Row(model.RowSessions)
-	if m.Signals.TurnStarted != "" || len(spec.Fields[sources.RoleBusy]) > 0 {
-		dr.add("busy-detection", "ok", "working Code sessions are detected before Claude quits")
-		return
-	}
-	dr.add("busy-detection", "warn", "busy detection unavailable: this Claude version has no confirmed busy signal, "+
-		"so only Claude's own quit dialog protects a working Code session")
 }
 
 func (dr *doctor) managed() {

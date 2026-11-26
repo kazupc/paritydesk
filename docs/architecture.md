@@ -122,6 +122,20 @@ the folder swap (P8), parking the leaving folder (P9), one state commit
 | S18 | Does Claude in Chrome work on every account with one Chrome profile per account? | Run: yes. |
 
 <!-- v0.2 anchor: busy -->
+**Log signals (v0.2, ADR 0007).** `internal/app` reads `main.log` and the
+rotated `main1.log` … `main4.log` through one set of open descriptors
+(inode checked against the listing, opened again on a race), with
+cursors of inode and offset that survive rotation. Only record lines
+reach a pattern, and every pattern is anchored at the start of the
+message with a fixed-text prefilter, so continuation lines (which can
+hold other programs' output) never match. Busy detection follows turn
+starts, ends, interrupts and stops within the app's current run, uses
+Claude's keep-awake hold for Code sessions only, and marks old starts as
+stale; the quit veto is the last guard. Account changes inside a folder
+are attributed to profiles (`internal/profile/accounts.go`): an in-folder
+sign-in to another profile's account exits 20 before any write, and a
+chain of changes since the last committed run (`last_commit_at`) gives
+swap-only. `LastReplica` serves the online and artifact layers.
 
 <!-- v0.2 anchor: fdscan -->
 

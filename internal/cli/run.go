@@ -67,12 +67,16 @@ func runPlan(ctx context.Context, e *env, fs *flag.FlagSet, args []string) error
 	if err != nil {
 		return err
 	}
+	invoking := getString(fs, flagInvokingSession)
+	if invoking != "" && !ids.IsUUID(invoking) {
+		return usageErrorf("--%s must be a session UUID", flagInvokingSession)
+	}
 	svc, err := e.service(ctx, e.newUI(false, false))
 	if err != nil {
 		return err
 	}
 	save := !e.readOnly()
-	res, err := svc.Preview(ctx, orchestrator.PreviewOptions{To: to, Only: only, Skip: skip, Save: save})
+	res, err := svc.Preview(ctx, orchestrator.PreviewOptions{To: to, Only: only, Skip: skip, Save: save, InvokingCLISession: invoking})
 	if res == nil {
 		return orInternal(err, "plan")
 	}
@@ -80,6 +84,7 @@ func runPlan(ctx context.Context, e *env, fs *flag.FlagSet, args []string) error
 	v.Saved = &save
 	return e.emit(v, func(p *render.Printer) {
 		p.Lines(v.Lines)
+		p.Lines(v.humanBusy)
 		warn(p, v.Warnings)
 		switch {
 		case !save:
@@ -120,6 +125,7 @@ func runSwitch(ctx context.Context, e *env, fs *flag.FlagSet, args []string) err
 			// The plan was shown with the question; the error says the rest.
 		default:
 			p.Lines(v.Lines)
+			p.Lines(v.humanBusy)
 			if v.Code == pderr.OK || v.Code == pderr.SwapOnly || v.Code == pderr.Degraded {
 				p.Line(i18n.T(i18n.SwitchDone, "%s", "%s"), string(v.From), string(v.To))
 			}

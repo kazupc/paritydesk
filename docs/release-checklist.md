@@ -51,20 +51,49 @@ The manifest leaves a `main.log` pattern empty until it has been seen on
 a real Mac; callers then fall back to slower or weaker signals. Before a
 release:
 
-4. **turn_started.** Start a Code session, send a message, and while
-   Claude is working read the new lines of `~/Library/Logs/Claude/main.log`
-   (read-only, for example with `tail`). Confirm the line that marks the
-   start of a turn and note its exact text without any ids. If it is
-   stable across two turns and two sessions, add the pattern to
-   `[signals].turn_started` in the manifest, with `{session}` in place of
-   the session id, and record it in ADR 0003. Otherwise leave it empty.
+4. **Log patterns read from the app's code.** While a Code session works,
+   read the new lines of `~/Library/Logs/Claude/main.log`, `main1.log` …
+   read-only (for example with `tail`). The 7.x manifest marks some
+   patterns "from code"; confirm the text of each against the lines you
+   see, without copying any ids:
+   - `turn_cleared` items: interrupt a turn, stop a session, cause one
+     failed turn (for example a model the account cannot use); in a
+     Cowork task, interrupt it once;
+   - `work_released`: wait 30 s after all work ends;
+   - `work_uncounted`: not practical to provoke (1 h); confirm only that
+     the text in the code of the release matches;
+   - `account_changed`: during step 8 (profile add), after you signed in
+     to the second account in the empty folder and **before**
+     `paritydesk recover`: in Claude, switch that folder to the first
+     account and back to the second (Claude's account menu, or sign in
+     again). Expect two `[account] Login-state transition (… uuid: <x> →
+     <y>), clearing oauth cache` lines. `paritydesk doctor` then shows two
+     `account-change` warn lines and one `account-change` fail line ("the
+     folder of account <masked> changed accounts 2 times since the last
+     switch"), and its `version` check reports swap-only: two changes in
+     one folder look like Claude's own multi-account mode. Then run
+     `paritydesk recover` as step 8 says; the fail line and swap-only are
+     gone and the next `paritydesk plan` must show mode full (the binding
+     moved the mark). Never do this in the folder of a profile that is
+     already bound: Claude disconnects that folder's connectors when its
+     account changes;
+   - `pairing_disabled`: expected **not** to appear;
+   - `pairing_state`: appears as `established` after step 12.
+
+   Drop a pattern that cannot be confirmed (make it empty or remove the
+   list item) and record the result in ADR 0007.
 5. **active_org.** With an account that belongs to two organizations,
    switch organizations in Claude and confirm which `main.log` line names
    the active one. Add it to `[signals].active_org` only if it is stable;
    otherwise leave it empty (per-organization rows are then skipped when
    more than one organization exists).
 6. Re-check the patterns that are already filled in (quit vetoed, turn
-   ended, session focused, Chrome connected) against the new app version.
+   started, turn ended, session focused, Chrome connected, unclean exit)
+   against the new app version. Patterns now match at the start of a
+   line's message (the text after `<timestamp> [<level>] `), so confirm
+   that each still matches there, including `focused_session` (written
+   as `[CCD] LocalSessions.setFocusedSession: …`) and `unclean_exit`
+   (written as `[updater] Previous run did not exit cleanly…`).
    Also open one session record under `claude-code-sessions` read-only
    and confirm the name of the field that holds the session's project
    path. It must match `project_path` in the manifest's sessions row
@@ -121,18 +150,23 @@ release:
 ## Safety
 
 15. **Busy sessions.** Start a long Code task, then `paritydesk switch`
-    in Terminal. v0.1 ships no `turn_started` log pattern (step 4), so
-    paritydesk cannot list busy sessions and never exits 12; `paritydesk
-    doctor` says busy detection is unavailable. Expected: Claude's own
-    quit dialog appears; if you answer it with "Cancel", paritydesk exits
-    10, nothing changes and Claude keeps running. Record in ADR 0003 how
-    the quit event ended on "Cancel": no error, or the AppleScript error
-    number in the error message (-128 is a refusal and -1712 a reply
-    that did not come in time; both are expected to exit 10). Exit 15
-    there is a bug: only -1743 and -1744 mean missing Automation, so
-    record the number and the output. Also note how long
-    the quit command waits while the dialog is open: if it waits past
-    `app.quit_timeout`, the timeout only starts after the reply.
+    in Terminal. Expected: P0 lists the working session with its title
+    and asks; after yes, P3 waits, and when the turn ends Claude quits
+    without its dialog. Run it again with `/model` sent in another
+    session: that session shows as working for at most about 2.5 min (or
+    as stale with keep-awake off in Claude's settings). A running Cowork
+    task is listed (untitled) and is not dropped while Code is idle.
+    Then keep a task working past `app.quit_timeout` and answer yes to
+    "These sessions still look busy. Quit Claude now anyway?": Claude's
+    own quit dialog appears; if you answer it with "Cancel", paritydesk
+    exits 10, nothing changes and Claude keeps running. Record in ADR 0003
+    how the quit event ended on "Cancel": no error, or the AppleScript
+    error number in the error message (-128 is a refusal and -1712 a
+    reply that did not come in time; both are expected to exit 10). Exit
+    15 there is a bug: only -1743 and -1744 mean missing Automation, so
+    record the number and the output. Also note how long the quit command
+    waits while the dialog is open: if it waits past `app.quit_timeout`,
+    the timeout only starts after the reply.
 16. **Deletion breaker.** Delete several scratch sessions on one account
     and switch. Expected: exit 22 unless `--allow-deletions` is given.
 17. **Rollback.** `paritydesk generations list`, then `paritydesk
@@ -200,6 +234,19 @@ release:
     refused.
 
 <!-- v0.2 anchor: busy -->
+## Log signals (v0.2)
+
+- **Doctor.** With Claude running and one Code session working,
+  `paritydesk doctor`. Expected: `busy-detection` ok; `busy-now` with the
+  right count (it includes the session running doctor when you run it
+  from inside Claude); `account-change` as expected (ok with no change;
+  after the step 4 account round trip, warn lines until the next committed
+  run, and the fail line only until `paritydesk recover` binds the
+  profile); `chrome-pairing-org` with the masked organization equal to the
+  one the `active_org` line names (`local_…` ids and accounts masked).
+- **In-folder sign-in.** Not to be provoked on a bound profile (Claude
+  disconnects that folder's connectors). Confirm only that
+  `paritydesk doctor` shows no `account-change` fail line on this Mac.
 
 <!-- v0.2 anchor: fdscan -->
 

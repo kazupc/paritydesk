@@ -83,7 +83,7 @@ func TestCompletionCoversEveryCommandAndFlag(t *testing.T) {
 	}
 	walk(root(), "")
 	for shell, s := range scripts {
-		for _, hidden := range []string{"session-start", "plugin-version", "from-runner", "log-offset"} {
+		for _, hidden := range []string{"session-start", "plugin-version", "from-runner", "log-offset", "log-inode"} {
 			if strings.Contains(s, hidden) {
 				t.Errorf("%s offers the hidden %q", shell, hidden)
 			}

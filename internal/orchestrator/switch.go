@@ -10,7 +10,7 @@ import (
 
 // Switch runs P0–P12 (or hands off to the detached runner first).
 func (o *Orchestrator) Switch(ctx context.Context, opts SwitchOptions) (*Result, error) {
-	opts.LogOffset = o.logOffset(opts.LogOffset)
+	opts.LogOffset, opts.LogInode = o.logCursor(opts.LogOffset, opts.LogInode)
 	r := o.newRun(state.RunSwitch, opts)
 	if err := r.newRunID(); err != nil {
 		return r.fail(err)
@@ -37,15 +37,25 @@ func (o *Orchestrator) Switch(ctx context.Context, opts SwitchOptions) (*Result,
 	return res, err
 }
 
-// logOffset records main.log's size first, unless the parent already did.
-func (o *Orchestrator) logOffset(cur int64) int64 {
-	if cur >= 0 {
-		return cur
+// logCursor records main.log's position (inode and size) first, unless
+// the parent already did (off >= 0), while the invoking turn still runs.
+func (o *Orchestrator) logCursor(off int64, ino uint64) (int64, uint64) {
+	if off >= 0 {
+		return off, ino
 	}
-	if n, err := o.d.App.LogSize(); err == nil {
-		return n
+	if c, err := o.d.App.LogCursor(); err == nil {
+		return c.Off, c.Ino
 	}
-	return 0
+	return 0, 0
+}
+
+// invokingCLI is the Claude Code session running this command: plan's
+// --invoking-session, or the switch's --reopen-session.
+func (r *run) invokingCLI() string {
+	if r.previewCLI != "" {
+		return r.previewCLI
+	}
+	return r.opts.ReopenCLISession
 }
 
 func (r *run) fail(err error) (*Result, error) {
@@ -140,6 +150,7 @@ func (o *Orchestrator) readOnlyPlan(ctx context.Context, r *run) (*Result, error
 	if err := r.preflight(ctx, false); err != nil {
 		return r.fail(err)
 	}
+	r.previewBusy(ctx, r.invokingCLI())
 	if err := r.preview(ctx); err != nil {
 		return r.fail(err)
 	}
@@ -178,6 +189,7 @@ func (r *run) confirmForJob(ctx context.Context) error {
 	if r.decision.Mode == compat.ModePreviewOnly {
 		return pderr.New(pderr.CompatRefused, "compat", "this Claude version is untested and require_tested is set; only plan works")
 	}
+	r.previewBusy(ctx, r.invokingCLI())
 	if err := r.preview(ctx); err != nil {
 		return err
 	}
@@ -199,6 +211,7 @@ func (r *run) confirmForJob(ctx context.Context) error {
 // saves it for --confirmed-plan when opts.Save is set.
 func (o *Orchestrator) Preview(ctx context.Context, opts PreviewOptions) (*Result, error) {
 	r := o.newRun(state.RunSwitch, SwitchOptions{To: opts.To, Only: opts.Only, Skip: opts.Skip, LogOffset: -1})
+	r.previewCLI = opts.InvokingCLISession
 	if err := r.newRunID(); err != nil {
 		return r.fail(err)
 	}

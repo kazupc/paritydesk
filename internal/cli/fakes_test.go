@@ -70,13 +70,16 @@ type fakeService struct {
 	doctorChecks []orchestrator.Check
 	// confirm, when set, makes Switch ask the UI first.
 	confirm *orchestrator.Confirmation
+	// busy is the busy list Preview reports (BusyWait one minute).
+	busy []orchestrator.BusyView
 }
 
 func newFakeService() *fakeService {
+	native := false
 	return &fakeService{
 		errs: map[string]error{},
 		status: &orchestrator.Status{
-			Active: "work", Previous: "home", Generations: 2,
+			Active: "work", Previous: "home", Generations: 2, NativeMultiAccount: &native,
 			Profiles: []orchestrator.ProfileStatus{
 				{Alias: "work", Folder: "Claude", Active: true, Account: "0000\u2026", BaseValid: true},
 				{Alias: "home", Folder: "Claude-home", Account: "0000\u2026", Managed: true},
@@ -133,7 +136,11 @@ func (f *fakeService) Preview(_ context.Context, o orchestrator.PreviewOptions) 
 	if err := f.record("preview"); err != nil {
 		return nil, err
 	}
-	return f.runResult(fakePlan()), nil
+	r := f.runResult(fakePlan())
+	if f.busy != nil {
+		r.Busy, r.BusyWait = f.busy, time.Minute
+	}
+	return r, nil
 }
 
 func (f *fakeService) Sync(_ context.Context, o orchestrator.SyncOptions) (*orchestrator.Result, error) {
@@ -183,6 +190,12 @@ func (f *fakeService) Status(_ context.Context, short bool) (*orchestrator.Statu
 	f.statusShort = short
 	if err := f.record("status"); err != nil {
 		return nil, err
+	}
+	if short {
+		// The short status reads no log.
+		c := *f.status
+		c.AccountChanges, c.NativeMultiAccount = nil, nil
+		return &c, nil
 	}
 	return f.status, nil
 }

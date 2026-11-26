@@ -143,7 +143,7 @@ func TestWaitTurnEnded(t *testing.T) {
 	p := &Platform{Log: l.log(), Clock: clk}
 	// A turn end before from does not count.
 	l.append(stamp("[turn] done id="+sessA), stamp("[turn] begin id="+sessA))
-	from, _ := l.log().Size()
+	from, _ := l.log().Cursor()
 	// The turn ended between Submit and P3: after from, before the call.
 	l.append(stamp("[turn] done id="+sessB), stamp("[turn] done id="+sessA))
 	if err := p.WaitTurnEnded(ctx, from, testSig, sessA, time.Minute); err != nil {
@@ -155,7 +155,7 @@ func TestWaitTurnEnded(t *testing.T) {
 
 	clk2 := clock.NewFake(t0)
 	p2 := &Platform{Log: l.log(), Clock: clk2}
-	from, _ = l.log().Size()
+	from, _ = l.log().Cursor()
 	l.append(stamp("[turn] done id=" + sessB))
 	err := p2.WaitTurnEnded(ctx, from, testSig, sessA, 5*time.Second)
 	if pderr.CodeOf(err) != pderr.SessionsBusy {
@@ -164,10 +164,10 @@ func TestWaitTurnEnded(t *testing.T) {
 	if got := clk2.Now().Sub(t0); got < 5*time.Second || got > 5250*time.Millisecond {
 		t.Fatalf("waited %v", got)
 	}
-	if err := p2.WaitTurnEnded(ctx, 0, compat.Signals{}, sessA, time.Second); !errors.Is(err, ErrSignalUnknown) {
+	if err := p2.WaitTurnEnded(ctx, LogCursor{}, compat.Signals{}, sessA, time.Second); !errors.Is(err, ErrSignalUnknown) {
 		t.Fatalf("got %v", err)
 	}
-	if err := p2.WaitTurnEnded(ctx, 0, testSig, "bad", time.Second); !errors.Is(err, ErrInvalidSession) {
+	if err := p2.WaitTurnEnded(ctx, LogCursor{}, testSig, "bad", time.Second); !errors.Is(err, ErrInvalidSession) {
 		t.Fatalf("got %v", err)
 	}
 }
@@ -184,7 +184,7 @@ func TestWaitTurnEndedLaterLine(t *testing.T) {
 			appended = true
 		}
 	}}, Clock: clk}
-	if err := p.WaitTurnEnded(t.Context(), 0, testSig, sessA, time.Minute); err != nil {
+	if err := p.WaitTurnEnded(t.Context(), LogCursor{}, testSig, sessA, time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	if got := clk.Now().Sub(t0); got < time.Second+turnSettle || got > time.Second+turnSettle+pollInterval {
@@ -192,15 +192,15 @@ func TestWaitTurnEndedLaterLine(t *testing.T) {
 	}
 }
 
-// hookLog runs before ahead of every Events call.
+// hookLog runs before ahead of every EventsAt call.
 type hookLog struct {
 	fileLog
 	before func()
 }
 
-func (h hookLog) Events(ctx context.Context, from int64, sig compat.Signals, s ids.SessionID) ([]LogEvent, int64, error) {
+func (h hookLog) EventsAt(ctx context.Context, from LogCursor, sig compat.Signals, s ids.SessionID) ([]LogEvent, LogCursor, error) {
 	h.before()
-	return h.fileLog.Events(ctx, from, sig, s)
+	return h.fileLog.EventsAt(ctx, from, sig, s)
 }
 
 func TestCheckQuiescence(t *testing.T) {
@@ -463,7 +463,7 @@ func TestNewDarwinWiresParts(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(logDir, "main.log"), []byte(stamp("[acct] account="+acctP+" org="+orgX+" active")), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	org, found, err := p.ActiveOrg(t.Context(), testSig, acctP)
+	org, found, err := p.ActiveOrg(t.Context(), testSig, acctP, time.Time{})
 	if err != nil || !found || org != orgX {
 		t.Fatalf("active org: %q %v %v", org, found, err)
 	}
@@ -515,5 +515,63 @@ func TestUpdateStagedLeftoverState(t *testing.T) {
 	write(state("file://" + filepath.Join(stateDir, "update.gone", "Example.app") + "/"))
 	if err := b.WaitUpdateInstalled(t.Context(), testBundle, time.Second); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestWaitTurnEndedClears: an interrupt line for the invoking session
+// ends the wait; an interrupt of another session does not.
+func TestWaitTurnEndedClears(t *testing.T) {
+	ctx := t.Context()
+	sig := testSig
+	sig.TurnCleared = []string{`\[turn\] interrupted id={session}`}
+	l := newTestLog(t)
+	from, _ := l.log().Cursor()
+	l.append(stamp("[turn] interrupted id=" + sessB))
+	clk := clock.NewFake(t0)
+	p := &Platform{Log: l.log(), Clock: clk}
+	if err := p.WaitTurnEnded(ctx, from, sig, sessA, 2*time.Second); pderr.CodeOf(err) != pderr.SessionsBusy {
+		t.Fatalf("another session's interrupt: %v", err)
+	}
+	l.append(stamp("[turn] interrupted id=" + sessA))
+	if err := p.WaitTurnEnded(ctx, from, sig, sessA, 2*time.Second); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestWaitTurnEndedAcrossRotation: the turn ended in the file that was
+// rotated to main1.log after the cursor was taken.
+func TestWaitTurnEndedAcrossRotation(t *testing.T) {
+	l := newTestLog(t)
+	l.append(stamp("[turn] begin id=" + sessA))
+	from, _ := l.log().Cursor()
+	l.append(stamp("[turn] done id=" + sessA))
+	l.rotate()
+	l.append(stamp("[bridge] peer up"))
+	clk := clock.NewFake(t0)
+	p := &Platform{Log: l.log(), Clock: clk}
+	if err := p.WaitTurnEnded(t.Context(), from, testSig, sessA, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if got := clk.Now().Sub(t0); got != turnSettle {
+		t.Fatalf("waited %v", got)
+	}
+}
+
+// TestQuitAndWaitVetoAcrossRotation: the veto line lands in a file that
+// was rotated during the wait; it is still seen.
+func TestQuitAndWaitVetoAcrossRotation(t *testing.T) {
+	f := newQuitFixture(t, 5*time.Second, false)
+	f.run.reply = func(tm Template, _ []string) ([]byte, error) {
+		if tm == TmplQuit {
+			f.log.append(stamp("[quit] refused by interceptor"))
+			f.log.rotate()
+			f.log.append(stamp("[bridge] peer up"))
+		}
+		return nil, nil
+	}
+	vetoes := 0
+	res, err := f.p.QuitAndWait(t.Context(), testBundle, testBundlePath, testSig, 30*time.Second, func() { vetoes++ })
+	if err != nil || !res.Vetoed || vetoes != 1 || !res.Exited {
+		t.Fatalf("result %+v vetoes %d err %v", res, vetoes, err)
 	}
 }

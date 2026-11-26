@@ -227,6 +227,24 @@ The README claims a capability only after a runtime spike on the real app
 is recorded in `docs/adr/0003-online-reconcile.md` (decision D26).
 
 <!-- v0.2 anchor: busy -->
+## Writing a log signal pattern
+
+Signal patterns in `internal/compat/manifests/*.toml` (`[signals]`) are
+Go regular expressions matched only on record lines of Claude's log (a
+line that starts with `<timestamp> [<level>] `), only against the
+message after that header, and anchored at its start by the loader. So:
+
+- write the pattern from the first character of the message, and never
+  start it with `^`, `.*` or `.+`;
+- give it a fixed text of at least 8 characters that every match
+  contains (`compat.RequiredLiteral`; the reader skips lines without it);
+- use `{session}` at most once (it becomes a group that captures a
+  validated `local_<uuid>`), and a named group where the key needs one
+  (`reason`, `from`/`to`, `state`, `org`/`account`);
+- mark it "observed" or "from code" in its comment, and test it in
+  `internal/compat` against a message built from the app's text, with
+  fake ids only. Continuation lines of multi-line messages are never
+  matched, because they can hold text Claude does not control.
 
 <!-- v0.2 anchor: fdscan -->
 

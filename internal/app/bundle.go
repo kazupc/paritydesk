@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/kazupc/paritydesk/internal/clock"
@@ -92,9 +91,7 @@ func identity(path, bundleID string, info map[string]string) (BundleIdentity, er
 		ExecMtime: fi.ModTime().UTC(),
 		ExecSize:  fi.Size(),
 	}
-	if st, ok := fi.Sys().(*syscall.Stat_t); ok {
-		id.ExecIno = st.Ino
-	}
+	id.ExecIno = fileIno(fi)
 	return id, nil
 }
 
