@@ -33,6 +33,7 @@ Requires macOS. With Homebrew (it builds paritydesk from source and
 installs Go for the build if needed):
 
 ```
+brew trust kazupc/tap
 brew install kazupc/tap/paritydesk
 ```
 

@@ -45,9 +45,10 @@ downloads the tagged source, checks its sha256, and builds it with Go
 (`depends_on "go" => :build`, so Homebrew installs Go for the build if
 it is missing). It also installs completions for bash, zsh and fish.
 
-If your Homebrew version asks you to trust a third-party tap before it
-installs from it, read the formula first (`brew cat
-kazupc/tap/paritydesk`), then follow Homebrew's own prompt.
+Homebrew 7 refuses formulae from a third-party tap until you trust it.
+Tap it and read the formula first (`brew tap kazupc/tap`, then `brew cat
+kazupc/tap/paritydesk`), then run `brew trust kazupc/tap` before
+`brew install`.
 
 To check that the installed binary is not quarantined:
 

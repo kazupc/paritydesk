@@ -23,7 +23,7 @@ class Paritydesk < Formula
   def install
     ENV["CGO_ENABLED"] = "0"
     ldflags = %W[
-      -s -w -buildid=
+      -buildid=
       -X github.com/kazupc/paritydesk/internal/cli.Version=#{version}
       -X github.com/kazupc/paritydesk/internal/cli.Commit=homebrew
     ]

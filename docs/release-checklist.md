@@ -468,7 +468,7 @@ macOS user account without Claude data where the step says so.
     (`curl -fsSL <url> | shasum -a 256`), and run `brew audit --strict
     --formula kazupc/tap/paritydesk` and `brew test` before pushing.
 33. **Tap install on a clean account.** In the clean account:
-    `brew install kazupc/tap/paritydesk`, then
+    `brew trust kazupc/tap` and `brew install kazupc/tap/paritydesk`, then
     `xattr -l "$(brew --prefix)/bin/paritydesk"`, `paritydesk version`
     and `paritydesk status`. Expected: Go is installed as a build
     dependency, no `com.apple.quarantine` attribute, no Gatekeeper
