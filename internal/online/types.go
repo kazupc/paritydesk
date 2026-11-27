@@ -354,43 +354,19 @@ func (s *Summary) Any() bool {
 	return s != nil && (s.PinsAdd+s.PinsRemove+s.PinsKeep+s.PinsBlocked+s.Sidebar+s.Other) > 0
 }
 
-// Option is one answer of a question. Label and Description encode as
-// their English text; DisplayLabel and DisplayDescription are the same
-// in the display language, set only when it is not English.
+// Option is one answer of a question.
 type Option struct {
-	ID                 string    `json:"id"`
-	Label              i18n.Text `json:"label"`
-	Description        i18n.Text `json:"description"`
-	DisplayLabel       string    `json:"display_label,omitempty"`
-	DisplayDescription string    `json:"display_description,omitempty"`
+	ID          string    `json:"id"`
+	Label       i18n.Text `json:"label"`
+	Description i18n.Text `json:"description"`
 }
 
 // Question is a decision `online next` asks the user (through the skill).
-// Header and Text encode as English; the display fields are added for a
-// display language other than English (Localized).
 type Question struct {
-	ID            string    `json:"id"`
-	Header        i18n.Text `json:"header"`
-	Text          i18n.Text `json:"text"`
-	Options       []Option  `json:"options"`
-	DisplayHeader string    `json:"display_header,omitempty"`
-	DisplayText   string    `json:"display_text,omitempty"`
-}
-
-// Localized returns a copy of q with the display fields rendered in l
-// (none for English). The skill shows them and maps the chosen display
-// label back to the option id.
-func (q Question) Localized(l i18n.Lang) Question {
-	out := q
-	out.Options = append([]Option(nil), q.Options...)
-	if l == i18n.English {
-		return out
-	}
-	out.DisplayHeader, out.DisplayText = q.Header.In(l), q.Text.In(l)
-	for i, o := range out.Options {
-		out.Options[i].DisplayLabel, out.Options[i].DisplayDescription = o.Label.In(l), o.Description.In(l)
-	}
-	return out
+	ID      string    `json:"id"`
+	Header  i18n.Text `json:"header"`
+	Text    i18n.Text `json:"text"`
+	Options []Option  `json:"options"`
 }
 
 // Call is one offered call.

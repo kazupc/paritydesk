@@ -6,11 +6,15 @@ description: Keep claude.ai artifacts the same on every paritydesk profile (beta
 
 # Sync artifacts with paritydesk (beta)
 
-Talk to the user in the language they use. paritydesk's JSON is English.
-When a document has `display_lines`, those are the same lines in the
-user's paritydesk language (named by `lang`). Show them exactly as printed;
-do not translate or reword them. Hook lines from paritydesk are English;
-say what they mean in the user's language.
+Talk to the user in the language they use. paritydesk prints English
+only: its JSON and the `lines` of its documents. Show every line. If the
+user writes in another language, translate each line faithfully into it
+without dropping, merging or softening any line, keeping numbers, names,
+ids, codes and command text unchanged (the DESTRUCTIVE line and its
+counts included). Questions use the English `header`, `text` and option
+`label` and `description` from the JSON, translated the same faithful
+way. Hook lines from paritydesk are English and meant for you; say what
+they mean in the user's language.
 
 paritydesk reads this account's artifacts, keeps a copy of each in its
 archive on this Mac, and (once publishing is on) publishes the versions
@@ -37,20 +41,19 @@ plugin checks every artifact call while this runs and records the results.
    /paritydesk:artifacts again to continue where it stopped."
    - `state` `complete`: go to step 4.
    - `state` `none`, `blocked`, `stale`, `no_hooks` or `busy_elsewhere`:
-     show `display_lines` when the document has it, otherwise `lines`, exactly and stop (these answers leave nothing armed).
+     show every line of `lines` and stop (these answers leave nothing armed).
    - `state` `wait`: run the same `paritydesk artifacts next` command with
      `--wait` added.
    - `state` `question`: ask it with the AskUserQuestion tool: `header` =
-     `question.display_header` (or `question.header` when absent),
-     `question` = `question.display_text` (or `question.text`), the
-     options = each option's `display_label` and `display_description` (or
-     `label` and `description` when absent) in the given order,
+     `question.header`, `question` = `question.text`, the options = each
+     option's `label` and `description` in the given order (all translated
+     as above when the user writes in another language),
      `multiSelect: false`. Map the chosen label back to its option `id` and
      run
      `paritydesk artifacts decide --json --session "${CLAUDE_SESSION_ID}" --token <token> --question <question.id> --answer <id>`.
      No answer, a typed answer or an error: answer with the option whose
      id is `skip`. Fallback when the AskUserQuestion tool is not available:
-     show `question.display_text` (or `question.text`) and the labels as a plain-text numbered list and
+     show `question.text` and the labels (translated as above) as a plain-text numbered list and
      wait for the user's choice. Then run `paritydesk artifacts next` again.
    - `state` `calls`: if any name in `tools` is not loaded in this session,
      load them all with one ToolSearch call (`select:` followed by the
@@ -77,8 +80,7 @@ plugin checks every artifact call while this runs and records the results.
      printed (for example `paritydesk recover`); if `pause` fails the same
      way, do not retry it.
 4. Run `paritydesk artifacts done --json --session "${CLAUDE_SESSION_ID}" --token <token>`
-   and show its `display_lines` when present, otherwise its `lines`,
-   exactly.
+   and show every line of its `lines`.
 
 While this skill runs, never call an `mcp__claude-artifacts__*` tool, or
 `Artifact`, `ArtifactComments`, `ArtifactData` or `ArtifactCheck`, that is

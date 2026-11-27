@@ -221,7 +221,7 @@ func busyTitle(titles map[ids.SessionID]string, id ids.SessionID) i18n.Text {
 func busyViews(rep app.BusyReport, titles map[ids.SessionID]string, now time.Time) []BusyView {
 	var out []BusyView
 	add := func(s app.BusySession, stale bool) {
-		v := BusyView{Session: maskSession(s.ID), Title: render.Sanitize(busyTitle(titles, s.ID).English(), 80), Stale: stale}
+		v := BusyView{Session: maskSession(s.ID), Title: render.Sanitize(busyTitle(titles, s.ID).String(), 80), Stale: stale}
 		if !s.StartedAt.IsZero() {
 			v.WorkingForS = int64(max(0, now.Sub(s.StartedAt)) / time.Second)
 			v.StartedKnown = true

@@ -152,7 +152,7 @@ func TestPinsUnavailableSkipsOnlyThePinsRow(t *testing.T) {
 			before := w.root()
 			res := w.switchTo(yes("b"))
 			if res.Plan.Skipped[model.RowPins] != reasonPinsUnreadable {
-				t.Fatalf("skipped %v online %+v warnings %v", res.Plan.Skipped, res.Online, i18n.Strings(i18n.English, res.Warnings))
+				t.Fatalf("skipped %v online %+v warnings %v", res.Plan.Skipped, res.Online, i18n.Strings(res.Warnings))
 			}
 			if res.Online == nil || res.Online.PinsSource != "none" || res.Online.PinsReason != "unclean" {
 				t.Fatalf("online %+v", res.Online)
@@ -161,9 +161,9 @@ func TestPinsUnavailableSkipsOnlyThePinsRow(t *testing.T) {
 			if side == "Claude-b" {
 				alias = "b"
 			}
-			if !slices.ContainsFunc(i18n.Strings(i18n.English, res.Warnings), func(s string) bool { return strings.Contains(s, "pin list in "+alias) }) ||
-				!slices.ContainsFunc(i18n.Strings(i18n.English, res.Warnings), func(s string) bool { return strings.Contains(s, "Reason: Claude did not close it cleanly") }) {
-				t.Fatalf("warnings %v", i18n.Strings(i18n.English, res.Warnings))
+			if !slices.ContainsFunc(i18n.Strings(res.Warnings), func(s string) bool { return strings.Contains(s, "pin list in "+alias) }) ||
+				!slices.ContainsFunc(i18n.Strings(res.Warnings), func(s string) bool { return strings.Contains(s, "Reason: Claude did not close it cleanly") }) {
+				t.Fatalf("warnings %v", i18n.Strings(res.Warnings))
 			}
 			after := w.root()
 			if after.Canonical[model.RowPins] != before.Canonical[model.RowPins] {
@@ -261,7 +261,7 @@ func TestPinsP10FallsBackToP5Read(t *testing.T) {
 	if got := strings.Join(w.pinsBase("b", 2), ","); got != testkit.FakeSession(2) {
 		t.Fatalf("T base %q, want its P5 read", got)
 	}
-	for _, warn := range i18n.Strings(i18n.English, (res.Warnings)) {
+	for _, warn := range i18n.Strings((res.Warnings)) {
 		if strings.Contains(warn, "pins: the entering folder does not read back") {
 			t.Fatal(warn)
 		}
@@ -299,7 +299,7 @@ func TestPinsProbeLifecycle(t *testing.T) {
 	for _, c := range checks {
 		if c.ID == "pins" {
 			found = true
-			if c.Status != "fail" || !strings.Contains(c.Detail.English(), "no longer saves pins") {
+			if c.Status != "fail" || !strings.Contains(c.Detail.String(), "no longer saves pins") {
 				t.Fatalf("doctor pins %+v", c)
 			}
 		}
@@ -489,7 +489,7 @@ func TestPinsDoctorChecks(t *testing.T) {
 		return out
 	}
 	w.writePins("Claude", 1, 3)
-	if c := checks()["pins"]; c.Status != "ok" || !strings.Contains(c.Detail.English(), "(2 pinned session(s))") || strings.Contains(c.Detail.English(), "local_") {
+	if c := checks()["pins"]; c.Status != "ok" || !strings.Contains(c.Detail.String(), "(2 pinned session(s))") || strings.Contains(c.Detail.String(), "local_") {
 		t.Fatalf("ok: %+v", c)
 	}
 	// The fixture's backup list is empty: it differs from the main list.
@@ -497,15 +497,15 @@ func TestPinsDoctorChecks(t *testing.T) {
 		t.Fatalf("mirror differs: %+v", c)
 	}
 	w.breakPins("Claude")
-	if c := checks()["pins"]; c.Status != "warn" || !strings.Contains(c.Detail.English(), "cannot be read") {
+	if c := checks()["pins"]; c.Status != "warn" || !strings.Contains(c.Detail.String(), "cannot be read") {
 		t.Fatalf("unreadable: %+v", c)
 	}
 	w.writePinsValue("Claude", idbtest.BlobWrapped())
-	if c := checks()["pins"]; c.Status != "warn" || !strings.Contains(c.Detail.English(), "backup list") || !strings.Contains(c.Detail.English(), "(0 pinned session(s))") {
+	if c := checks()["pins"]; c.Status != "warn" || !strings.Contains(c.Detail.String(), "backup list") || !strings.Contains(c.Detail.String(), "(0 pinned session(s))") {
 		t.Fatalf("mirror: %+v", c)
 	}
 	w.cfg.Sync.Pins = false
-	if c := checks()["pins"]; c.Status != "ok" || !strings.Contains(c.Detail.English(), "turned off") {
+	if c := checks()["pins"]; c.Status != "ok" || !strings.Contains(c.Detail.String(), "turned off") {
 		t.Fatalf("off: %+v", c)
 	}
 }
@@ -637,7 +637,7 @@ func (warnPin) Build(in online.BuildInput) ([]online.Step, []online.Warning, err
 }
 
 // TestPinsWarningsReachTheResult: the pin provider's reasons reach
-// i18n.Strings(i18n.English, (Result.Warnings)) (plan --json carries them), once, at P2 and at P5.
+// i18n.Strings((Result.Warnings)) (plan --json carries them), once, at P2 and at P5.
 func TestPinsWarningsReachTheResult(t *testing.T) {
 	want := []string{i18n.T(i18n.OnlineWarnPinsFamilyBlocked, 1), i18n.T(i18n.OnlineWarnPinsHidden, 1), i18n.T(i18n.OnlineWarnPinsCapped, 50)}
 	check := func(name string, ws []string) {
@@ -654,8 +654,8 @@ func TestPinsWarningsReachTheResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	check("plan", i18n.Strings(i18n.English, prev.Warnings))
-	check("switch", i18n.Strings(i18n.English, w.switchTo(yes("b")).Warnings))
+	check("plan", i18n.Strings(prev.Warnings))
+	check("switch", i18n.Strings(w.switchTo(yes("b")).Warnings))
 }
 
 // TestPinsNeedAPinProvider: with an online layer whose registry has no

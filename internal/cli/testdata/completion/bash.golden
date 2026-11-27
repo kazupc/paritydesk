@@ -37,7 +37,7 @@ _paritydesk_flags() {
         'sync') echo '--allow-deletions --json-progress --no-launch --yes' ;;
         'uninstall') echo '--keep-artifacts --keep-backups --keep-state --yes' ;;
     esac
-    echo '--app-support-dir --ascii --config --json --lang --no-color --plain --read-only --state-dir'
+    echo '--app-support-dir --ascii --config --json --no-color --plain --read-only --state-dir'
 }
 
 _paritydesk_value_flags() {
@@ -55,7 +55,7 @@ _paritydesk_value_flags() {
         'switch') echo '--allow-deletions --confirmed-plan --only --reopen-session --skip' ;;
         'sync') echo '--allow-deletions' ;;
     esac
-    echo '--app-support-dir --config --lang --state-dir'
+    echo '--app-support-dir --config --state-dir'
 }
 
 _paritydesk_args() {
@@ -135,8 +135,6 @@ _paritydesk() {
                         pre=""
                         case "$cur" in *,*) pre="${cur%,*}," ;; esac
                         _paritydesk_reply < <(compgen -W 'sessions environments order sidebar pins prefs worktrees scratch window mcp' -P "$pre" -- "${cur##*,}") ;;
-                    --lang)
-                        _paritydesk_reply < <(compgen -W 'auto en ja' -- "$cur") ;;
                 esac
                 return 0
             fi

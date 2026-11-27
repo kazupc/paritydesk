@@ -135,7 +135,7 @@ func (r *run) onlinePreview() {
 // dropPreviewWarns removes the warnings P2's approximate draft added.
 func (r *run) dropPreviewWarns() {
 	for _, t := range r.previewWarns {
-		if i := slices.IndexFunc(r.res.Warnings, func(w i18n.Text) bool { return w.English() == t.English() }); i >= 0 {
+		if i := slices.IndexFunc(r.res.Warnings, func(w i18n.Text) bool { return w.String() == t.String() }); i >= 0 {
 			r.res.Warnings = slices.Delete(r.res.Warnings, i, i+1)
 		}
 	}
@@ -595,7 +595,7 @@ func (o *Orchestrator) OnlineCancel(ctx context.Context, queue string) (bool, er
 // this run published a queue (P12: the notification mentions it).
 func (r *run) onlineNotice(text string) string {
 	if r.root != nil && r.root.Online != nil && r.root.Online.Queue == r.res.RunID {
-		return text + " " + i18n.En(i18n.SwitchOnlineNext)
+		return text + " " + i18n.T(i18n.SwitchOnlineNext)
 	}
 	return text
 }

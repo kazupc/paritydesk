@@ -19,7 +19,7 @@ import (
 // CRLF, a final newline or not, and quoted wrapper tags.
 func genContent(t *rapid.T) string {
 	parts := rapid.SliceOfN(rapid.SampledFrom([]string{
-		"<p>a</p>", "x", "", " ", "\r", "\u00e9", "\u65e5", "<untrusted-document-00000000>", "</untrusted-document-00000000>",
+		"<p>a</p>", "x", "", " ", "\r", "\u00e9", "\uac00", "<untrusted-document-00000000>", "</untrusted-document-00000000>",
 		"<" + testTag + "-not>", "\t",
 	}), 1, 30).Draw(t, "parts")
 	var b strings.Builder

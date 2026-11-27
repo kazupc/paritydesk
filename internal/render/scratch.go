@@ -266,7 +266,7 @@ func WithScratch(v PlanView, p *plan.Plan) PlanView {
 }
 
 // scratchLines returns the scratch notices of a plan view.
-func scratchLines(l i18n.Lang, v PlanView) []string { return i18n.Strings(l, v.ScratchNotes) }
+func scratchLines(v PlanView) []string { return i18n.Strings(v.ScratchNotes) }
 
 // Bytes formats a byte count for messages: "512 B", "1.5 KiB", "2.0 GiB".
 func Bytes(n int64) string {

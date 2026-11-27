@@ -97,7 +97,7 @@ func TestKeyCodecs(t *testing.T) {
 	if !bytes.Equal(dataKey(6, 1, idbtest.PinKey)[:6], []byte{0x00, 0x06, 0x01, 0x01, 0x01, 0x23}) {
 		t.Fatalf("data key = %x", dataKey(6, 1, idbtest.PinKey))
 	}
-	for _, s := range []string{"", "keyval", "\u00e9\u4e2d", "\U0001F600x"} {
+	for _, s := range []string{"", "keyval", "\u00e9\uac00", "\U0001F600x"} {
 		got, rest, ok := readStringWithLength(append(stringWithLength(s), 7))
 		if !ok || got != s || !bytes.Equal(rest, []byte{7}) {
 			t.Fatalf("string round trip %q: %q %v", s, got, ok)

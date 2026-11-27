@@ -57,7 +57,7 @@ func DenyDocument(reason i18n.Msg) []byte {
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	_ = enc.Encode(denyDoc{denyOutput{HookEventName: EventPreToolUse, PermissionDecision: "deny",
-		PermissionDecisionReason: i18n.En(reason)}})
+		PermissionDecisionReason: i18n.T(reason)}})
 	return buf.Bytes()
 }
 

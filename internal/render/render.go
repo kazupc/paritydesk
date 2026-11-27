@@ -175,7 +175,7 @@ func (p *Printer) Lines(lines []string) {
 	}
 }
 
-// Msg prints one line: id in the process language with sanitized args.
+// Msg prints one line: id with sanitized args.
 func (p *Printer) Msg(id i18n.Msg, args ...any) { p.Text(i18n.Tx(id, args...)) }
 
 // Text prints one line.
@@ -189,15 +189,9 @@ func (p *Printer) Texts(ts []i18n.Text) {
 }
 
 // Render returns t with every string argument passed through
-// Sanitize(s, 0), rendered in the process language, then cut to max
-// runes (0: none).
+// Sanitize(s, 0), rendered, then cut to max runes (0: none).
 func (p *Printer) Render(t i18n.Text, max int) string {
-	return RenderIn(i18n.Current(), t, max)
-}
-
-// RenderIn is Render in language l (the JSON values use English).
-func RenderIn(l i18n.Lang, t i18n.Text, max int) string {
-	s := t.MapStrings(func(s string) string { return Sanitize(s, 0) }).In(l)
+	s := t.MapStrings(func(s string) string { return Sanitize(s, 0) }).String()
 	return CutRunes(s, max)
 }
 
@@ -371,78 +365,23 @@ func (p *Printer) Error(err error) {
 		}{v})
 		return
 	}
-	code := pderr.Code(v.Code)
-	head := i18n.T(i18n.ErrHeadline, catalogText(pderr.TitleID(code), v.Title), v.ID)
+	head := i18n.T(i18n.ErrHeadline, v.Title, v.ID)
 	if !p.Mode.NoColor {
 		head = "\x1b[1;31m" + head + "\x1b[0m"
 	}
 	fmt.Fprintln(p.Err, p.fold(head))
-	if msg := p.errorDetail(err, v); msg != "" {
-		fmt.Fprintln(p.Err, p.fold(i18n.T(i18n.ErrDetail, msg)))
+	if v.Message != "" {
+		fmt.Fprintln(p.Err, p.fold(i18n.T(i18n.ErrDetail, v.Message)))
 	}
 	if v.Safe != "" {
-		fmt.Fprintln(p.Err, p.fold(i18n.T(i18n.ErrSafe, catalogText(pderr.SafeID(code), v.Safe))))
+		fmt.Fprintln(p.Err, p.fold(i18n.T(i18n.ErrSafe, v.Safe)))
 	}
 	if v.Next != "" {
-		fmt.Fprintln(p.Err, p.fold(i18n.T(i18n.ErrNext, catalogText(pderr.NextID(code), v.Next))))
+		fmt.Fprintln(p.Err, p.fold(i18n.T(i18n.ErrNext, v.Next)))
 	}
 	if v.Anchor != "" {
 		fmt.Fprintln(p.Err, p.fold(i18n.T(i18n.ErrMore, v.Anchor)))
 	}
-}
-
-// catalogText renders an error-catalog id in the process language, or
-// the English text when the id is not registered (an unknown code).
-func catalogText(id i18n.Msg, english string) string {
-	if !i18n.Has(id) {
-		return english
-	}
-	return i18n.T(id)
-}
-
-// errorDetail is the detail line of a human error: the English message
-// exactly as before in English; otherwise the first catalog text in the
-// chain, of a NewT/WrapT error or of an i18n.Error (without the "op:"
-// prefix), so a pderr.Wrap around either still shows it; or the English
-// message when the text is not ours.
-func (p *Printer) errorDetail(err error, v ErrorView) string {
-	if i18n.Current() == i18n.English || v.Message == "" {
-		return v.Message
-	}
-	if t, ok := chainText(err); ok {
-		return p.Render(t, MaxErrorText)
-	}
-	return v.Message
-}
-
-// chainText returns the first catalog text in err's chain, depth first
-// like errors.As: the Text of a *pderr.Error made by NewT/WrapT, or the
-// text of an i18n.Texter. A *pderr.Error with a zero Text (Wrap, New,
-// Bug) is passed through to its cause.
-func chainText(err error) (i18n.Text, bool) {
-	for err != nil {
-		if pe, ok := err.(*pderr.Error); ok {
-			if !pe.Text.IsZero() {
-				return pe.Text, true
-			}
-		} else if tx, ok := err.(i18n.Texter); ok {
-			return tx.I18nText(), true
-		}
-		switch u := err.(type) {
-		case interface{ Unwrap() error }:
-			err = u.Unwrap()
-		case interface{ Unwrap() []error }:
-			for _, e := range u.Unwrap() {
-				if t, ok := chainText(e); ok {
-					return t, true
-				}
-			}
-			return i18n.Text{}, false
-		default:
-			return i18n.Text{}, false
-		}
-	}
-	return i18n.Text{}, false
 }
 
 // ErrorView is the JSON form of an error.

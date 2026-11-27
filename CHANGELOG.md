@@ -131,7 +131,7 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
   per queue).
 - Changed: `/paritydesk:switch` confirms with buttons (plain-text
   fallback when the question tool is missing) and runs a read-only capture
-  of its own session after the confirmation; the plugin is version 0.2.0
+  of its own session after the confirmation; the plugin is version 0.2.1
   and registers three hook events.
 - Not yet confirmed on a real Mac: the shape of PostToolUse payloads for
   MCP tools, what happens after a declined approval card, that
@@ -208,38 +208,16 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 - Do not downgrade paritydesk while a `legacy-quarantine` run is open: an
   older binary cannot recover it, and every command that takes the run
   lock exits 41 until a newer binary runs `paritydesk recover`.
-- Added: Japanese messages. The language is chosen by `--lang`
-  (`auto`, `en`, `ja`), `PARITYDESK_LANG`, `[ui] lang` in the config file,
-  the locale (`LC_ALL`, `LC_MESSAGES`, `LANG`), then `[ui] fallback_lang`
-  (used only where no locale is set). Human output is Japanese only in a
-  UTF-8 terminal; `--ascii`, `TERM=dumb` and a non-UTF-8 locale keep it
-  English (with one warning for an explicit `--lang ja`).
-- Added: the global flag `--lang` and the config keys `[ui] lang` and
-  `[ui] fallback_lang` (both `auto` by default). `init` in a Japanese
-  terminal (or with `PARITYDESK_LANG=ja`) writes `fallback_lang = "ja"`, so
-  the plan summaries the Claude Code plugin shows are Japanese too; it
-  never writes `lang`.
-- Added: `--json` stays English. When the message language is not
-  English, the documents that carry `lines` (`plan`, `switch`, `sync`,
-  `online` and `artifacts` documents) add `"lang"` and `"display_lines"`
-  (the same lines in that language), and `question` objects add
-  `display_header`, `display_text` and, per option, `display_label` and
-  `display_description`. With English, the JSON is byte-identical to
-  before. The plugin's skills show `display_lines` when present.
-- Added: `doctor` reports the message language and where it came from
-  (check `lang`, first in the list).
+- Changed: paritydesk prints English only. The plugin's skills (plugin
+  0.2.1) talk to the user in the language the user writes in and
+  translate every printed line faithfully, keeping numbers, names, ids,
+  codes and commands unchanged.
 - Changed: tables measure East Asian wide characters as two columns, and
   the `DETAIL` column of `doctor` is never cut.
-- Changed: answers to `[y/N]` typed in full width (for example with a
-  Japanese input method) count as `y`/`yes`.
 - Changed: any v0.2 config write (`init`, `profile add`, `rename`,
-  `remove`, `recover`) adds `[ui]`, and an older v0.1 binary then rejects
-  the config file (its decoding is strict). Do not downgrade paritydesk
-  after running v0.2.
-- Not yet confirmed on a real Mac: whether Code sessions started from the
-  Dock see no `LANG` (the `[ui]` keys cover it either way); the Japanese
-  wording needs a native review before the release (release checklist).
-  Notifications of the detached switch stay English.
+  `remove`, `recover`) adds the v0.2 tables (`[online]`, `[artifacts]`,
+  `[scratch]`), and an older v0.1 binary then rejects the config file (its
+  decoding is strict). Do not downgrade paritydesk after running v0.2.
 
 ### Added
 
@@ -559,8 +537,6 @@ Every item below landed in v0.2 (see "v0.2 (in progress)" above).
 - Done in v0.2: scratch workspaces for worktrees.
 - Done in v0.2: a native multi-account signal from the app's log.
 - Done in v0.2: the pairing organization in `doctor`.
-- Done in v0.2: Japanese messages; the Japanese README follows with the
-  README rewrite.
 - Done in v0.2: buttons (Switch / Cancel) for the confirmation that
   `/paritydesk:switch` asks.
 

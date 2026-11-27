@@ -151,7 +151,7 @@ func TestNextPreconditions(t *testing.T) {
 				}
 				return
 			}
-			if err != nil || out.State != tc.state || len(i18n.Strings(i18n.English, out.Lines)) != 1 || out.Lines[0].English() != i18n.T(tc.line) {
+			if err != nil || out.State != tc.state || len(i18n.Strings(out.Lines)) != 1 || out.Lines[0].String() != i18n.T(tc.line) {
 				t.Fatalf("%+v %v", out, err)
 			}
 			if h.root.Online != nil && h.root.Online.Kind == KindArtifacts {
@@ -212,7 +212,7 @@ func TestUnavailableAndRefused(t *testing.T) {
 		t.Fatalf("step %+v", st)
 	}
 	out, err = h.svc.Next(ctx, NextArgs{Session: testSession, Unavailable: []string{ToolReadArtifact}})
-	if err != nil || out.State != online.StateNone || out.Lines[0].English() != i18n.T(i18n.ArtifactsErrToolsMissing) {
+	if err != nil || out.State != online.StateNone || out.Lines[0].String() != i18n.T(i18n.ArtifactsErrToolsMissing) {
 		t.Fatalf("%+v %v", out, err)
 	}
 	if c, _ := h.svc.Archive.LoadChain(); c.State != ChainStale || c.StaleWhy != "tools_missing" {
@@ -231,7 +231,7 @@ func TestPauseAndDone(t *testing.T) {
 		t.Fatal("not armed")
 	}
 	p, err := h.svc.Pause(ctx, online.Caller{Session: testSession})
-	if err != nil || p.State != StatePaused || p.Lines[0].English() != i18n.T(i18n.ArtifactsPaused) {
+	if err != nil || p.State != StatePaused || p.Lines[0].String() != i18n.T(i18n.ArtifactsPaused) {
 		t.Fatalf("%+v %v", p, err)
 	}
 	if armed, _ := h.ol.Store.ArmedUntil(h.clk.Now()); armed {
@@ -293,7 +293,7 @@ func TestDoneRootBusy(t *testing.T) {
 	}
 	h.rounds.busy = true
 	d, err := h.svc.Done(ctx, online.Caller{Session: testSession})
-	if err != nil || d.State != StateComplete || !strings.Contains(strings.Join(i18n.Strings(i18n.English, d.Lines), "\n"), i18n.T(i18n.ArtifactsDoneRootBusy)) {
+	if err != nil || d.State != StateComplete || !strings.Contains(strings.Join(i18n.Strings(d.Lines), "\n"), i18n.T(i18n.ArtifactsDoneRootBusy)) {
 		t.Fatalf("%+v %v", d, err)
 	}
 	if d.Counts.Saved != 1 {
@@ -362,8 +362,8 @@ func TestGrantDeclined(t *testing.T) {
 		t.Fatal(err)
 	}
 	st, err := h.svc.Status(StatusInput{})
-	if err != nil || st.Publishing != "grant_declined" || !slices.Contains(i18n.Strings(i18n.English, st.Lines), i18n.T(i18n.ArtifactsGrantDeclined)) {
-		t.Fatalf("status after a new chain: %q %q %v", st.Publishing, i18n.Strings(i18n.English, st.Lines), err)
+	if err != nil || st.Publishing != "grant_declined" || !slices.Contains(i18n.Strings(st.Lines), i18n.T(i18n.ArtifactsGrantDeclined)) {
+		t.Fatalf("status after a new chain: %q %q %v", st.Publishing, i18n.Strings(st.Lines), err)
 	}
 	if err := h.svc.Archive.SaveChain(c); err != nil {
 		t.Fatal(err)

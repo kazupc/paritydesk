@@ -1,6 +1,6 @@
 {
   "name": "paritydesk",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Switch the Claude desktop app between accounts from a Code session. Requires the paritydesk binary.",
   "author": {
     "name": "paritydesk maintainers"

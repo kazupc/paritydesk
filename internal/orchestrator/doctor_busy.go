@@ -221,7 +221,7 @@ func (dr *doctor) accountChange(ctx context.Context, root *state.Root, folders [
 		c := changes[i]
 		to := ids.Mask(string(c.To))
 		if c.ToAlias != "" {
-			to = i18n.Tx(i18n.DoctorAccountChangeToProfile, c.ToAlias, to).English()
+			to = i18n.Tx(i18n.DoctorAccountChangeToProfile, c.ToAlias, to).String()
 		}
 		at := i18n.Tx(i18n.DoctorAccountChangeUnknownTime)
 		if !c.At.IsZero() {

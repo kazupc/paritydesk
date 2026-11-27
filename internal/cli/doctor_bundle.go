@@ -115,7 +115,7 @@ func (e *env) writeBundle(abs string, logs int, v doctorView) error {
 		HookBinary: v.HookBinary,
 	}
 	for _, c := range v.Checks {
-		in.Checks = append(in.Checks, bundle.Check{ID: c.ID, Status: c.Status, Detail: c.Detail.English()})
+		in.Checks = append(in.Checks, bundle.Check{ID: c.ID, Status: c.Status, Detail: c.Detail.String()})
 	}
 	cfg, exists, err := loadConfig(paths.ConfigFile)
 	switch {

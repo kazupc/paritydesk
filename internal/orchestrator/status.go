@@ -191,11 +191,6 @@ type Check struct {
 // DoctorOptions are the flags of `doctor`.
 type DoctorOptions struct {
 	GrantAutomation bool
-	// Lang is the message language the CLI resolved; LangForced is set
-	// when it is not English but the terminal forces English (human
-	// output only).
-	Lang       i18n.Resolution
-	LangForced bool
 }
 
 // doctor collects checks.
@@ -218,7 +213,6 @@ func (dr *doctor) add(id, status string, detail i18n.Text) {
 func (o *Orchestrator) Doctor(ctx context.Context, opts DoctorOptions) ([]Check, error) {
 	d := o.d
 	dr := &doctor{o: o}
-	dr.langCheck(opts)
 
 	root, err := d.State.Load()
 	if err != nil || root == nil {

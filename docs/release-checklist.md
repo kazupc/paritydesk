@@ -139,8 +139,10 @@ release:
 12. **Claude in Chrome.** In a Code session, use Claude in Chrome on a
     harmless page. Expected: it works. Repeat after switching back.
 13. **Switch from inside a Code session** with `/paritydesk:switch`.
-    Expected: the plan is shown verbatim and confirmed, the switch runs
-    as a background job after the turn ends, Claude relaunches on the
+    Expected: every plan line is shown (translated faithfully if you
+    write in another language, with numbers, names and the DESTRUCTIVE
+    line's counts unchanged) and confirmed, the switch runs as a
+    background job after the turn ends, Claude relaunches on the
     other account, a notification appears, and the invoking session
     reopens.
 14. **Newest wins both ways.** Rename one session and pin another on
@@ -308,7 +310,7 @@ Use fictional content only.
 
 ## Online reconcile (v0.2)
 
-On a Mac with app 7.x, the plugin 0.2.0 installed and two profiles A and B.
+On a Mac with app 7.x, the plugin 0.2.1 installed and two profiles A and B.
 
 - R-ON-1. With a temporary PostToolUse hook that logs its raw payload
   (outside paritydesk), call `list_sections` once in a Code session.
@@ -344,7 +346,7 @@ On a Mac with app 7.x, the plugin 0.2.0 installed and two profiles A and B.
 
 ## Pins (v0.2)
 
-On a Mac with app 7.x, the plugin 0.2.0 installed and two profiles A and
+On a Mac with app 7.x, the plugin 0.2.1 installed and two profiles A and
 B. These steps are run by the maintainer, never by an agent.
 
 - R-PIN-1. Quit Claude, then run `paritydesk doctor --json` on the real
@@ -424,21 +426,6 @@ Use fictional accounts only.
 - **L-3** Put a directory of account A inside B's folder; apply with
   `--quarantine`: it moves into a pinned generation; `backups prune`
   keeps it; `rollback <n>` puts it back; `backups purge` warns first.
-
-## Japanese messages (v0.2)
-
-- **J-1** In Terminal with `LANG=ja_JP.UTF-8`: `paritydesk status`,
-  `profile list`, `plan`, `doctor` and `--help` print Japanese and the
-  tables line up; `--ascii` prints English with one warning.
-- **J-2** Read `internal/i18n/catalog_ja.go` and the goldens under
-  `internal/cli/testdata/ja/` as a native speaker; fix wording before the
-  release (ids and verbs stay).
-- **J-3** From a Code session started from the Dock, run `/paritydesk:switch`
-  after `init` in a Japanese terminal: the plan lines the skill shows are
-  Japanese (`display_lines`), the JSON `lines` English.
-- **J-4** Only then decide whether the detached job's notifications may be
-  translated: check that osascript shows Japanese text under the job's
-  `LC_ALL=C` environment. Until then they stay English.
 
 ## Uninstall (last on this Mac)
 

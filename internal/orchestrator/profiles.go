@@ -24,10 +24,6 @@ type InitOptions struct {
 	Alias   ids.Alias
 	Label   string
 	Managed bool
-	// FallbackLang, when Japanese, is written as [ui] fallback_lang if
-	// that key is "auto" or empty (the CLI sets it for a language that
-	// came from PARITYDESK_LANG or the locale).
-	FallbackLang i18n.Lang
 }
 
 // session is a locked command that edits state (init and profile
@@ -120,9 +116,6 @@ func (o *Orchestrator) Init(ctx context.Context, opts InitOptions) error {
 	cfg := o.d.Config
 	o.progressNaming(P0Preflight, "start", i18n.Tx(i18n.ProgressP0InitAdd, opts.Alias, ids.Mask(string(f.Identity.Account))), opts.Alias)
 	cfg.Profiles = append(cfg.Profiles, config.Profile{Alias: opts.Alias, Label: opts.Label, ManagedByOrg: opts.Managed})
-	if opts.FallbackLang == i18n.Japanese && (cfg.UI.FallbackLang == "" || strings.EqualFold(cfg.UI.FallbackLang, config.LangAuto)) {
-		cfg.UI.FallbackLang = config.LangJA
-	}
 	if err := o.saveConfig(); err != nil {
 		return err
 	}

@@ -191,7 +191,7 @@ func runProfileAdoptLegacy(ctx context.Context, e *env, fs *flag.FlagSet) error 
 		if err != nil {
 			return err
 		}
-		a, err := parseAlias(foldAnswer(line))
+		a, err := parseAlias(strings.TrimSpace(line))
 		if err != nil {
 			return err
 		}

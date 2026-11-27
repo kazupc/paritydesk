@@ -58,7 +58,7 @@ func runCrashMatrix(t *testing.T, c crashCase) {
 			continue
 		}
 		e.checkInvariants(label)
-		if again, err := e.orch().Recover(ctx, RecoverOptions{Yes: true}); err != nil || !slices.Contains(i18n.Strings(i18n.English, again.Actions), "nothing to recover") && e.st.root(t).PendingAdd == nil {
+		if again, err := e.orch().Recover(ctx, RecoverOptions{Yes: true}); err != nil || !slices.Contains(i18n.Strings(again.Actions), "nothing to recover") && e.st.root(t).PendingAdd == nil {
 			t.Errorf("%s: second recover: %v %v", label, again, err)
 		}
 		if c.after != nil {
@@ -171,14 +171,14 @@ func TestProfileAddThenBind(t *testing.T) {
 	if root.PendingAdd == nil || root.PendingAdd.Alias != "c" || root.Run != nil || e.account("Claude-a") != acctA || e.app.launches != 1 {
 		t.Fatalf("after add: pending %+v", root.PendingAdd)
 	}
-	if !slices.ContainsFunc(e.ui.events, func(ev Event) bool { return ev.Message.English() == chromeNote.English() }) {
+	if !slices.ContainsFunc(e.ui.events, func(ev Event) bool { return ev.Message.String() == chromeNote.String() }) {
 		t.Error("no Chrome profile explanation")
 	}
 	if _, err := e.orch().Switch(ctx, yes("b")); codeOf(t, err) != pderr.NeedsRecover {
 		t.Fatalf("switch with a pending add: %v", err)
 	}
 	st, _ := e.orch().Status(ctx, true)
-	if !st.NeedsRecover || len(i18n.Strings(i18n.English, st.Warnings)) == 0 {
+	if !st.NeedsRecover || len(i18n.Strings(st.Warnings)) == 0 {
 		t.Errorf("status = %+v", st)
 	}
 	// The user signs in: Claude now holds a new account.
@@ -288,12 +288,12 @@ func TestRecoverWithoutJournal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if e.account(ids.DefaultFolder) == "" || !slices.Contains(e.ui.asked, ConfirmRecover) || len(i18n.Strings(i18n.English, res.Actions)) == 0 {
+	if e.account(ids.DefaultFolder) == "" || !slices.Contains(e.ui.asked, ConfirmRecover) || len(i18n.Strings(res.Actions)) == 0 {
 		t.Errorf("nothing moved: %+v", res)
 	}
 	// With Claude in place there is nothing to move.
 	res, err = e.orch().Recover(context.Background(), RecoverOptions{})
-	if err != nil || len(i18n.Strings(i18n.English, res.Actions)) != 1 {
+	if err != nil || len(i18n.Strings(res.Actions)) != 1 {
 		t.Errorf("%v %v", res, err)
 	}
 }

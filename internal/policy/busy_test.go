@@ -9,7 +9,7 @@ import (
 )
 
 // busyTextIDs are the ids the log-signal item's orchestrator texts moved
-// to (spec-busy 12.2, spec-i18n-ja 7.4 item 2).
+// to (spec-busy 12.2).
 var busyTextIDs = []string{
 	"confirm.busy_line",
 	"confirm.busy_line_no_time",

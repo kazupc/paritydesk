@@ -216,6 +216,7 @@ func TestSkewed(t *testing.T) {
 	}{
 		{"", "0.1.0", false},
 		{"0.1.0", "0.1.0-dev", false},
+		{"0.2.1", "0.2.0-dev", false},
 		{"0.1.9", "0.1.0", false},
 		{"v0.1.0", "0.1.0", false},
 		{"0.1-dev", "0.1.3", false},

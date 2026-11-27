@@ -1,7 +1,5 @@
 # paritydesk
 
-日本語: [README.ja.md](README.ja.md)
-
 [![ci](https://github.com/kazupc/paritydesk/actions/workflows/ci.yml/badge.svg)](https://github.com/kazupc/paritydesk/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 

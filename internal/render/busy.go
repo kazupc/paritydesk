@@ -31,7 +31,7 @@ func HumanAge(d time.Duration) string {
 // busyLines is the busy block of PlanLines: a header with the count and
 // the wait, one line per working session, and a line counting the stale
 // ones.
-func busyLines(l i18n.Lang, v PlanView) []string {
+func busyLines(v PlanView) []string {
 	working, stale := 0, 0
 	for _, b := range v.Busy {
 		if b.Stale {
@@ -42,21 +42,21 @@ func busyLines(l i18n.Lang, v PlanView) []string {
 	}
 	var lines []string
 	if working > 0 {
-		lines = append(lines, i18n.TIn(l, i18n.PlanBusyHeader, working, HumanAge(v.BusyWait)))
+		lines = append(lines, i18n.T(i18n.PlanBusyHeader, working, HumanAge(v.BusyWait)))
 		for _, b := range v.Busy {
 			if b.Stale {
 				continue
 			}
 			masked := Sanitize(b.Masked, 48)
 			if b.Known {
-				lines = append(lines, "  "+i18n.TIn(l, i18n.PlanBusyLine, masked, HumanAge(b.Age)))
+				lines = append(lines, "  "+i18n.T(i18n.PlanBusyLine, masked, HumanAge(b.Age)))
 			} else {
-				lines = append(lines, "  "+i18n.TIn(l, i18n.PlanBusyLineNoTime, masked))
+				lines = append(lines, "  "+i18n.T(i18n.PlanBusyLineNoTime, masked))
 			}
 		}
 	}
 	if stale > 0 {
-		lines = append(lines, i18n.TIn(l, i18n.PlanBusyStale, stale))
+		lines = append(lines, i18n.T(i18n.PlanBusyStale, stale))
 	}
 	return lines
 }

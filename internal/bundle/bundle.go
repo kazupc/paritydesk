@@ -288,8 +288,7 @@ func unclassifiedCount(detail string) string {
 	return fmt.Sprintf("%d unclassified entries in Claude (names left out of the bundle)", n)
 }
 
-// The support archive is read by maintainers and stays English
-// (spec-i18n-ja 4).
+// Fixed problem texts of the support archive.
 const (
 	problemConfig    = "the config file could not be read or parsed; its content is not included"
 	problemManifests = "the compatibility manifests could not be loaded"

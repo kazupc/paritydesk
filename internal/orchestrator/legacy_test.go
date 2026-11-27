@@ -982,8 +982,8 @@ func TestLegacyQuarantineCrashes(t *testing.T) {
 				t.Fatalf("moved: gens %+v refs %+v", infos, root.Generations)
 			}
 			if tc.moved {
-				if !strings.Contains(strings.Join(i18n.Strings(i18n.English, rr.Actions), "\n"), "1 of 1") {
-					t.Fatalf("actions %v", i18n.Strings(i18n.English, rr.Actions))
+				if !strings.Contains(strings.Join(i18n.Strings(rr.Actions), "\n"), "1 of 1") {
+					t.Fatalf("actions %v", i18n.Strings(rr.Actions))
 				}
 				e.ui.interactive, e.ui.answers[ConfirmRollback] = true, true
 				if _, err := e.orch().Rollback(context.Background(), root.Generations[0].N, false); err != nil {
@@ -1040,7 +1040,7 @@ func TestLegacyCanary(t *testing.T) {
 		all += string(o)
 	}
 	for _, ev := range e.ui.events {
-		all += ev.Message.English()
+		all += ev.Message.String()
 	}
 	if strings.Contains(all, canary) {
 		t.Fatal("the canary leaked")

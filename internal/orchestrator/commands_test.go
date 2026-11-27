@@ -185,7 +185,7 @@ func TestStatusShortNeverReadsKV(t *testing.T) {
 	if e.kv.calls != 0 || e.scans != 0 {
 		t.Errorf("short status read KV %d times, scanned %d times", e.kv.calls, e.scans)
 	}
-	if !st.NeedsRecover || !strings.Contains(strings.Join(i18n.Strings(i18n.English, st.Warnings), " "), "profile add of c") {
+	if !st.NeedsRecover || !strings.Contains(strings.Join(i18n.Strings(st.Warnings), " "), "profile add of c") {
 		t.Errorf("pending add not shown: %+v", st)
 	}
 	if len(st.Profiles) != 2 || !st.Profiles[0].Active || st.Profiles[0].Folder != "Claude" || st.Profiles[1].Folder != "Claude-b" {
@@ -215,29 +215,29 @@ func TestDoctor(t *testing.T) {
 			byID[c.ID] = c
 		}
 	}
-	if checks[0].ID != "lang" || checks[0].Status != "ok" || checks[0].Detail.English() != "Messages: en (from default)" {
-		t.Errorf("first check = %+v, want the lang check", checks[0])
+	if _, ok := byID["lang"]; ok {
+		t.Error("doctor still has a lang check")
 	}
-	for _, id := range []string{"lang", "state", "version", "probes", "identity", "foreign-tools", "unclassified", "automation", "update", "open-file-scan", "chrome-bridge", "busy-detection", "busy-now", "account-change", "chrome-pairing-org", "managed", "runner", "scratch", "scratch-orphans", "scratch-kept", "pins", "online", "artifacts"} {
+	for _, id := range []string{"state", "version", "probes", "identity", "foreign-tools", "unclassified", "automation", "update", "open-file-scan", "chrome-bridge", "busy-detection", "busy-now", "account-change", "chrome-pairing-org", "managed", "runner", "scratch", "scratch-orphans", "scratch-kept", "pins", "online", "artifacts"} {
 		if _, ok := byID[id]; !ok {
 			t.Errorf("missing check %s", id)
 		}
 	}
-	if byID["foreign-tools"].Status != "fail" || !strings.Contains(byID["unclassified"].Detail.English(), "unknown.bin") {
+	if byID["foreign-tools"].Status != "fail" || !strings.Contains(byID["unclassified"].Detail.String(), "unknown.bin") {
 		t.Errorf("checks = %+v", checks)
 	}
 	un := byID["unclassified"]
-	if un.Status != "warn" || !strings.Contains(un.Detail.English(), "cache-<id>.db") || strings.Contains(un.Detail.English(), "secret content") ||
-		strings.Contains(un.Detail.English(), "identity.json") {
+	if un.Status != "warn" || !strings.Contains(un.Detail.String(), "cache-<id>.db") || strings.Contains(un.Detail.String(), "secret content") ||
+		strings.Contains(un.Detail.String(), "identity.json") {
 		t.Errorf("unclassified = %+v", un)
 	}
 	// No connection line in the log is normal: Claude in Chrome connects
 	// on first use, so the check stays ok.
-	if br := byID["chrome-bridge"]; br.Status != "ok" || !strings.Contains(br.Detail.English(), "one Chrome profile per account") {
+	if br := byID["chrome-bridge"]; br.Status != "ok" || !strings.Contains(br.Detail.String(), "one Chrome profile per account") {
 		t.Errorf("bridge = %+v", byID["chrome-bridge"])
 	}
 	for _, c := range checks {
-		if strings.Contains(c.Detail.English(), string(acctA)) {
+		if strings.Contains(c.Detail.String(), string(acctA)) {
 			t.Errorf("unmasked account in %+v", c)
 		}
 	}
@@ -322,7 +322,7 @@ func TestInitAndProfiles(t *testing.T) {
 	// profile adopt.
 	adoptHint := false
 	for _, ev := range e.ui.events {
-		if strings.Contains(ev.Message.English(), "profile adopt <alias> Claude-b") {
+		if strings.Contains(ev.Message.String(), "profile adopt <alias> Claude-b") {
 			adoptHint = true
 		}
 	}
@@ -501,8 +501,8 @@ func TestDowngradeAndSQLiteLSReachDecide(t *testing.T) {
 	}
 	var reason, skipped bool
 	for _, c := range checks {
-		reason = reason || (c.ID == "mode-reason" && c.Detail.English() == "the app was downgraded")
-		skipped = skipped || (c.ID == "skipped-rows" && strings.Contains(c.Detail.English(), "sessions"))
+		reason = reason || (c.ID == "mode-reason" && c.Detail.String() == "the app was downgraded")
+		skipped = skipped || (c.ID == "skipped-rows" && strings.Contains(c.Detail.String(), "sessions"))
 	}
 	if !reason || !skipped {
 		t.Fatalf("doctor did not explain the mode: %+v", checks)
@@ -520,55 +520,5 @@ func TestLSAllowListNeverEmpty(t *testing.T) {
 			PostHash: model.HashBytes(testkit.LSValue("{}"))}}}}
 	if err := plan.Validate(in); err == nil || !strings.Contains(err.Error(), "allow list") {
 		t.Fatalf("a Local Storage op in a run without Local Storage rows: %v", err)
-	}
-}
-
-// TestDoctorLangCheck: the lang check names the language and its source,
-// and warns for an invalid PARITYDESK_LANG and for a forced English.
-func TestDoctorLangCheck(t *testing.T) {
-	e := newEnv(t)
-	cases := []struct {
-		opts   DoctorOptions
-		status string
-		detail string
-	}{
-		{DoctorOptions{Lang: i18n.Resolution{Lang: i18n.Japanese, Source: i18n.SourceConfigFallback}}, "ok", "Messages: ja (from config-fallback)"},
-		{DoctorOptions{Lang: i18n.Resolution{Lang: i18n.English, Source: i18n.SourceDefault, EnvInvalid: true}}, "warn", i18n.En(i18n.DoctorLangEnvInvalid)},
-		{DoctorOptions{Lang: i18n.Resolution{Lang: i18n.Japanese, Source: i18n.SourceLocale}, LangForced: true}, "warn", i18n.En(i18n.DoctorLangASCII)},
-	}
-	for _, tc := range cases {
-		checks, err := e.orch().Doctor(context.Background(), tc.opts)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if c := checks[0]; c.ID != "lang" || c.Status != tc.status || c.Detail.English() != tc.detail {
-			t.Errorf("%+v: first check = %+v", tc.opts, c)
-		}
-	}
-}
-
-// TestInitFallbackLang (spec-i18n-ja 8.4): init writes [ui] fallback_lang
-// = "ja" only when asked and only over "auto" or empty; it never writes
-// [ui] lang.
-func TestInitFallbackLang(t *testing.T) {
-	for _, tc := range []struct {
-		fallback, before, want string
-		lang                   i18n.Lang
-	}{
-		{"auto", "auto", "ja", i18n.Japanese},
-		{"", "", "ja", i18n.Japanese},
-		{"en", "en", "en", i18n.Japanese},
-		{"auto", "auto", "auto", ""},
-	} {
-		e := newEnv(t)
-		e.st.committed = nil
-		e.cfg.Profiles = nil
-		e.cfg.UI = config.UI{Lang: "auto", FallbackLang: tc.before}
-		if err := e.orch().Init(context.Background(), InitOptions{Alias: "a", FallbackLang: tc.lang}); err != nil {
-			t.Fatal(err)
-		}
-		if e.cfg.UI.FallbackLang != tc.want || e.cfg.UI.Lang != "auto" {
-			t.Errorf("%+v: ui = %+v", tc, e.cfg.UI)
-		}
 	}
 }

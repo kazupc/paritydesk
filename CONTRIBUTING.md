@@ -217,7 +217,7 @@ the decision, finding and spike ids indexed in
 [docs/architecture.md](docs/architecture.md). Every message a person
 reads comes from the catalog in `internal/i18n` (see "Adding a message"
 below); command short texts and flag usages are catalog ids too. Printed
-text must stay ASCII-safe under `--ascii` (paritydesk then prints English).
+text must stay ASCII-safe under `--ascii`.
 
 ## Capability claims
 
@@ -251,28 +251,22 @@ ever refuses that, build with `-tags pd_nofdscan` to compile the stub
 
 ## Adding a message
 
-Every text a person reads is a catalog message; the rules and the tests
-are in [docs/dev/i18n.md](docs/dev/i18n.md). In short:
+Every text a person reads is a message of the English catalog; the rules
+and the tests are in [docs/dev/i18n.md](docs/dev/i18n.md). paritydesk
+prints English only and the plugin's skills translate for the user, so
+there is nothing to translate here. In short:
 
-- Add the id and the English text to `internal/i18n/catalog.go`, and the
-  Japanese to `internal/i18n/catalog_ja.go` at the same place (the files
-  keep the same order; the style rules and the glossary are the comment
-  at the top of `catalog_ja.go`). `hook.*`, `guard.*` and `notify.*` ids
-  are English only.
+- Add the id and the text to `internal/i18n/catalog.go`.
 - Pass values as arguments of a format, never by joining strings, and
   keep catalog text out of `Printer.Line` (use `Printer.Msg` or
   `Printer.Text`; `Line` takes a constant format for data).
 - Errors a person can act on use `pderr.NewT` or `pderr.WrapT`; a broken
-  invariant is `pderr.Bug` or `pderr.Bugf` (English). A package-level
-  sentinel a person reads is an `i18n.NewErr`.
+  invariant is `pderr.Bug` or `pderr.Bugf`. A package-level sentinel a
+  person reads is an `i18n.NewErr`.
 - Fields that reach people (`Detail`, `Message`, `Warnings`, `Lines`,
-  `Actions`, `Problem`) hold `i18n.Text`; JSON encodes them in English.
-- Run `go test ./internal/i18n ./internal/policy` (completeness, verbs,
-  layout, protected tokens, style, order) and regenerate the goldens with
-  `go test ./internal/cli ./internal/render -run Golden -update`, then read
-  the diff, including `testdata/ja/`.
-- Tests write Japanese only as `\u` escapes; only `catalog_ja.go`,
-  `README.ja.md` and the `testdata/ja/` goldens hold Japanese letters.
-- Maintainers add the kana and kanji forms of every personal label to the
-  private deny-list too: the Japanese check compares every window of the
-  Japanese files with them.
+  `Actions`, `Problem`) hold `i18n.Text`.
+- Run `go test ./internal/i18n ./internal/policy` and regenerate the
+  goldens with `go test ./internal/cli -run Golden -update`, then read the
+  diff.
+- Keep every file English: tests that need non-Latin sample text write it
+  as `\u` escapes (`TestRepoIsEnglishOnly`).

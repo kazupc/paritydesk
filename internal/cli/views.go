@@ -32,7 +32,7 @@ type runView struct {
 	Detached          bool             `json:"detached,omitempty"`
 	QuitPending       bool             `json:"quit_pending,omitempty"`
 	Summary           plan.Summary     `json:"summary"`
-	Lines             []string         `json:"lines"` // English always
+	Lines             []string         `json:"lines"`
 	Warnings          []i18n.Text      `json:"warnings,omitempty"`
 	TimingsMS         map[string]int64 `json:"timings_ms,omitempty"`
 	// Busy lists the sessions still working; titles are data written by
@@ -46,23 +46,6 @@ type runView struct {
 	// Online counts what the switch applies inside Claude afterwards
 	// (counts and fixed words only).
 	Online *online.Summary `json:"online,omitempty"`
-
-	// Lang and DisplayLines are set only when the display language is
-	// not English: the same lines as Lines in that language, for the
-	// plugin's skill to show verbatim.
-	Lang         i18n.Lang `json:"lang,omitempty"`
-	DisplayLines []string  `json:"display_lines,omitempty"`
-	// pv is the plan behind Lines (nil without a plan); not encoded.
-	pv *render.PlanView
-}
-
-// HumanLines returns the plan lines in the process language (nil without
-// a plan): human output never uses the display language.
-func (v runView) HumanLines() []string {
-	if v.pv == nil {
-		return nil
-	}
-	return render.PlanLinesIn(i18n.Current(), *v.pv)
 }
 
 // newRunView builds the view of a result. Lines are the human summary,
@@ -132,11 +115,7 @@ func newRunView(r *orchestrator.Result) runView {
 			Seeded: r.Plan != nil && r.Plan.Seeded,
 		}, r.Plan)
 		v.Scratch = pv.Scratch
-		v.pv = &pv
-		v.Lines = render.PlanLinesIn(i18n.English, pv)
-		if l := i18n.DisplayLang(); l != i18n.English {
-			v.Lang, v.DisplayLines = l, render.PlanLinesIn(l, pv)
-		}
+		v.Lines = render.PlanLines(pv)
 		v.humanBusy = render.BusyTitled(titles, masked)
 	}
 	if len(r.Timings) > 0 {
@@ -161,7 +140,7 @@ func sanitizeAll(in []string) []string {
 }
 
 // sanitizeTexts sanitizes the arguments of every text of a list and
-// bounds its rendering to 300 runes in every language.
+// bounds its rendering to 300 runes.
 func sanitizeTexts(in []i18n.Text) []i18n.Text {
 	if len(in) == 0 {
 		return nil

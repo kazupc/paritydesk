@@ -46,7 +46,7 @@ opens a network connection.
 | Buttons for the switch confirmation | Done in v0.2: unit U5 (`spec-online`) |
 | Native multi-account signal from main.log | Done in v0.2: unit U1 (`spec-busy`) |
 | Pinned pairing org shown in `doctor` | Done in v0.2: unit U1 (`spec-busy`) |
-| Japanese messages (`--lang`, `[ui]`, `display_lines`) | Done in v0.2: unit U9 (`spec-i18n-ja`); `README.ja.md` follows with the README rewrite |
+| Messages in other languages | Not planned: paritydesk prints English only, and the plugin's skills translate for the user |
 
 Dropped rather than deferred: any SIGTERM path (`--force-quit`); ADR 0003
 showed SIGTERM is an unclean exit.

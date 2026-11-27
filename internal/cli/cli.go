@@ -34,18 +34,12 @@ var (
 type globalFlags struct {
 	JSON, Plain, NoColor, ASCII, ReadOnly bool
 	Config, StateDir, AppSupportDir       string
-	// Lang is --lang (auto, en or ja); never passed to detached jobs.
-	Lang string
 }
-
-// flagLang names the message-language flag.
-const flagLang = "lang"
 
 // globalNames lists the global flags, for the usage text.
 var globalNames = map[string]bool{
 	"json": true, "plain": true, "no-color": true, "ascii": true, "read-only": true,
 	orchestrator.FlagConfig: true, orchestrator.FlagStateDir: true, orchestrator.FlagAppSupportDir: true,
-	flagLang: true,
 }
 
 // hiddenFlags are accepted but not listed in the usage text: internal
@@ -64,14 +58,14 @@ var hiddenFlags = map[string]bool{
 const hiddenUsage = "(hidden) "
 
 // isHidden reports whether a flag is left out of usage text and
-// completion: an internal flag name, or a usage whose English text starts
-// with hiddenUsage.
+// completion: an internal flag name, or a usage whose text starts with
+// hiddenUsage.
 func isHidden(f *flag.Flag) bool {
-	return hiddenFlags[f.Name] || strings.HasPrefix(i18n.En(i18n.Msg(f.Usage)), hiddenUsage)
+	return hiddenFlags[f.Name] || strings.HasPrefix(i18n.T(i18n.Msg(f.Usage)), hiddenUsage)
 }
 
-// usage is the usage string of a flag: its catalog id, translated when
-// the usage text is printed (printFlags, completion).
+// usage is the usage string of a flag: its catalog id, rendered when the
+// usage text is printed (printFlags, completion).
 func usage(id i18n.Msg) string { return string(id) }
 
 // flagUsageArgs supplies the arguments of a flag usage format (today only
@@ -80,14 +74,14 @@ var flagUsageArgs = map[i18n.Msg]func() []any{
 	i18n.FlagOnly: func() []any { return []any{strings.Join(categoryNames(), ",")} },
 }
 
-// flagUsageText renders a flag usage id in l.
-func flagUsageText(l i18n.Lang, usageID string) string {
+// flagUsageText renders a flag usage id.
+func flagUsageText(usageID string) string {
 	id := i18n.Msg(usageID)
 	var args []any
 	if f := flagUsageArgs[id]; f != nil {
 		args = f()
 	}
-	return i18n.TIn(l, id, args...)
+	return i18n.T(id, args...)
 }
 
 func (g *globalFlags) register(fs *flag.FlagSet) {
@@ -99,7 +93,6 @@ func (g *globalFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&g.Config, orchestrator.FlagConfig, g.Config, usage(i18n.FlagConfig))
 	fs.StringVar(&g.StateDir, orchestrator.FlagStateDir, g.StateDir, usage(i18n.FlagStateDir))
 	fs.StringVar(&g.AppSupportDir, orchestrator.FlagAppSupportDir, g.AppSupportDir, usage(i18n.FlagAppSupportDir))
-	fs.StringVar(&g.Lang, flagLang, g.Lang, usage(i18n.FlagLang))
 }
 
 // env is what a command's run function receives.
@@ -110,7 +103,6 @@ type env struct {
 	stderr io.Writer
 	sys    *system
 	in     *bufio.Reader // lazily wraps stdin, shared by every prompt
-	ls     langState     // the message language (lang.go)
 }
 
 // command is one node of the command tree. The tree is built on the
@@ -131,12 +123,9 @@ type command struct {
 	// returns errFailClosed, exits non-zero without output, so the
 	// plugin's shim applies its own armed check (the PreToolUse guard).
 	failClosed bool
-	// english commands print English only and resolve no language (the
-	// hook, completion and the hidden aliases command).
-	english bool
-	flags   func(fs *flag.FlagSet)
-	run     func(ctx context.Context, e *env, fs *flag.FlagSet, args []string) error
-	sub     []*command
+	flags      func(fs *flag.FlagSet)
+	run        func(ctx context.Context, e *env, fs *flag.FlagSet, args []string) error
+	sub        []*command
 }
 
 // errUsage marks command-line errors (exit 2).
@@ -145,9 +134,8 @@ var errUsage = errors.New("usage")
 // usageErr is a command-line error whose text is a catalog message.
 type usageErr struct{ t i18n.Text }
 
-func (u *usageErr) Error() string       { return errUsage.Error() + ": " + u.t.English() }
-func (u *usageErr) Unwrap() error       { return errUsage }
-func (u *usageErr) I18nText() i18n.Text { return u.t }
+func (u *usageErr) Error() string { return errUsage.Error() + ": " + u.t.String() }
+func (u *usageErr) Unwrap() error { return errUsage }
 
 // usageError returns a command-line error (exit 2) with the catalog text
 // id; Go flag parse errors use i18n.UsageFlag with err.Error().
@@ -165,18 +153,9 @@ func Execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr
 	return execute(ctx, args, stdin, stdout, stderr, realSystem())
 }
 
-// execute runs the command line against sys, which tests replace. Both
-// languages start as English and are restored on return, so a test that
-// calls execute never leaks a language.
+// execute runs the command line against sys, which tests replace.
 func execute(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, sys *system) int {
-	defer i18n.SetLang(i18n.SetLang(i18n.English))
-	defer i18n.SetDisplayLang(i18n.SetDisplayLang(i18n.English))
 	e := &env{g: &globalFlags{}, stdin: stdin, stdout: stdout, stderr: stderr, sys: sys}
-	if englishCommands[commandWord(args)] {
-		e.ls.english = true
-	} else {
-		_ = e.applyLang(nil, nil)
-	}
 	return e.finish(dispatch(ctx, e, root(), args, "paritydesk"))
 }
 
@@ -190,15 +169,17 @@ func (e *env) finish(err error) int {
 		return int(pderr.CodeOf(q.err))
 	}
 	if errors.Is(err, errUsage) {
-		pe := &pderr.Error{Code: pderr.Usage, Op: "usage", Msg: strings.TrimPrefix(err.Error(), errUsage.Error()+": ")}
-		var tx i18n.Texter
-		if errors.As(err, &tx) {
-			pe.Text = tx.I18nText()
-		}
-		err = pe
+		err = &pderr.Error{Code: pderr.Usage, Op: "usage", Msg: strings.TrimPrefix(err.Error(), errUsage.Error()+": ")}
 	}
 	e.printer().Error(err)
 	return int(pderr.CodeOf(err))
+}
+
+// mode returns the output mode for the flags parsed so far.
+func (e *env) mode() render.Mode {
+	return render.DetectMode(render.Mode{
+		JSON: e.g.JSON, Plain: e.g.Plain, NoColor: e.g.NoColor, ASCII: e.g.ASCII,
+	}, e.sys.getenv, e.sys.isTerminal(e.stdout))
 }
 
 // printer returns the printer for the flags parsed so far.
@@ -241,16 +222,10 @@ func dispatch(ctx context.Context, e *env, c *command, args []string, path strin
 	if c.flags != nil {
 		c.flags(fs)
 	}
-	if c.english {
-		e.ls.english = true
-	}
 	if len(c.sub) > 0 {
 		// Only global flags may precede a subcommand name.
 		if err := fs.Parse(args); err != nil {
-			return e.parseError(c, fs, path, args, err)
-		}
-		if err := e.applyLang(fs, c); err != nil {
-			return err
+			return e.parseError(c, fs, path, err)
 		}
 		rest := fs.Args()
 		if len(rest) == 0 {
@@ -269,10 +244,7 @@ func dispatch(ctx context.Context, e *env, c *command, args []string, path strin
 		if c.lenient && !errors.Is(err, flag.ErrHelp) {
 			return c.lenientFailure(path)
 		}
-		return e.parseError(c, fs, path, args, err)
-	}
-	if err := e.applyLang(fs, c); err != nil {
-		return err
+		return e.parseError(c, fs, path, err)
 	}
 	if len(pos) < c.minArgs || (c.maxArgs >= 0 && len(pos) > c.maxArgs) {
 		if c.lenient {
@@ -308,9 +280,8 @@ func (c *command) lenientFailure(path string) error {
 
 // parseError prints the usage for --help (exit 0) and turns other parse
 // errors into usage errors.
-func (e *env) parseError(c *command, fs *flag.FlagSet, path string, args []string, err error) error {
+func (e *env) parseError(c *command, fs *flag.FlagSet, path string, err error) error {
 	if errors.Is(err, flag.ErrHelp) {
-		e.applyLangHelp(fs, c, args)
 		printUsage(e.stdout, c, fs, path)
 		return err
 	}
@@ -376,7 +347,7 @@ func printFlags(w io.Writer, fs *flag.FlagSet, title string, keep func(string) b
 			return
 		}
 		typ, _ := flag.UnquoteUsage(f)
-		text := flagUsageText(i18n.Current(), f.Usage)
+		text := flagUsageText(f.Usage)
 		name := "--" + f.Name
 		if typ != "" {
 			name += " " + typ
@@ -413,15 +384,6 @@ func leaf(name, args string, short i18n.Msg, min, max int, flags func(*flag.Flag
 
 func group(name, args string, short i18n.Msg, hidden bool, sub ...*command) *command {
 	return &command{name: name, args: args, short: short, hidden: hidden, sub: sub}
-}
-
-// englishOnly marks c and its subcommands as English-only.
-func englishOnly(c *command) *command {
-	c.english = true
-	for _, s := range c.sub {
-		englishOnly(s)
-	}
-	return c
 }
 
 func yesFlag(fs *flag.FlagSet) { fs.Bool(orchestrator.FlagYes, false, usage(i18n.FlagYes)) }
@@ -555,7 +517,7 @@ func root() *command {
 			fs.Bool("keep-state", false, usage(i18n.FlagKeepState))
 			yesFlag(fs)
 		}, runUninstall),
-		englishOnly(group("hook", "<event>", i18n.HelpHook, true,
+		group("hook", "<event>", i18n.HelpHook, true,
 			&command{name: "session-start", short: i18n.HelpHookSessionStart, maxArgs: -1, lenient: true,
 				flags: func(fs *flag.FlagSet) {
 					fs.String("plugin-version", "", usage(i18n.FlagHookSessionStartPluginVersion))
@@ -568,9 +530,9 @@ func root() *command {
 				flags: func(fs *flag.FlagSet) {
 					fs.String("plugin-version", "", usage(i18n.FlagPluginVersion))
 				}, run: runHookPostToolUse},
-		)),
-		englishOnly(leaf("completion", "<bash|zsh|fish>", i18n.HelpCompletion, 1, 1, nil, runCompletion)),
-		&command{name: aliasesCommand, short: i18n.HelpAliases, hidden: true, lenient: true, english: true,
+		),
+		leaf("completion", "<bash|zsh|fish>", i18n.HelpCompletion, 1, 1, nil, runCompletion),
+		&command{name: aliasesCommand, short: i18n.HelpAliases, hidden: true, lenient: true,
 			run: runAliases},
 		&command{name: "help", args: "[<command>...]", short: i18n.HelpHelp, maxArgs: -1, run: runHelp},
 		&command{name: "version", short: i18n.HelpVersion, run: runVersion},

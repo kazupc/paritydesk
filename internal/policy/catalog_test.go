@@ -2,7 +2,6 @@ package policy
 
 import (
 	"go/ast"
-	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
@@ -10,14 +9,12 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/kazupc/paritydesk/internal/i18n"
-	"github.com/kazupc/paritydesk/internal/pderr"
+	"unicode/utf8"
 )
 
-// Policy tests of the i18n-ja item (spec-i18n-ja 14.4): user-facing text
-// comes from the catalog, catalog text is never re-read as a format, and
-// the model-facing hook text stays English.
+// Policy tests of the message catalog: user-facing text comes from the
+// catalog, catalog text is never re-read as a format, the repository is
+// English only, and the skills translate faithfully.
 
 // bugWrappers are functions whose own body may pass a non-literal
 // message to pderr.Bug/Bugf; their call sites pass a literal first
@@ -72,9 +69,9 @@ func enclosingFunc(f *ast.File, pos token.Pos) string {
 	return ""
 }
 
-// TestNoUntranslatedLiterals lists every remaining site that would put
-// English prose in front of a person outside the catalog (P1-P4, P10-P12).
-func TestNoUntranslatedLiterals(t *testing.T) {
+// TestUserTextFromCatalog lists every remaining site that would put prose
+// in front of a person outside the catalog (P1-P3, P10-P12).
+func TestUserTextFromCatalog(t *testing.T) {
 	files := goFiles(t, false)
 	at := func(g goFile, n ast.Node) string {
 		return g.rel + ":" + strconv.Itoa(g.fset.Position(n.Pos()).Line)
@@ -113,7 +110,7 @@ func TestNoUntranslatedLiterals(t *testing.T) {
 		for _, g := range files {
 			name := i18nImport(g.file)
 			ast.Inspect(g.file, func(n ast.Node) bool {
-				if call, fn, ok := isCall(n, name, "T", "TIn", "Tx", "En"); ok {
+				if call, fn, ok := isCall(n, name, "T", "Tx"); ok {
 					for _, a := range call.Args {
 						if s, lit := stringLit(a); lit && strings.HasPrefix(s, "%") {
 							t.Errorf("%s: reformat: i18n.%s(..., %q) re-reads catalog text as a format", at(g, call), fn, s)
@@ -159,29 +156,6 @@ func TestNoUntranslatedLiterals(t *testing.T) {
 		}
 	})
 
-	t.Run("hook", func(t *testing.T) { // P4
-		ids := catalogConstants(t)
-		for _, g := range files {
-			if !strings.HasPrefix(g.rel, "internal/hook/") {
-				continue
-			}
-			name := i18nImport(g.file)
-			ast.Inspect(g.file, func(n ast.Node) bool {
-				if call, _, ok := isCall(n, name, "T", "TIn"); ok {
-					t.Errorf("%s: hook: i18n.T in the hook package (use i18n.En)", at(g, call))
-				}
-				if sel, ok := n.(*ast.SelectorExpr); ok {
-					if x, ok := sel.X.(*ast.Ident); ok && x.Name == name {
-						if id, isMsg := ids[sel.Sel.Name]; isMsg && !i18n.EnglishOnly(i18n.Msg(id)) {
-							t.Errorf("%s: hook: %s (%s) is not English-only", at(g, sel), sel.Sel.Name, id)
-						}
-					}
-				}
-				return true
-			})
-		}
-	})
-
 	t.Run("sentinels", func(t *testing.T) { // P10
 		re := actionableRE(t)
 		for _, g := range files {
@@ -208,13 +182,13 @@ func TestNoUntranslatedLiterals(t *testing.T) {
 
 	t.Run("register", func(t *testing.T) { // P11
 		for _, g := range files {
-			if underAny(g.rel, "internal/i18n/", "internal/pderr/") {
+			if strings.HasPrefix(g.rel, "internal/i18n/") {
 				continue
 			}
 			name := i18nImport(g.file)
 			ast.Inspect(g.file, func(n ast.Node) bool {
-				if call, fn, ok := isCall(n, name, "Register", "RegisterIn"); ok {
-					t.Errorf("%s: register: i18n.%s outside internal/i18n and internal/pderr", at(g, call), fn)
+				if call, fn, ok := isCall(n, name, "Register"); ok {
+					t.Errorf("%s: register: i18n.%s outside internal/i18n", at(g, call), fn)
 				}
 				return true
 			})
@@ -259,34 +233,6 @@ func TestNoUntranslatedLiterals(t *testing.T) {
 	})
 }
 
-// catalogConstants maps every Msg constant name of catalog.go to its id.
-func catalogConstants(t *testing.T) map[string]string {
-	t.Helper()
-	f, err := parser.ParseFile(token.NewFileSet(), filepath.Join(repoRoot(t), "internal", "i18n", "catalog.go"), nil, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	out := map[string]string{}
-	for _, d := range f.Decls {
-		gd, ok := d.(*ast.GenDecl)
-		if !ok || gd.Tok != token.CONST {
-			continue
-		}
-		for _, s := range gd.Specs {
-			vs := s.(*ast.ValueSpec)
-			for i, v := range vs.Values {
-				if id, ok := stringLit(v); ok {
-					out[vs.Names[i].Name] = id
-				}
-			}
-		}
-	}
-	if len(out) < 100 {
-		t.Fatalf("found only %d catalog constants", len(out))
-	}
-	return out
-}
-
 // commandNameRE finds command names in cli.go and the group files.
 var commandNameRE = regexp.MustCompile(`(?:leaf|group)\("([a-z][a-z-]*)"|name: "([a-z][a-z-]*)"`)
 
@@ -313,71 +259,57 @@ func actionableRE(t *testing.T) *regexp.Regexp {
 	return regexp.MustCompile(`run paritydesk|upgrade paritydesk|paritydesk (?:` + strings.Join(names, "|") + `)\b`)
 }
 
-// TestJapaneseErrorCatalog (P6): every text of the error catalog has a
-// compatible Japanese entry, and the Japanese next keeps every command
-// and flag of the English.
-func TestJapaneseErrorCatalog(t *testing.T) {
-	cmdRE := regexp.MustCompile(`paritydesk [a-z][a-z -]*[a-z]|--[a-z][a-z0-9-]*(?:=[A-Za-z0-9]+)?`)
-	for _, e := range pderr.Catalog() {
-		for _, f := range []struct {
-			id   i18n.Msg
-			text string
-		}{{pderr.TitleID(e.Code), e.Title}, {pderr.SafeID(e.Code), e.Safe}, {pderr.NextID(e.Code), e.Next}} {
-			if f.text == "" {
-				continue
-			}
-			ja, ok := i18n.CatalogIn(i18n.Japanese)[f.id]
-			if !ok {
-				t.Errorf("%s has no Japanese", f.id)
-				continue
-			}
-			if !i18n.Compatible(f.text, ja) {
-				t.Errorf("%s: Japanese verbs differ", f.id)
-			}
-			if f.id == pderr.NextID(e.Code) {
-				for _, tok := range cmdRE.FindAllString(f.text, -1) {
-					tok = strings.TrimRight(strings.SplitN(tok, " (", 2)[0], " ,;")
-					for _, w := range strings.Split(tok, ", then ") {
-						if !strings.Contains(ja, strings.TrimSuffix(w, " then paritydesk switch")) {
-							t.Errorf("%s: %q is missing in the Japanese next", f.id, w)
-						}
-					}
-				}
+// japaneseRanges are the Unicode ranges no file of the repository may
+// hold: CJK punctuation, Hiragana, Katakana, the CJK ideographs
+// (extension A, the unified block and the compatibility block) and the
+// half- and full-width forms. Tests that need such text write it as \u
+// escapes.
+var japaneseRanges = [][2]rune{
+	{0x3000, 0x303f}, // CJK symbols and punctuation
+	{0x3040, 0x309f}, // Hiragana
+	{0x30a0, 0x30ff}, // Katakana
+	{0x31f0, 0x31ff}, // Katakana phonetic extensions
+	{0x3400, 0x4dbf}, // CJK unified ideographs extension A
+	{0x4e00, 0x9fff}, // CJK unified ideographs
+	{0xf900, 0xfaff}, // CJK compatibility ideographs
+	{0xff00, 0xffef}, // half-width and full-width forms
+}
+
+// japaneseRune reports a rune in japaneseRanges.
+func japaneseRune(r rune) bool {
+	for _, rg := range japaneseRanges {
+		if r >= rg[0] && r <= rg[1] {
+			return true
+		}
+	}
+	return false
+}
+
+// TestRepoIsEnglishOnly: paritydesk prints English only and the
+// plugin's skills translate, so no file of the repository holds Japanese
+// characters (Han, Hiragana, Katakana, CJK punctuation or full-width
+// forms). Every hit is reported as file:line.
+func TestRepoIsEnglishOnly(t *testing.T) {
+	files := textFiles(t, nil)
+	if len(files) < 100 {
+		t.Fatalf("found only %d files", len(files))
+	}
+	for _, f := range files {
+		for i, line := range strings.Split(string(f.data), "\n") {
+			if j := strings.IndexFunc(line, japaneseRune); j >= 0 {
+				r, _ := utf8.DecodeRuneInString(line[j:])
+				t.Errorf("%s:%d holds U+%04X", f.rel, i+1, r)
 			}
 		}
 	}
 }
 
-// jaSignOut are the Japanese words for ending an account's session (sign
-// out, log out, log off, sign off), as escapes.
-var jaSignOut = []string{
-	"\u30b5\u30a4\u30f3\u30a2\u30a6\u30c8", "\u30ed\u30b0\u30a2\u30a6\u30c8",
-	"\u30ed\u30b0\u30aa\u30d5", "\u30b5\u30a4\u30f3\u30aa\u30d5",
-}
-
-// TestNoJapaneseSignOutAdvice (P7): neither the Japanese catalog nor
-// README.ja.md (when present) advises ending an account's session.
-func TestNoJapaneseSignOutAdvice(t *testing.T) {
-	check := func(where, s string) {
-		for _, w := range jaSignOut {
-			if strings.Contains(s, w) {
-				t.Errorf("%s advises ending an account's session", where)
-			}
-		}
-	}
-	for id, s := range i18n.CatalogIn(i18n.Japanese) {
-		check(string(id), s)
-	}
-	for _, f := range textFiles(t, japaneseAllowed) {
-		check(f.rel, string(f.data))
-	}
-}
-
-// TestSkillsMentionLanguage (P9): every skill that shows `lines` also
-// shows `display_lines` and says the lines are not translated or
-// reworded.
-func TestSkillsMentionLanguage(t *testing.T) {
-	const rule = "Show them exactly as printed; do not translate or reword them."
+// TestSkillsTranslateFaithfully (P9): every skill talks to the user in
+// the user's language and, when it shows printed lines, says to show
+// every line and translate each one faithfully.
+func TestSkillsTranslateFaithfully(t *testing.T) {
+	const talk = "Talk to the user in the language they use."
+	const lines = "Show every line. If the user writes in another language, translate each line faithfully into it"
 	files := textFiles(t, func(rel string) bool {
 		return strings.HasPrefix(rel, "plugin/skills/") && strings.HasSuffix(rel, "/SKILL.md")
 	})
@@ -385,15 +317,15 @@ func TestSkillsMentionLanguage(t *testing.T) {
 		t.Fatalf("found only %d skills", len(files))
 	}
 	for _, f := range files {
-		s := string(f.data)
-		if !strings.Contains(s, "lines") {
-			continue
+		s := strings.Join(strings.Fields(string(f.data)), " ")
+		if !strings.Contains(s, talk) {
+			t.Errorf("%s lacks the sentence %q", f.rel, talk)
 		}
-		if !strings.Contains(s, "display_lines") {
-			t.Errorf("%s shows lines but not display_lines", f.rel)
+		if strings.Contains(s, "display_") {
+			t.Errorf("%s still names a display_ field", f.rel)
 		}
-		if !strings.Contains(strings.Join(strings.Fields(s), " "), rule) {
-			t.Errorf("%s lacks the sentence %q", f.rel, rule)
+		if strings.Contains(s, "`lines`") && !strings.Contains(s, lines) {
+			t.Errorf("%s shows lines but lacks %q", f.rel, lines)
 		}
 	}
 }

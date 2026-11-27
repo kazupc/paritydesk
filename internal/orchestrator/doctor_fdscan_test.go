@@ -49,8 +49,8 @@ func TestDoctorOpenFileScan(t *testing.T) {
 			if i < 0 {
 				t.Fatalf("no open-file-scan check in %+v", checks)
 			}
-			if c := checks[i]; c.Status != tc.status || c.Detail.English() != tc.detail {
-				t.Fatalf("got %s %q, want %s %q", c.Status, c.Detail.English(), tc.status, tc.detail)
+			if c := checks[i]; c.Status != tc.status || c.Detail.String() != tc.detail {
+				t.Fatalf("got %s %q, want %s %q", c.Status, c.Detail.String(), tc.status, tc.detail)
 			}
 			// Right after update.
 			if i == 0 || checks[i-1].ID != "update" {
@@ -58,7 +58,7 @@ func TestDoctorOpenFileScan(t *testing.T) {
 			}
 		})
 	}
-	if _, detail := openFileScanCheck(native); detail.English() == "" {
+	if _, detail := openFileScanCheck(native); detail.String() == "" {
 		t.Fatal("empty detail")
 	}
 }

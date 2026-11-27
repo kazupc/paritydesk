@@ -8,8 +8,7 @@ import (
 	"strings"
 )
 
-// Text is a message rendered late: in the process language for people,
-// in English for JSON and logs.
+// Text is a message rendered late, when it is printed or encoded.
 type Text struct {
 	ID   Msg
 	Args []any // normalized by Tx: string, int64, uint64, float64, bool, Text, List
@@ -35,7 +34,7 @@ func Tx(id Msg, args ...any) Text {
 }
 
 // Raw wraps text that is not in the catalog (an OS error text, a Bug
-// text). It renders the same in every language.
+// text).
 func Raw(s string) Text { return Text{raw: s} }
 
 // normalize is the argument normalization of Tx.
@@ -74,19 +73,16 @@ func normalize(a any) any {
 // IsZero reports a Text with neither an id nor raw text.
 func (t Text) IsZero() bool { return t.ID == "" && t.raw == "" }
 
-// String renders t in the process language.
-func (t Text) String() string { return t.In(Current()) }
-
-// In renders t in l.
-func (t Text) In(l Lang) string {
+// String renders t.
+func (t Text) String() string {
 	s := t.raw
 	if t.ID != "" {
-		s = TIn(l, t.ID, t.Args...)
+		s = T(t.ID, t.Args...)
 	}
 	return cutRunes(s, t.max)
 }
 
-// Cut returns t whose rendering in every language is cut to max runes,
+// Cut returns t whose rendering is cut to max runes,
 // the last one an ellipsis (a safety bound that survives the late
 // rendering). max <= 0 removes the bound.
 func (t Text) Cut(max int) Text {
@@ -104,9 +100,6 @@ func cutRunes(s string, max int) string {
 	}
 	return string(r[:max-1]) + "\u2026"
 }
-
-// English renders t in English.
-func (t Text) English() string { return t.In(English) }
 
 // MapStrings returns a copy with f applied to every string argument
 // (recursively into Text and List arguments) and to raw text; used for
@@ -140,9 +133,9 @@ func mapArg(a any, f func(string) string) any {
 	return a
 }
 
-// MarshalJSON encodes the English rendering as a JSON string. HTML
+// MarshalJSON encodes the rendering as a JSON string. HTML
 // characters are not escaped here; the outer encoder decides that.
-func (t Text) MarshalJSON() ([]byte, error) { return marshalString(t.English()) }
+func (t Text) MarshalJSON() ([]byte, error) { return marshalString(t.String()) }
 
 // UnmarshalJSON makes a JSON string a Raw text.
 func (t *Text) UnmarshalJSON(b []byte) error {
@@ -164,24 +157,17 @@ func marshalString(s string) ([]byte, error) {
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
-// List renders its items in the same language joined by word.list_sep
-// ("; " in English).
+// List renders its items joined by word.list_sep ("; ").
 type List []Text
 
-// In renders the list in l.
-func (ls List) In(l Lang) string {
+// String renders the list.
+func (ls List) String() string {
 	parts := make([]string, len(ls))
 	for i, t := range ls {
-		parts[i] = t.In(l)
+		parts[i] = t.String()
 	}
-	return strings.Join(parts, TIn(l, WordListSep))
+	return strings.Join(parts, T(WordListSep))
 }
-
-// String renders the list in the process language.
-func (ls List) String() string { return ls.In(Current()) }
-
-// English renders the list in English.
-func (ls List) English() string { return ls.In(English) }
 
 // MapStrings applies Text.MapStrings to every item.
 func (ls List) MapStrings(f func(string) string) List {
@@ -192,21 +178,17 @@ func (ls List) MapStrings(f func(string) string) List {
 	return out
 }
 
-// CommaList renders its items in the same language joined by
-// word.comma_sep (", " in English).
+// CommaList renders its items joined by word.comma_sep (", ").
 type CommaList []Text
 
-// In renders the list in l.
-func (ls CommaList) In(l Lang) string {
+// String renders the list.
+func (ls CommaList) String() string {
 	parts := make([]string, len(ls))
 	for i, t := range ls {
-		parts[i] = t.In(l)
+		parts[i] = t.String()
 	}
-	return strings.Join(parts, TIn(l, WordCommaSep))
+	return strings.Join(parts, T(WordCommaSep))
 }
-
-// String renders the list in the process language.
-func (ls CommaList) String() string { return ls.In(Current()) }
 
 // MapStrings applies Text.MapStrings to every item.
 func (ls CommaList) MapStrings(f func(string) string) CommaList {
@@ -228,14 +210,14 @@ func Texts(ss []string) []Text {
 	return out
 }
 
-// Strings renders each text in l.
-func Strings(l Lang, ts []Text) []string {
+// Strings renders each text.
+func Strings(ts []Text) []string {
 	if ts == nil {
 		return nil
 	}
 	out := make([]string, len(ts))
 	for i, t := range ts {
-		out[i] = t.In(l)
+		out[i] = t.String()
 	}
 	return out
 }

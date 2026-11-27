@@ -135,7 +135,7 @@ func TestPluginVersionsAgree(t *testing.T) {
 	if err := json.Unmarshal([]byte(mustRead(t, filepath.Join(root, ".claude-plugin", "marketplace.json"))), &market); err != nil {
 		t.Fatal(err)
 	}
-	if plugin.Version != "0.2.0" || market.Metadata.Version != plugin.Version || len(market.Plugins) != 1 || market.Plugins[0].Version != plugin.Version {
+	if plugin.Version != "0.2.1" || market.Metadata.Version != plugin.Version || len(market.Plugins) != 1 || market.Plugins[0].Version != plugin.Version {
 		t.Fatalf("plugin %q, marketplace %+v", plugin.Version, market)
 	}
 	// The binary's default version agrees in major and minor, so a plain

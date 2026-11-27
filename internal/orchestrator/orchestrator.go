@@ -33,9 +33,8 @@ const (
 	P12Verify   Phase = "P12"
 )
 
-// Event is one progress event. Message is a catalog text rendered late
-// (English in JSON and logs); Data holds only validated, non-secret
-// fields.
+// Event is one progress event. Message is a catalog text rendered late;
+// Data holds only validated, non-secret fields.
 type Event struct {
 	Phase   Phase          `json:"phase"`
 	Status  string         `json:"status"` // "start" | "ok" | "warn" | "fail"; "paused" only from the e2e fault (PARITYDESK_FAULT=pause:P7)

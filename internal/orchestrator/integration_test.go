@@ -405,7 +405,7 @@ func TestIntegrationRepeatedSwitchesKeepBases(t *testing.T) {
 		if err != nil {
 			t.Fatalf("switch %d to %s: %v", i+1, to, err)
 		}
-		for _, warn := range i18n.Strings(i18n.English, (res.Warnings)) {
+		for _, warn := range i18n.Strings((res.Warnings)) {
 			if strings.Contains(warn, "does not read back") {
 				t.Errorf("switch %d to %s: %s", i+1, to, warn)
 			}

@@ -6,8 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/text/width"
-
 	"github.com/kazupc/paritydesk/internal/i18n"
 	"github.com/kazupc/paritydesk/internal/orchestrator"
 	"github.com/kazupc/paritydesk/internal/pderr"
@@ -112,14 +110,9 @@ func (u *termUI) ask(ctx context.Context, question string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	a := strings.ToLower(foldAnswer(line))
+	a := strings.ToLower(strings.TrimSpace(line))
 	return a == "y" || a == "yes", nil
 }
-
-// foldAnswer folds an answer typed with a Japanese input method to ASCII
-// (full-width letters and the ideographic space become ASCII) and trims
-// it, so "y" typed in full width is accepted; anything else is still no.
-func foldAnswer(s string) string { return strings.TrimSpace(width.Fold.String(s)) }
 
 // readLine reads one line from stdin, giving up when ctx ends.
 func (u *termUI) readLine(ctx context.Context) (string, error) {

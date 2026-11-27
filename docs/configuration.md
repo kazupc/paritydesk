@@ -17,7 +17,7 @@ written atomically with mode 0600.
 - `paritydesk config validate` checks it.
 
 Do not downgrade paritydesk after running v0.2: an older binary rejects
-the `[ui]` table that v0.2 writes.
+the tables that v0.2 writes, such as `[online]` and `[scratch]`.
 
 ## What to carry: `[sync]`
 
@@ -112,17 +112,6 @@ exclude = ["~/clients/**", "local_00000000-0000-4000-8000-000000000000"]
 | `propagate_deletions` | `true` | carry file removals (the removed file goes into the backup generation) |
 | `cross_managed` | `false` | carry workspaces between a managed and an unmanaged profile |
 | `max_delete_fraction`, `max_delete_min` | `0.5`, `50` | the deletion limit for scratch files |
-
-## Messages: `[ui]`
-
-| Key | Default | Meaning |
-|---|---|---|
-| `lang` | `"auto"` | message language: `auto` (the locale decides), `en` or `ja`; paritydesk never writes it |
-| `fallback_lang` | `"auto"` | the language used only when no locale is set (for example, possibly, in Code sessions started from the Dock; not yet confirmed); `init` in a Japanese terminal writes `"ja"` |
-
-The language is chosen by `--lang`, then `PARITYDESK_LANG`, then
-`[ui] lang`, then the locale, then `[ui] fallback_lang`. `--json` output
-stays English.
 
 ## Profiles: `[[profile]]`
 

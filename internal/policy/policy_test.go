@@ -14,8 +14,6 @@ import (
 	"strings"
 	"testing"
 	"unicode"
-
-	"golang.org/x/text/unicode/norm"
 )
 
 // TestNoNetworkInDependencies enforces zero network (D22): no package in
@@ -238,31 +236,13 @@ func TestFixturesUseFakeIDs(t *testing.T) {
 	}
 }
 
-// japaneseAllowed reports the files that may hold Japanese letters: the
-// Japanese catalog, README.ja.md, README.md (its language-switch line)
-// and the Japanese goldens. Tests write Japanese as \u escapes;
-// docs/dev/i18n.md is English only.
-func japaneseAllowed(rel string) bool {
-	return rel == "internal/i18n/catalog_ja.go" || rel == "README.ja.md" || rel == "README.md" ||
-		underAny(rel, "internal/cli/testdata/ja/", "internal/render/testdata/ja/")
-}
-
-// japaneseLetter reports Han, Hiragana, Katakana and the prolonged sound
-// mark (U+30FC).
-func japaneseLetter(r rune) bool {
-	return unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana) || r == 0x30fc
-}
-
 // TestNoNonASCIILetters (PII guard): no file holds letters outside ASCII,
 // so names in other scripts cannot slip in. Punctuation such as the
-// ellipsis is allowed. The Japanese files (japaneseAllowed) may hold
-// Japanese letters only (Han, Hiragana, Katakana, U+30FC); Latin with
-// diacritics, Cyrillic or full-width Latin still fail there.
+// ellipsis is allowed.
 func TestNoNonASCIILetters(t *testing.T) {
 	for _, f := range textFiles(t, nil) {
-		ja := japaneseAllowed(f.rel)
 		for i, r := range string(f.data) {
-			if r > unicode.MaxASCII && unicode.IsLetter(r) && !(ja && japaneseLetter(r)) {
+			if r > unicode.MaxASCII && unicode.IsLetter(r) {
 				t.Errorf("%s:%d holds a non-ASCII letter (U+%04X)", f.rel, lineOf(f.data, i), r)
 				break
 			}
@@ -312,33 +292,11 @@ func denyListFile(t *testing.T) string {
 	return filepath.Join(repoRoot(t), "testdata", "private", "pii.txt")
 }
 
-// tokens splits lower-cased text into letter and digit runs, and splits
-// a run where it changes between a Japanese letter (japaneseLetter) and
-// any other letter or digit: Japanese prose attaches Latin words to
-// particles without a space (the label directly followed or preceded
-// by kana), and the label must still be a token of its own. Text without Japanese letters
-// splits exactly as before.
+// tokens splits lower-cased text into letter and digit runs.
 func tokens(s string) []string {
-	var out []string
-	var cur []rune
-	curJA := false
-	for _, r := range strings.ToLower(s) {
-		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
-			if len(cur) > 0 {
-				out, cur = append(out, string(cur)), cur[:0]
-			}
-			continue
-		}
-		ja := japaneseLetter(r)
-		if len(cur) > 0 && ja != curJA {
-			out, cur = append(out, string(cur)), cur[:0]
-		}
-		cur, curJA = append(cur, r), ja
-	}
-	if len(cur) > 0 {
-		out = append(out, string(cur))
-	}
-	return out
+	return strings.FieldsFunc(strings.ToLower(s), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
 }
 
 func hashTokens(ts []string) string {
@@ -384,74 +342,7 @@ func (m labelMatcher) matches(text string) bool {
 	return false
 }
 
-// canonicalJA canonicalizes a line for the Japanese check: NFKC, lower
-// case, every space (U+3000 included) removed.
-func canonicalJA(s string) string {
-	s = strings.ToLower(norm.NFKC.String(s))
-	return strings.Map(func(r rune) rune {
-		if unicode.IsSpace(r) {
-			return -1
-		}
-		return r
-	}, s)
-}
-
-// jaMatcher holds the deny-list lines with a non-ASCII letter as sha256
-// hashes of their canonical form, keyed by rune length, so a name inside
-// Japanese prose (one token run, no spaces) is found as a substring.
-type jaMatcher map[int]map[string]bool
-
-func newJAMatcher(lines []string) jaMatcher {
-	m := jaMatcher{}
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") || !strings.ContainsFunc(line, func(r rune) bool {
-			return r > unicode.MaxASCII && unicode.IsLetter(r)
-		}) {
-			continue
-		}
-		c := []rune(canonicalJA(line))
-		if len(c) == 0 {
-			continue
-		}
-		if m[len(c)] == nil {
-			m[len(c)] = map[string]bool{}
-		}
-		h := sha256.Sum256([]byte(string(c)))
-		m[len(c)][hex.EncodeToString(h[:])] = true
-	}
-	return m
-}
-
-// matches reports whether any window of text equals a deny-listed line.
-func (m jaMatcher) matches(text string) bool {
-	c := []rune(canonicalJA(text))
-	for n, hashes := range m {
-		for i := 0; i+n <= len(c); i++ {
-			h := sha256.Sum256([]byte(string(c[i : i+n])))
-			if hashes[hex.EncodeToString(h[:])] {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func TestLabelMatcher(t *testing.T) {
-	// A synthetic Japanese entry (not a name of anyone): "sample label".
-	jm := newJAMatcher([]string{"\u898b\u672c\u30e9\u30d9\u30eb"})
-	for _, tc := range []struct {
-		text string
-		want bool
-	}{
-		{"\u3053\u308c\u306f\u898b\u672c\u30e9\u30d9\u30eb\u3067\u3059", true},
-		{"\u898b\u672c\u3000\u30e9\u30d9\u30eb", true},
-		{"\u898b\u672c\u30e9\u30a4\u30f3", false},
-	} {
-		if got := jm.matches(tc.text); got != tc.want {
-			t.Errorf("Japanese matches(%q) = %v", tc.text, got)
-		}
-	}
 	m := newLabelMatcher([]string{"# comment", "", "Alpha", "bravo charlie"})
 	tests := []struct {
 		text string
@@ -465,16 +356,6 @@ func TestLabelMatcher(t *testing.T) {
 		{"Bravo_Charlie", true},
 		{"bravo delta charlie", false},
 		{"charlie bravo", false},
-		// An ASCII label glued to Japanese text on either side or both
-		// ("<label>no account", "kore wa <label> desu", "<label> to
-		// <label>" without spaces), as escapes.
-		{"alpha\u306e\u30a2\u30ab\u30a6\u30f3\u30c8", true},
-		{"\u3053\u308c\u306falpha\u3067\u3059", true},
-		{"\u3053\u308c\u306fAlpha\u3067\u3059", true},
-		{"\u3053\u308c\u306fbravo charlie\u3067\u3059", true},
-		{"bravo\u3068charlie", false},
-		{"\u3053\u308c\u306falphabet\u3067\u3059", false},
-		{"\u6f22\u5b57alpha2\u3067\u3059", false},
 	}
 	for _, tc := range tests {
 		if got := m.matches(tc.text); got != tc.want {
@@ -495,7 +376,7 @@ func TestNoPersonalLabels(t *testing.T) {
 		t.Fatalf("read deny-list: %v", err)
 	}
 	m := newLabelMatcher(strings.Split(string(b), "\n"))
-	if len(m) == 0 && len(newJAMatcher(strings.Split(string(b), "\n"))) == 0 {
+	if len(m) == 0 {
 		t.Skip("empty deny-list")
 	}
 	for _, rel := range trackedFiles(t) {
@@ -503,11 +384,9 @@ func TestNoPersonalLabels(t *testing.T) {
 			t.Errorf("the path %s holds a deny-listed personal label", rel)
 		}
 	}
-	jm := newJAMatcher(strings.Split(string(b), "\n"))
 	for _, tf := range textFiles(t, nil) {
-		ja := japaneseAllowed(tf.rel)
 		for i, line := range strings.Split(string(tf.data), "\n") {
-			if m.matches(line) || (ja && jm.matches(line)) {
+			if m.matches(line) {
 				t.Errorf("%s:%d holds a deny-listed personal label", tf.rel, i+1)
 			}
 		}

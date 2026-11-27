@@ -15,7 +15,7 @@
 # the fixed deny document below: the guard fails closed while armed. The
 # binary's output is printed only after it exits 0, so this hook never
 # prints two documents.
-PLUGIN_VERSION="0.2.0" # kept equal to .claude-plugin/plugin.json by a policy test
+PLUGIN_VERSION="0.2.1" # kept equal to .claude-plugin/plugin.json by a policy test
 SUPPORT="$HOME/Library/Application Support/paritydesk"
 RECORD="$SUPPORT/hook-binary"
 ARMED="$SUPPORT/online/armed"

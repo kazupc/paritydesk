@@ -1149,7 +1149,7 @@ func (u *fakeUI) Progress(ev Event) {
 
 func (u *fakeUI) Confirm(_ context.Context, c Confirmation) (bool, error) {
 	u.asked = append(u.asked, c.Kind)
-	u.lines = append(u.lines, i18n.Strings(i18n.English, c.Lines))
+	u.lines = append(u.lines, i18n.Strings(c.Lines))
 	if u.onConfirm != nil {
 		u.onConfirm(c)
 	}

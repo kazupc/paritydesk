@@ -255,17 +255,14 @@ a `legacy-quarantine` run into a pinned generation (`EntryQuarantineDir`,
 an empty one; recover never moves anything). See
 [migration-from-legacy.md](migration-from-legacy.md).
 
-### Messages and languages (v0.2)
+### Messages
 
-Every text a person reads is a catalog message (`internal/i18n`): English
-in `catalog.go`, Japanese in `catalog_ja.go`. Messages are late-bound
-values (`i18n.Text`): structs keep the id and the arguments, JSON encodes
-the English text, and human output renders the process language at print
-time. The language comes from `--lang`, `PARITYDESK_LANG`, `[ui] lang`,
-the locale, then `[ui] fallback_lang`; the process language is English
-under `--json`, in ASCII mode, and for the hook, completion and the
-detached job. JSON never changes language: documents that carry `lines`
-add `lang` and `display_lines` when the display language is not English.
-Model-facing hook text and the job's notifications stay English. Rules and
-tests: [dev/i18n.md](dev/i18n.md).
+Every text a person reads is a catalog message (`internal/i18n`), in
+English (`catalog.go`). Messages are late-bound values (`i18n.Text`):
+structs keep the id and the arguments, and the text is rendered when it is
+printed or encoded, after the arguments are sanitized. paritydesk prints
+English only; the plugin's skills talk to the user in the language the
+user writes in and translate each printed line faithfully, keeping
+numbers, names, ids, codes and commands unchanged. Rules and tests:
+[dev/i18n.md](dev/i18n.md).
 

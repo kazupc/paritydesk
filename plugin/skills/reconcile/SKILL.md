@@ -6,11 +6,15 @@ description: Apply the changes paritydesk queued for this profile (pins, sidebar
 
 # Apply the changes paritydesk queued for inside Claude
 
-Talk to the user in the language they use. paritydesk's JSON is English.
-When a document has `display_lines`, those are the same lines in the
-user's paritydesk language (named by `lang`). Show them exactly as printed;
-do not translate or reword them. Hook lines from paritydesk are English;
-say what they mean in the user's language.
+Talk to the user in the language they use. paritydesk prints English
+only: its JSON and the `lines` of its documents. Show every line. If the
+user writes in another language, translate each line faithfully into it
+without dropping, merging or softening any line, keeping numbers, names,
+ids, codes and command text unchanged (the DESTRUCTIVE line and its
+counts included). Questions use the English `header`, `text` and option
+`label` and `description` from the JSON, translated the same faithful
+way. Hook lines from paritydesk are English and meant for you; say what
+they mean in the user's language.
 
 Some changes of a switch can only be made through Claude's own tools after
 Claude reopened. paritydesk lists the exact calls; you make them. A hook of
@@ -28,22 +32,21 @@ settings and artifact tools while this runs, and records the results.
    the next session start offers them again) and tell the user that the
    changes are not finished.
    - `state` `complete`: go to step 3.
-   - `state` `none` or `stale`: show `display_lines` when the document has it, otherwise `lines`, exactly and stop (no `done`).
-   - `state` `no_hooks` or `busy_elsewhere`: show `display_lines` when the document has it, otherwise `lines`, exactly and stop
+   - `state` `none` or `stale`: show every line of `lines` and stop (no `done`).
+   - `state` `no_hooks` or `busy_elsewhere`: show every line of `lines` and stop
      (no `done`).
    - `state` `wait`: run the same `paritydesk online next` command with
      `--wait` added.
    - `state` `question`: ask it with the AskUserQuestion tool: `header` =
-     `question.display_header` (or `question.header` when absent),
-     `question` = `question.display_text` (or `question.text`), the
-     options = each option's `display_label` and `display_description` (or
-     `label` and `description` when absent) in the given order,
+     `question.header`, `question` = `question.text`, the options = each
+     option's `label` and `description` in the given order (all translated
+     as above when the user writes in another language),
      `multiSelect: false`. Map the chosen label back to its option `id` and
      run
      `paritydesk online decide --json --session "${CLAUDE_SESSION_ID}" --token <token> --question <question.id> --answer <id>`.
      No answer, a typed answer or an error: answer with the option whose
      id is `skip`. Fallback when the AskUserQuestion tool is not available:
-     show `question.display_text` (or `question.text`) and the labels as a numbered list in plain text
+     show `question.text` and the labels (translated as above) as a numbered list in plain text
      and wait for the user's choice. Then run `paritydesk online next`
      again.
    - `state` `calls`: first, if any name in `tools` is not loaded in this
@@ -67,8 +70,7 @@ settings and artifact tools while this runs, and records the results.
      from an earlier answer. The changes stay queued, and the next session
      start offers them again.
 3. Run `paritydesk online done --json --session "${CLAUDE_SESSION_ID}" --token <token>`
-   and show its `display_lines` when present, otherwise its `lines`,
-   exactly.
+   and show every line of its `lines`.
 
 While this skill runs, never call any `mcp__ccd_sidebar__*`,
 `mcp__ccd_session_mgmt__*`, `mcp__ccd_settings__*` or

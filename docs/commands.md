@@ -139,7 +139,6 @@ Every command accepts these flags, before or after its arguments:
 | `--no-color` | no colour (also `NO_COLOR`, `TERM=dumb`) |
 | `--ascii` | ASCII only (automatic when the locale is not UTF-8) |
 | `--read-only` | plan only; never write (also `PARITYDESK_READONLY=1`) |
-| `--lang auto\|en\|ja` | message language (also `PARITYDESK_LANG`); `--json` stays English |
 | `--config <file>` | config file (also `PARITYDESK_CONFIG`) |
 | `--state-dir <dir>` | state directory (also `PARITYDESK_STATE_DIR`) |
 | `--app-support-dir <dir>` | paritydesk support directory |

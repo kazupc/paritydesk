@@ -31,13 +31,12 @@ func (e *env) service(ctx context.Context, ui orchestrator.UI) (orchestrator.Ser
 func (e *env) emit(v any, text func(p *render.Printer), err error) error {
 	p := e.printer()
 	if p.Mode.JSON {
-		doc := withDisplay(v, i18n.DisplayLang())
 		var jerr error
 		if err != nil && pderr.CodeOf(err) != pderr.OK {
 			// The result says why it ended with this code.
-			jerr = p.JSONWithError(doc, err)
+			jerr = p.JSONWithError(v, err)
 		} else {
-			jerr = p.JSON(doc)
+			jerr = p.JSON(v)
 		}
 		if jerr != nil {
 			return jerr
@@ -91,7 +90,7 @@ func runPlan(ctx context.Context, e *env, fs *flag.FlagSet, args []string) error
 	v := newRunView(res)
 	v.Saved = &save
 	return e.emit(v, func(p *render.Printer) {
-		p.Lines(v.HumanLines())
+		p.Lines(v.Lines)
 		p.Lines(v.humanBusy)
 		warn(p, v.Warnings)
 		switch {
@@ -132,7 +131,7 @@ func runSwitch(ctx context.Context, e *env, fs *flag.FlagSet, args []string) err
 		case v.Code == pderr.Declined:
 			// The plan was shown with the question; the error says the rest.
 		default:
-			p.Lines(v.HumanLines())
+			p.Lines(v.Lines)
 			p.Lines(v.humanBusy)
 			if v.Code == pderr.OK || v.Code == pderr.SwapOnly || v.Code == pderr.Degraded {
 				p.Msg(i18n.SwitchDone, string(v.From), string(v.To))
@@ -209,7 +208,7 @@ func runSync(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 	e.writeRunLog(res, ui.events)
 	v := newRunView(res)
 	return e.emit(v, func(p *render.Printer) {
-		p.Lines(v.HumanLines())
+		p.Lines(v.Lines)
 		if v.Code == pderr.OK {
 			p.Msg(i18n.SyncDone, string(v.To))
 		}
@@ -603,8 +602,7 @@ func runDoctor(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error 
 	if err != nil {
 		return err
 	}
-	checks, err := svc.Doctor(ctx, orchestrator.DoctorOptions{GrantAutomation: getBool(fs, "grant-automation"),
-		Lang: e.ls.lang, LangForced: e.ls.forced})
+	checks, err := svc.Doctor(ctx, orchestrator.DoctorOptions{GrantAutomation: getBool(fs, "grant-automation")})
 	if err != nil {
 		return err
 	}
@@ -679,7 +677,7 @@ func runInit(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 		if err != nil {
 			return err
 		}
-		raw = foldAnswer(line)
+		raw = strings.TrimSpace(line)
 	}
 	alias, err := parseAlias(raw)
 	if err != nil {
@@ -698,17 +696,6 @@ func runInit(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 		return err
 	}
 	opts := orchestrator.InitOptions{Alias: alias, Label: label, Managed: managed}
-	langSaved, langHint := false, false
-	if res := e.ls.lang; res.Lang == i18n.Japanese {
-		switch res.Source {
-		case i18n.SourceEnv, i18n.SourceLocale:
-			opts.FallbackLang = i18n.Japanese
-			_, fb := e.readUI()
-			langSaved = fb == "" || strings.EqualFold(fb, config.LangAuto)
-		case i18n.SourceFlag:
-			langHint = true
-		}
-	}
 	if err := svc.Init(ctx, opts); err != nil {
 		return err
 	}
@@ -719,12 +706,6 @@ func runInit(ctx context.Context, e *env, fs *flag.FlagSet, _ []string) error {
 	return e.emit(v, func(p *render.Printer) {
 		p.Msg(i18n.InitDone, string(alias))
 		p.Msg(i18n.ChromeSetup)
-		if langSaved {
-			p.Msg(i18n.InitLangSaved)
-		}
-		if langHint {
-			p.Msg(i18n.InitLangHint)
-		}
 		if v.HookBinary != "" {
 			p.Msg(i18n.DoctorHookBinary, v.HookBinary)
 		}

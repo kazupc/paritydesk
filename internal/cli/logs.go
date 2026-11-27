@@ -271,7 +271,7 @@ func runLogLines(res *orchestrator.Result, events []loggedEvent, r redact.Redact
 	enc := json.NewEncoder(&b)
 	for _, ev := range events {
 		_ = enc.Encode(logLine{V: 1, Time: ev.At.UTC(), Phase: ev.Event.Phase, Status: ev.Event.Status,
-			Message: r.String(ev.Event.Message.English()), ElapsedNS: int64(ev.Event.Elapsed), Aliases: eventAliases(ev.Event)})
+			Message: r.String(ev.Event.Message.String()), ElapsedNS: int64(ev.Event.Elapsed), Aliases: eventAliases(ev.Event)})
 	}
 	code := res.Code
 	_ = enc.Encode(logLine{V: 1, Time: now.UTC(), Run: res.RunID, Code: &code, From: res.From, To: res.To, Mode: string(res.Mode)})

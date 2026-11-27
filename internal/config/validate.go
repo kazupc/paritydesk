@@ -97,7 +97,6 @@ func (c *Config) Validate(reservedFolders []string, prefTags map[string]string) 
 	v.online(c.Online)
 	v.artifacts(c.Artifacts)
 	v.scratch(c.Scratch)
-	v.ui(c.UI)
 	if len(v.errs) == 0 {
 		return nil
 	}
@@ -105,16 +104,6 @@ func (c *Config) Validate(reservedFolders []string, prefTags map[string]string) 
 }
 
 type validator struct{ errs []i18n.Text }
-
-// ui checks the [ui] keys with the same case rule as --lang.
-func (v *validator) ui(u UI) {
-	if _, _, err := i18n.ParseSetting(u.Lang); err != nil {
-		v.add(i18n.ConfigInvalidUILang)
-	}
-	if _, _, err := i18n.ParseSetting(u.FallbackLang); err != nil {
-		v.add(i18n.ConfigInvalidUIFallbackLang)
-	}
-}
 
 func (v *validator) add(id i18n.Msg, args ...any) {
 	v.errs = append(v.errs, i18n.Tx(id, args...))

@@ -483,20 +483,10 @@ const (
 	BackupsPinnedWarn                Msg = "backups.pinned_warn"
 	RollbackQuarantineLine           Msg = "rollback.quarantine_line"
 
-	// Language choice (i18n-ja).
-	FlagLang                    Msg = "flag.lang"
-	UsageLang                   Msg = "usage.lang"
-	LangInvalidEnv              Msg = "lang.invalid_env"
-	LangNeedsUTF8               Msg = "lang.needs_utf8"
-	InitLangSaved               Msg = "init.lang_saved"
-	InitLangHint                Msg = "init.lang_hint"
-	DoctorLang                  Msg = "doctor.lang"
-	DoctorLangEnvInvalid        Msg = "doctor.lang_env_invalid"
-	DoctorLangASCII             Msg = "doctor.lang_ascii"
-	ConfigInvalidUILang         Msg = "config.invalid.ui_lang"
-	ConfigInvalidUIFallbackLang Msg = "config.invalid.ui_fallback_lang"
-	WordListSep                 Msg = "word.list_sep"
-	// Notifications of the detached job (English-only, i18n.EnglishOnly).
+	// Separators.
+	WordListSep Msg = "word.list_sep"
+
+	// Notifications of the detached job.
 	NotifySwitched Msg = "notify.switched"
 	NotifyFinished Msg = "notify.finished"
 	NotifyCheck    Msg = "notify.check"
@@ -1581,20 +1571,10 @@ var catalog = map[Msg]string{
 	BackupsPinnedWarn:                "%d generation(s) hold directories moved aside by profile adopt --from-legacy; removing them deletes those directories for good.",
 	RollbackQuarantineLine:           "Put back %d directories that profile adopt --from-legacy moved aside from %s; directories recreated since are left as they are.",
 
-	// Language choice (i18n-ja).
-	FlagLang:                    "message language: auto, en or ja (also PARITYDESK_LANG)",
-	UsageLang:                   "--lang must be auto, en or ja",
-	LangInvalidEnv:              "PARITYDESK_LANG=%s is not auto, en or ja; it was ignored",
-	LangNeedsUTF8:               "Japanese messages need a UTF-8 locale (for example LANG=ja_JP.UTF-8); showing English",
-	InitLangSaved:               "Messages are shown in Japanese, also where no locale is set, such as the plan summaries the Claude Code plugin shows. To change this, edit fallback_lang under [ui] in the config file.",
-	InitLangHint:                "To show Japanese without --lang, set lang = \"ja\" under [ui] in the config file.",
-	DoctorLang:                  "Messages: %s (from %s)",
-	DoctorLangEnvInvalid:        "PARITYDESK_LANG holds an invalid value and is ignored",
-	DoctorLangASCII:             "Japanese was chosen, but this terminal is not UTF-8, so messages are English",
-	ConfigInvalidUILang:         "ui.lang: must be auto, en or ja",
-	ConfigInvalidUIFallbackLang: "ui.fallback_lang: must be auto, en or ja",
-	WordListSep:                 "; ",
-	// Notifications of the detached job (English-only, i18n.EnglishOnly).
+	// Separators.
+	WordListSep: "; ",
+
+	// Notifications of the detached job.
 	NotifySwitched: "The switch finished. Claude is open on the other account.",
 	NotifyFinished: "The switch finished.",
 	NotifyCheck:    "The switch finished, but the check after launch found a problem. Run paritydesk status in Terminal.",

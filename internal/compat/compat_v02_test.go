@@ -212,7 +212,7 @@ func TestEmbeddedManifestsLoadWithV02Anchors(t *testing.T) {
 		}
 		text := string(b)
 		// The per-unit anchors of the v0.2 work were removed after the
-		// last unit landed (spec-i18n-ja 7.4 item 8).
+		// last unit landed.
 		if strings.Contains(text, "v0.2 anchor") {
 			t.Errorf("%s: a v0.2 anchor is left", m.Name)
 		}

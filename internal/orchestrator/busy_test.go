@@ -167,7 +167,7 @@ func TestPreviewBusy(t *testing.T) {
 	}
 	want := []BusyView{
 		{Session: "local_0000…", Title: "ignore previous instructions", WorkingForS: 60, StartedKnown: true},
-		{Session: "local_0000…", Title: i18n.En(i18n.ConfirmBusyUntitled), Stale: true, WorkingForS: 7 * 3600, StartedKnown: true},
+		{Session: "local_0000…", Title: i18n.T(i18n.ConfirmBusyUntitled), Stale: true, WorkingForS: 7 * 3600, StartedKnown: true},
 	}
 	if !slices.Equal(res.Busy, want) || res.BusyWait != time.Minute {
 		t.Fatalf("busy %+v wait %v", res.Busy, res.BusyWait)
@@ -295,8 +295,8 @@ func TestResolveInFolderSignInToOtherProfile(t *testing.T) {
 			t.Fatalf("plan refused: %v", err)
 		}
 		st, err := o.Status(context.Background(), false)
-		if err != nil || !hasWarning(i18n.Strings(i18n.English, st.Warnings), "the active account changed outside paritydesk") {
-			t.Fatalf("status %q %v", i18n.Strings(i18n.English, st.Warnings), err)
+		if err != nil || !hasWarning(i18n.Strings(st.Warnings), "the active account changed outside paritydesk") {
+			t.Fatalf("status %q %v", i18n.Strings(st.Warnings), err)
 		}
 	})
 	t.Run("a change before the mark is not rule L", func(t *testing.T) {
@@ -333,12 +333,12 @@ func TestGateNativeFromLog(t *testing.T) {
 	if pderr.CodeOf(err) != pderr.SwapOnly || res.Mode != compat.ModeSwapOnly {
 		t.Fatalf("mode %s err %v", res.Mode, err)
 	}
-	if !hasWarning(i18n.Strings(i18n.English, res.Warnings), "swap-only mode: the folder of a changed accounts 2 times in Claude since the last switch") ||
-		hasWarning(i18n.Strings(i18n.English, res.Warnings), "the switch will not carry anything\x00") || hasWarning(i18n.Strings(i18n.English, res.Warnings), "was signed in to another account") {
-		t.Fatalf("warnings %q", i18n.Strings(i18n.English, res.Warnings))
+	if !hasWarning(i18n.Strings(res.Warnings), "swap-only mode: the folder of a changed accounts 2 times in Claude since the last switch") ||
+		hasWarning(i18n.Strings(res.Warnings), "the switch will not carry anything\x00") || hasWarning(i18n.Strings(res.Warnings), "was signed in to another account") {
+		t.Fatalf("warnings %q", i18n.Strings(res.Warnings))
 	}
-	if hasWarning(i18n.Strings(i18n.English, res.Warnings), "swap-only mode: the switch will not carry anything") {
-		t.Errorf("generic line printed: %q", i18n.Strings(i18n.English, res.Warnings))
+	if hasWarning(i18n.Strings(res.Warnings), "swap-only mode: the switch will not carry anything") {
+		t.Errorf("generic line printed: %q", i18n.Strings(res.Warnings))
 	}
 	// The commit moved the mark: the next switch is full.
 	e.app.running = true
@@ -363,8 +363,8 @@ func TestGateNativeFromLog(t *testing.T) {
 	e3.app.changes = []app.AccountChange{{From: acctC, To: acctA, At: root.LastCommitAt.Add(time.Minute)}}
 	res, err = e3.orch().Switch(context.Background(), yes("b"))
 	if err != nil || res.Mode == compat.ModeSwapOnly ||
-		!hasWarning(i18n.Strings(i18n.English, res.Warnings), "the folder of account 0000… was signed in to another account (a) in Claude since the last switch") {
-		t.Fatalf("one change: mode %s err %v warnings %q", res.Mode, err, i18n.Strings(i18n.English, res.Warnings))
+		!hasWarning(i18n.Strings(res.Warnings), "the folder of account 0000… was signed in to another account (a) in Claude since the last switch") {
+		t.Fatalf("one change: mode %s err %v warnings %q", res.Mode, err, i18n.Strings(res.Warnings))
 	}
 	// One change to an unregistered account still exits 20 through the
 	// resolver (Claude/ then holds an account no profile has).
@@ -395,8 +395,8 @@ func TestStatusAccountChanges(t *testing.T) {
 		st.AccountChanges[0].FromMasked != "0000…" || st.NativeMultiAccount == nil || *st.NativeMultiAccount {
 		t.Fatalf("status %+v", st)
 	}
-	if !hasWarning(i18n.Strings(i18n.English, st.Warnings), "was signed in to another account (a)") {
-		t.Errorf("warnings %q", i18n.Strings(i18n.English, st.Warnings))
+	if !hasWarning(i18n.Strings(st.Warnings), "was signed in to another account (a)") {
+		t.Errorf("warnings %q", i18n.Strings(st.Warnings))
 	}
 	short, err := e.orch().Status(context.Background(), true)
 	if err != nil || short.NativeMultiAccount != nil || short.AccountChanges != nil {
@@ -406,7 +406,7 @@ func TestStatusAccountChanges(t *testing.T) {
 	e.app.changes = append(e.app.changes, app.AccountChange{From: acctA, To: acctC, At: root.LastCommitAt.Add(2 * time.Minute)})
 	st, err = e.orch().Status(context.Background(), false)
 	if err != nil || st.NativeMultiAccount == nil || !*st.NativeMultiAccount ||
-		!hasWarning(i18n.Strings(i18n.English, st.Warnings), "multi-account mode looks active") || hasWarning(i18n.Strings(i18n.English, st.Warnings), "was signed in to another account") {
+		!hasWarning(i18n.Strings(st.Warnings), "multi-account mode looks active") || hasWarning(i18n.Strings(st.Warnings), "was signed in to another account") {
 		t.Fatalf("chain: %+v %v", st, err)
 	}
 	// In-folder sign-in replaces the outside-switch warning.
@@ -415,8 +415,8 @@ func TestStatusAccountChanges(t *testing.T) {
 	d := e2.deps()
 	d.Resolve = profile.Resolve
 	st, err = New(d).Status(context.Background(), false)
-	if err != nil || !hasWarning(i18n.Strings(i18n.English, st.Warnings), "the folder of a holds the account of b") || hasWarning(i18n.Strings(i18n.English, st.Warnings), "changed outside paritydesk") {
-		t.Fatalf("in folder: %q %v", i18n.Strings(i18n.English, st.Warnings), err)
+	if err != nil || !hasWarning(i18n.Strings(st.Warnings), "the folder of a holds the account of b") || hasWarning(i18n.Strings(st.Warnings), "changed outside paritydesk") {
+		t.Fatalf("in folder: %q %v", i18n.Strings(st.Warnings), err)
 	}
 }
 
@@ -452,15 +452,15 @@ func TestDoctorBusyDetection(t *testing.T) {
 		}
 		return dr.checks[0]
 	}
-	if c := check(m6); c.Status != "warn" || c.Detail.English() != i18n.En(i18n.DoctorBusyDetectionUnavailable) {
+	if c := check(m6); c.Status != "warn" || c.Detail.String() != i18n.T(i18n.DoctorBusyDetectionUnavailable) {
 		t.Errorf("6.x: %+v", c)
 	}
-	if c := check(m7); c.Status != "ok" || c.Detail.English() != i18n.En(i18n.DoctorBusyDetectionOK) {
+	if c := check(m7); c.Status != "ok" || c.Detail.String() != i18n.T(i18n.DoctorBusyDetectionOK) {
 		t.Errorf("7.x: %+v", c)
 	}
 	partial := *m7
 	partial.Signals.TurnCleared = nil
-	if c := check(&partial); c.Status != "warn" || !strings.Contains(c.Detail.English(), "for up to 6h00m") {
+	if c := check(&partial); c.Status != "warn" || !strings.Contains(c.Detail.String(), "for up to 6h00m") {
 		t.Errorf("7.x without clears: %+v", c)
 	}
 	record := *m6
@@ -470,7 +470,7 @@ func TestDoctorBusyDetection(t *testing.T) {
 			record.Rows[i].Fields = map[string][]string{sources.RoleBusy: {"isRunning"}}
 		}
 	}
-	if c := check(&record); c.Status != "ok" || c.Detail.English() != i18n.En(i18n.DoctorBusyDetectionRecord) {
+	if c := check(&record); c.Status != "ok" || c.Detail.String() != i18n.T(i18n.DoctorBusyDetectionRecord) {
 		t.Errorf("record field: %+v", c)
 	}
 }
@@ -478,11 +478,11 @@ func TestDoctorBusyDetection(t *testing.T) {
 func TestDoctorBusyNow(t *testing.T) {
 	e := newEnv(t)
 	e.app.running = false
-	if c := doctorChecks(t, e.orch(), "busy-now"); len(c) != 1 || c[0].Detail.English() != i18n.En(i18n.DoctorBusyNowAppStopped) {
+	if c := doctorChecks(t, e.orch(), "busy-now"); len(c) != 1 || c[0].Detail.String() != i18n.T(i18n.DoctorBusyNowAppStopped) {
 		t.Fatalf("stopped: %+v", c)
 	}
 	e.app.running = true
-	if c := doctorChecks(t, e.orch(), "busy-now"); len(c) != 1 || c[0].Detail.English() != i18n.En(i18n.DoctorBusyNowNone) {
+	if c := doctorChecks(t, e.orch(), "busy-now"); len(c) != 1 || c[0].Detail.String() != i18n.T(i18n.DoctorBusyNowNone) {
 		t.Fatalf("none: %+v", c)
 	}
 	rep := working(fakeSession(1), fakeSession(2), fakeSession(3), fakeSession(4), fakeSession(5), fakeSession(6))
@@ -490,8 +490,8 @@ func TestDoctorBusyNow(t *testing.T) {
 	rep.Truncated = true
 	e.app.busySeq = []app.BusyReport{rep}
 	c := doctorChecks(t, e.orch(), "busy-now")
-	if len(c) != 1 || c[0].Status != "ok" || !strings.Contains(c[0].Detail.English(), "6 session(s) working now: local_0000…, local_0000…, local_0000…, local_0000…, local_0000…, …") ||
-		!strings.Contains(c[0].Detail.English(), "1 more session(s) started a turn long ago") || !strings.Contains(c[0].Detail.English(), "log is large") {
+	if len(c) != 1 || c[0].Status != "ok" || !strings.Contains(c[0].Detail.String(), "6 session(s) working now: local_0000…, local_0000…, local_0000…, local_0000…, local_0000…, …") ||
+		!strings.Contains(c[0].Detail.String(), "1 more session(s) started a turn long ago") || !strings.Contains(c[0].Detail.String(), "log is large") {
 		t.Fatalf("some: %+v", c)
 	}
 }
@@ -506,11 +506,11 @@ func TestBusyLogNotRead(t *testing.T) {
 		e := newEnv(t)
 		e.app.running = true
 		e.app.busyErr = ioErr
-		if c := doctorChecks(t, e.orch(), "busy-now"); len(c) != 1 || c[0].Status != "warn" || c[0].Detail.English() != i18n.En(i18n.DoctorBusyNowUnreadable) {
+		if c := doctorChecks(t, e.orch(), "busy-now"); len(c) != 1 || c[0].Status != "warn" || c[0].Detail.String() != i18n.T(i18n.DoctorBusyNowUnreadable) {
 			t.Fatalf("unreadable: %+v", c)
 		}
 		e.app.busyErr = fmt.Errorf("compile: %w", app.ErrSignalUnknown)
-		if c := doctorChecks(t, e.orch(), "busy-now"); len(c) != 1 || c[0].Status != "ok" || c[0].Detail.English() != i18n.En(i18n.DoctorBusyNowNoSignals) {
+		if c := doctorChecks(t, e.orch(), "busy-now"); len(c) != 1 || c[0].Status != "ok" || c[0].Detail.String() != i18n.T(i18n.DoctorBusyNowNoSignals) {
 			t.Fatalf("no signals: %+v", c)
 		}
 	})
@@ -522,21 +522,21 @@ func TestBusyLogNotRead(t *testing.T) {
 			t.Fatal(err)
 		}
 		n := 0
-		for _, w := range i18n.Strings(i18n.English, (res.Warnings)) {
-			if w == i18n.En(i18n.WarnBusyLogUnreadable) {
+		for _, w := range i18n.Strings((res.Warnings)) {
+			if w == i18n.T(i18n.WarnBusyLogUnreadable) {
 				n++
 			}
 		}
 		if n != 1 || e.app.quits != 1 {
-			t.Fatalf("warnings %q quits %d", i18n.Strings(i18n.English, res.Warnings), e.app.quits)
+			t.Fatalf("warnings %q quits %d", i18n.Strings(res.Warnings), e.app.quits)
 		}
 	})
 	t.Run("switch without busy signals stays quiet", func(t *testing.T) {
 		e := newEnv(t)
 		e.app.busyErr = app.ErrSignalUnknown
 		res, err := e.orch().Switch(context.Background(), yes("b"))
-		if err != nil || hasWarning(i18n.Strings(i18n.English, res.Warnings), "could not be read") {
-			t.Fatalf("err %v warnings %q", err, i18n.Strings(i18n.English, res.Warnings))
+		if err != nil || hasWarning(i18n.Strings(res.Warnings), "could not be read") {
+			t.Fatalf("err %v warnings %q", err, i18n.Strings(res.Warnings))
 		}
 	})
 }
@@ -550,11 +550,11 @@ func TestDoctorAccountChange(t *testing.T) {
 		status  []string
 		detail  string
 	}{
-		{"unavailable", func(e *env) {}, false, []string{"ok"}, i18n.En(i18n.DoctorAccountChangeUnavailable)},
+		{"unavailable", func(e *env) {}, false, []string{"ok"}, i18n.T(i18n.DoctorAccountChangeUnavailable)},
 		{"none", func(e *env) {
 			e.compat.m.Signals.AccountChanged = "x"
 			e.app.changes = []app.AccountChange{}
-		}, false, []string{"ok"}, i18n.En(i18n.DoctorAccountChangeNone)},
+		}, false, []string{"ok"}, i18n.T(i18n.DoctorAccountChangeNone)},
 		{"one", func(e *env) {
 			e.app.changes = []app.AccountChange{{From: acctA, To: acctB, At: at}}
 		}, false, []string{"warn"}, "the folder of a (account 0000…) was signed in to b (account 0000…) at " + at.Local().Format("2006-01-02 15:04")},
@@ -582,7 +582,7 @@ func TestDoctorAccountChange(t *testing.T) {
 			for _, x := range c {
 				statuses = append(statuses, x.Status)
 			}
-			if !slices.Equal(statuses, tc.status) || !strings.Contains(c[0].Detail.English(), tc.detail) {
+			if !slices.Equal(statuses, tc.status) || !strings.Contains(c[0].Detail.String(), tc.detail) {
 				t.Fatalf("checks %+v", c)
 			}
 		})
@@ -610,15 +610,15 @@ func TestNativeLogNamePendingAdd(t *testing.T) {
 		return res, nil
 	}
 	c := doctorChecks(t, New(d), "account-change")
-	if len(c) == 0 || c[0].Status != "fail" || !strings.Contains(c[0].Detail.English(), "the folder of account 0000… changed accounts 2 times") {
+	if len(c) == 0 || c[0].Status != "fail" || !strings.Contains(c[0].Detail.String(), "the folder of account 0000… changed accounts 2 times") {
 		t.Fatalf("doctor: %+v", c)
 	}
 	st, err := New(d).Status(context.Background(), false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !hasWarning(i18n.Strings(i18n.English, st.Warnings), "multi-account mode looks active in the folder of account 0000…;") {
-		t.Fatalf("status: %q", i18n.Strings(i18n.English, st.Warnings))
+	if !hasWarning(i18n.Strings(st.Warnings), "multi-account mode looks active in the folder of account 0000…;") {
+		t.Fatalf("status: %q", i18n.Strings(st.Warnings))
 	}
 	// With a holder bound to Claude/, an unregistered first account
 	// keeps naming the holder; a registered one names its profile.
@@ -660,26 +660,26 @@ func TestDoctorAccountChangeHistory(t *testing.T) {
 		return res, nil
 	}
 	c := doctorChecks(t, New(d), "account-change")
-	if len(c) != 1 || c[0].Status != "fail" || !strings.Contains(c[0].Detail.English(), "the folder of a has held several accounts") {
+	if len(c) != 1 || c[0].Status != "fail" || !strings.Contains(c[0].Detail.String(), "the folder of a has held several accounts") {
 		t.Fatalf("checks %+v", c)
 	}
 }
 
 func TestDoctorPairingOrg(t *testing.T) {
 	e := newEnv(t)
-	if c := doctorChecks(t, e.orch(), "chrome-pairing-org"); len(c) != 1 || c[0].Detail.English() != i18n.En(i18n.DoctorChromePairingOrgUnknown) {
+	if c := doctorChecks(t, e.orch(), "chrome-pairing-org"); len(c) != 1 || c[0].Detail.String() != i18n.T(i18n.DoctorChromePairingOrgUnknown) {
 		t.Fatalf("unknown: %+v", c)
 	}
 	e.app.org = orgA
 	e.app.events = []app.LogEvent{app.EvPairingClosed, app.EvAppStarted, app.EvPairingEstablished}
 	c := doctorChecks(t, e.orch(), "chrome-pairing-org")
-	if len(c) != 1 || c[0].Status != "ok" || !strings.Contains(c[0].Detail.English(), "(0000…, from the Claude log") ||
-		!strings.HasSuffix(c[0].Detail.English(), "since it started: established") {
+	if len(c) != 1 || c[0].Status != "ok" || !strings.Contains(c[0].Detail.String(), "(0000…, from the Claude log") ||
+		!strings.HasSuffix(c[0].Detail.String(), "since it started: established") {
 		t.Fatalf("known: %+v", c)
 	}
 	// A pairing state before the last app start is not shown.
 	e.app.events = []app.LogEvent{app.EvPairingEstablished, app.EvAppStarted}
-	if c := doctorChecks(t, e.orch(), "chrome-pairing-org"); strings.Contains(c[0].Detail.English(), "since it started") {
+	if c := doctorChecks(t, e.orch(), "chrome-pairing-org"); strings.Contains(c[0].Detail.String(), "since it started") {
 		t.Fatalf("old state: %+v", c)
 	}
 	// The org is read for the current run of the app.
@@ -695,17 +695,17 @@ func TestDoctorPairingDisabled(t *testing.T) {
 	e := newEnv(t)
 	e.app.events = []app.LogEvent{app.EvPairingDisabled, app.EvAppStarted}
 	for _, c := range doctorChecks(t, e.orch(), "chrome-bridge") {
-		if c.Detail.English() == i18n.En(i18n.DoctorChromeBridgePairingDisabled) {
+		if c.Detail.String() == i18n.T(i18n.DoctorChromeBridgePairingDisabled) {
 			t.Fatal("a disabled pairing of an earlier launch was reported")
 		}
 	}
 	e.app.events = []app.LogEvent{app.EvAppStarted, app.EvPairingDisabled}
 	c := doctorChecks(t, e.orch(), "chrome-bridge")
-	if c[0].Status != "warn" || c[0].Detail.English() != i18n.En(i18n.DoctorChromeBridgePairingDisabled) {
+	if c[0].Status != "warn" || c[0].Detail.String() != i18n.T(i18n.DoctorChromeBridgePairingDisabled) {
 		t.Fatalf("checks %+v", c)
 	}
 	e.app.events = []app.LogEvent{app.EvPairingDisabled}
-	if c := doctorChecks(t, e.orch(), "chrome-bridge"); c[0].Detail.English() != i18n.En(i18n.DoctorChromeBridgePairingDisabled) {
+	if c := doctorChecks(t, e.orch(), "chrome-bridge"); c[0].Detail.String() != i18n.T(i18n.DoctorChromeBridgePairingDisabled) {
 		t.Fatalf("no app start: %+v", c)
 	}
 }
@@ -715,7 +715,7 @@ func TestDoctorDeprecatedKey(t *testing.T) {
 	e.compat.m.Signals.NativeMultiAccount = "x"
 	c := doctorChecks(t, e.orch(), "version")
 	if !slices.ContainsFunc(c, func(x Check) bool {
-		return x.Status == "warn" && x.Detail.English() == "a compatibility manifest override sets signals.native_multi_account, which paritydesk no longer uses; remove it from the override"
+		return x.Status == "warn" && x.Detail.String() == "a compatibility manifest override sets signals.native_multi_account, which paritydesk no longer uses; remove it from the override"
 	}) {
 		t.Fatalf("checks %+v", c)
 	}

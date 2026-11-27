@@ -223,7 +223,7 @@ func TestParseFaults(t *testing.T) {
 	if err != nil || !f.crash(orchestrator.P10Commit) {
 		t.Fatalf("after:P7 does not stop a run that skipped P7: %v", err)
 	}
-	if len(ui.events) != 1 || ui.events[0].Status != "warn" || !strings.Contains(ui.events[0].Message.English(), "skipped P7") {
+	if len(ui.events) != 1 || ui.events[0].Status != "warn" || !strings.Contains(ui.events[0].Message.String(), "skipped P7") {
 		t.Fatalf("events %+v", ui.events)
 	}
 	if f, err := parse(nil); err != nil || f.crash != nil || f.afterFirstWrite != nil {

@@ -10,18 +10,17 @@ import (
 
 // Notifications a detached switch posts, because nobody watches its
 // output. The text is fixed (PRIVACY.md): no profile names, ids or paths.
-// The texts are the English-only catalog ids notify.* (osascript runs
-// under LC_ALL=C; Japanese there is not verified).
+// The texts are the catalog ids notify.*.
 const (
 	notifyTitle   = "paritydesk"
 	notifyTimeout = 10 * time.Second
 )
 
 var (
-	notifySwitched = i18n.En(i18n.NotifySwitched)
-	notifyFinished = i18n.En(i18n.NotifyFinished)
-	notifyCheck    = i18n.En(i18n.NotifyCheck)
-	notifyStopped  = i18n.En(i18n.NotifyStopped)
+	notifySwitched = i18n.T(i18n.NotifySwitched)
+	notifyFinished = i18n.T(i18n.NotifyFinished)
+	notifyCheck    = i18n.T(i18n.NotifyCheck)
+	notifyStopped  = i18n.T(i18n.NotifyStopped)
 )
 
 // notify posts a notification for a detached run. A failure is ignored:
