@@ -1,16 +1,9 @@
 # Installing paritydesk
 
 paritydesk runs on macOS only. There are three ways to install it. All
-three are designed to give you the same binary; none of them has been
-run end to end on a clean Mac yet. [Release checklist](release-checklist.md)
-steps 31 to 35 do that before the first release, and this page changes
-if they find a problem.
-
-**Available today:** `go install` (section 2) and a clone of the
-repository. No version has been tagged yet, so there is no release
-tarball, and the Homebrew tap is set up with the first release (release
-checklist step 32). Sections 1 and 3 describe how those paths work from
-then on.
+three are designed to give you the same binary. [Release
+checklist](release-checklist.md) steps 31 to 35 run each of them on a
+clean Mac, and this page changes if they find a problem.
 
 paritydesk is unofficial and not affiliated with Anthropic; see
 [DISCLAIMER.md](../DISCLAIMER.md). After installing, run `paritydesk init`
@@ -41,10 +34,7 @@ Gatekeeper:
 **Never disable Gatekeeper globally** (for example with `spctl` or by
 allowing apps from anywhere) to run paritydesk. No install path needs it.
 
-## 1. Homebrew tap, built from source (from the first release)
-
-Not available yet: the tap is created with the first tagged release.
-Once it exists, this is the recommended path.
+## 1. Homebrew tap, built from source (recommended)
 
 ```
 brew install kazupc/tap/paritydesk
@@ -90,9 +80,7 @@ same.
 
 ## 3. Release tarball
 
-Not available yet: no version has been tagged.
-
-Each release on GitHub has these files:
+Each release on [GitHub](https://github.com/kazupc/paritydesk/releases) has these files:
 
 - `paritydesk_<version>_darwin_arm64.tar.gz` (Apple silicon)
 - `paritydesk_<version>_darwin_amd64.tar.gz` (Intel)

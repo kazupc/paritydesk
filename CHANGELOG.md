@@ -7,7 +7,12 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 
 ## [Unreleased]
 
-### v0.2 (in progress)
+## [0.2.0] - 2026-11-28
+
+The first release. It holds everything planned for v0.1 and v0.2;
+no v0.1 was released.
+
+### v0.2
 
 - Changed: `root.json` is written as version 2. Every v0.2 field is
   optional and an older root is read as before, but a v0.1 binary refuses
@@ -511,8 +516,8 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 ### Not yet confirmed on a real Mac
 
 - Every item above is covered by automated tests with synthetic data
-  only. The release checklist confirms them on a real Mac before v0.1 is
-  tagged; until then the README describes them as designed, not as
+  only. The release checklist confirms them on a real Mac before v0.2.0 is
+  published; until then the README describes them as designed, not as
   confirmed. In particular the integrations (steps 26 to 28), the
   support archive (step 29) and every install path (steps 31 to 35) have
   not been run on a real Mac.
@@ -522,7 +527,7 @@ Exit codes and the `--json` schemas (`"v":1`) are part of the public API.
 
 ### Deferred to v0.2
 
-Every item below landed in v0.2 (see "v0.2 (in progress)" above).
+Every item below landed in v0.2 (see "v0.2" above).
 
 - Done in v0.2: artifact sync (beta) and `/paritydesk:artifacts`. Spike S5
   showed that hooks fire for the tools the app injects.
@@ -544,3 +549,6 @@ Every item below landed in v0.2 (see "v0.2 (in progress)" above).
 
 - Any path that sends a signal to the app. Claude is quit only with an
   Apple Event; there is no `--force-quit`.
+
+[Unreleased]: https://github.com/kazupc/paritydesk/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/kazupc/paritydesk/releases/tag/v0.2.0

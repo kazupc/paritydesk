@@ -25,7 +25,7 @@ import (
 // minor version (a policy test checks it), so a plain build from a clone
 // is not reported as skewed by the SessionStart hook.
 var (
-	Version = "0.2.0-dev"
+	Version = "0.2.0"
 	Commit  = ""
 	Date    = ""
 )

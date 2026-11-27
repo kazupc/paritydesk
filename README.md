@@ -21,7 +21,7 @@ pins.
 - **Nothing is signed out.** Each account keeps its own data folder and
   sign-in; paritydesk swaps the folders.
 
-**Status: pre-release, experimental.** No version is tagged yet. The
+**Status: experimental (v0.2.0, the first release).** The
 building blocks (quitting Claude, swapping folders, reopening a session)
 were checked on a real Mac; the full switch and the newest features are
 tested with synthetic data only. Keep a Time Machine backup if you try
@@ -29,15 +29,22 @@ it. Unofficial and not affiliated with Anthropic.
 
 ## Install
 
-Requires macOS and Go 1.26.1 or newer (`brew install go`). A Homebrew tap
-and release downloads come with the first release.
+Requires macOS. With Homebrew (it builds paritydesk from source and
+installs Go for the build if needed):
+
+```
+brew install kazupc/tap/paritydesk
+```
+
+Or with Go 1.26.1 or newer:
 
 ```
 go install github.com/kazupc/paritydesk/cmd/paritydesk@latest
 ```
 
-The binary lands in `$(go env GOPATH)/bin`; add that to your `PATH` if
-needed. Details: [docs/install.md](docs/install.md).
+`go install` puts the binary in `$(go env GOPATH)/bin`; the plugin's hook
+finds it after `paritydesk init`. Release tarballs and the other details:
+[docs/install.md](docs/install.md).
 
 **Claude Code plugin** (optional): adds `/paritydesk:switch`,
 `/paritydesk:reconcile` and `/paritydesk:artifacts`. In a Code session:
